@@ -15,6 +15,13 @@
       "when": 1783429876647,
       "tag": "0001_new_synch",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783431697602,
+      "tag": "0002_keen_shinko_yamashiro",
+      "breakpoints": true
     }
   ]
 }

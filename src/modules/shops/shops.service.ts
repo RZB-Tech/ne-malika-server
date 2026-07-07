@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -36,17 +37,29 @@ export class ShopsService {
       );
     }
 
-    return this.shopsRepository.create({
-      owner: ownerId,
-      name: dto.name,
-      description: dto.description,
-      photo: dto.photo,
-      telegramLink,
-      contact,
-      address: dto.address,
-      workSchedule: dto.workSchedule,
-      location: dto.location,
-    });
+    const existingShop = await this.shopsRepository.findFirstByOwner(ownerId);
+    if (existingShop) {
+      throw new ConflictException('У пользователя уже есть магазин');
+    }
+
+    try {
+      return await this.shopsRepository.create({
+        owner: ownerId,
+        name: dto.name,
+        description: dto.description,
+        photo: dto.photo,
+        telegramLink,
+        contact,
+        address: dto.address,
+        workSchedule: dto.workSchedule,
+        location: dto.location,
+      });
+    } catch (error) {
+      if (isUniqueViolation(error, 'shops_owner_unique_idx')) {
+        throw new ConflictException('У пользователя уже есть магазин');
+      }
+      throw error;
+    }
   }
 
   listOwn(ownerId: number) {
@@ -108,4 +121,15 @@ export class ShopsService {
       ? `https://t.me/${owner.telegramUsername}`
       : undefined;
   }
+}
+
+function isUniqueViolation(error: unknown, constraint: string) {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    'constraint' in error &&
+    error.code === '23505' &&
+    error.constraint === constraint
+  );
 }

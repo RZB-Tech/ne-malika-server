@@ -23,6 +23,12 @@ export class ShopsRepository {
       .orderBy(desc(shops.createdAt));
   }
 
+  findFirstByOwner(ownerId: number): Promise<Shop | undefined> {
+    return this.db.query.shops.findFirst({
+      where: eq(shops.owner, ownerId),
+    });
+  }
+
   findById(id: number): Promise<Shop | undefined> {
     return this.db.query.shops.findFirst({ where: eq(shops.id, id) });
   }

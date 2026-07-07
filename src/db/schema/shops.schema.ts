@@ -6,6 +6,7 @@ import {
   jsonb,
   text,
   timestamp,
+  uniqueIndex,
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
@@ -55,7 +56,7 @@ export const shops = pgTable(
       .defaultNow(),
   },
   (table) => ({
-    ownerIdx: index('shops_owner_idx').on(table.owner),
+    ownerUniqueIdx: uniqueIndex('shops_owner_unique_idx').on(table.owner),
     statusIdx: index('shops_status_idx').on(table.status),
   }),
 );

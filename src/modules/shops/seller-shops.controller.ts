@@ -41,6 +41,10 @@ export class SellerShopsController {
     status: 400,
     description: 'Не указан контакт/telegram_link и нет значения по умолчанию',
   })
+  @ApiResponse({
+    status: 409,
+    description: 'У пользователя уже есть магазин',
+  })
   create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreateShopDto) {
     return this.shopsService.createForSeller(user.id, dto);
   }
