@@ -14,13 +14,15 @@ import { ShopsModule } from './modules/shops/shops.module';
 import { ProductCardsModule } from './modules/product-cards/product-cards.module';
 import { FilesModule } from './modules/files/files.module';
 import { ReportsModule } from './modules/reports/reports.module';
-import { JwtService } from '@nestjs/jwt';
+import { AiModule } from './modules/ai/ai.module';
+import { OpenAiModule } from './modules/openai/openai.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, load: [configuration], validate }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
     DbModule,
+    OpenAiModule,
     AuthModule,
     UsersModule,
     BotModule,
@@ -28,6 +30,7 @@ import { JwtService } from '@nestjs/jwt';
     ProductCardsModule,
     FilesModule,
     ReportsModule,
+    AiModule,
 
     // ShopsModule, ProductCardsModule, ReportsModule, SearchModule,
     // StatsModule, FilesModule, AiModule, BotModule — далее

@@ -19,4 +19,13 @@ export class AdminProductCardsController {
   ) {
     return this.productCardsService.adminAbolish(id, dto.reason);
   }
+
+  @Patch(':id/restore')
+  @ApiOperation({
+    summary:
+      'Вернуть товар, автоматически скрытый ИИ-проверкой, в публичную выдачу',
+  })
+  restore(@Param('id', ParseIntPipe) id: number) {
+    return this.productCardsService.adminRestore(id);
+  }
 }

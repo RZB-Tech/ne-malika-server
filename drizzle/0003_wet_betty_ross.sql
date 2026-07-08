@@ -1,0 +1,1 @@
+ALTER TYPE "public"."entity_status" ADD VALUE 'hidden';

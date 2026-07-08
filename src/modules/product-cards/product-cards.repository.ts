@@ -167,6 +167,24 @@ export class ProductCardsRepository {
       .then((r) => r[0]);
   }
 
+  async hide(id: number): Promise<ProductCard> {
+    return this.db
+      .update(productCards)
+      .set({ status: 'hidden', updatedAt: new Date() })
+      .where(eq(productCards.id, id))
+      .returning()
+      .then((r) => r[0]);
+  }
+
+  async restore(id: number): Promise<ProductCard> {
+    return this.db
+      .update(productCards)
+      .set({ status: 'active', updatedAt: new Date() })
+      .where(eq(productCards.id, id))
+      .returning()
+      .then((r) => r[0]);
+  }
+
   private resolveSort(sort?: string) {
     switch (sort) {
       case 'price_asc':

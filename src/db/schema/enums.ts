@@ -7,6 +7,7 @@ export const productStateEnum = pgEnum('product_state', ['new', 'old']);
 export const entityStatusEnum = pgEnum('entity_status', [
   'active',
   'abolished',
+  'hidden',
 ]);
 
 export const analyticsEventTypeEnum = pgEnum('analytics_event_type', [

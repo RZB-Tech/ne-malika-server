@@ -1,16 +1,25 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  forwardRef,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { ProductCardsRepository } from './product-cards.repository';
 import { ShopsService } from '../shops/shops.service';
 import { CreateProductCardDto } from './dto/create-product-card.dto';
 import { UpdateProductCardDto } from './dto/update-product-card.dto';
 import { FindProductCardsQueryDto } from './dto/find-product-cards-query.dto';
 import { buildPaginatedResult } from 'src/common/dto/paginated-response.dto';
+import { AiService } from '../ai/ai.service';
 
 @Injectable()
 export class ProductCardsService {
   constructor(
     private readonly productCardsRepository: ProductCardsRepository,
     private readonly shopsService: ShopsService,
+    @Inject(forwardRef(() => AiService))
+    private readonly aiService: AiService,
   ) {}
 
   async createForSeller(
@@ -20,7 +29,7 @@ export class ProductCardsService {
   ) {
     await this.shopsService.assertOwnership(ownerId, shopId);
 
-    return this.productCardsRepository.create({
+    const card = await this.productCardsRepository.create({
       shopId,
       name: dto.name,
       description: dto.description,
@@ -29,8 +38,9 @@ export class ProductCardsService {
       state: dto.state,
       characteristics: dto.characteristics,
     });
-    // Примечание: здесь же в реальной реализации ставим в очередь фоновую
-    // ИИ-проверку карточки (AiModule, раздел 7) — подключим при разработке AiModule.
+
+    this.aiService.checkProductCard(card.id);
+    return card;
   }
 
   async listForSeller(ownerId: number, shopId: number) {
@@ -55,12 +65,27 @@ export class ProductCardsService {
       ...dto,
       price: dto.price !== undefined ? dto.price.toString() : undefined,
     };
-    return this.productCardsRepository.update(id, patch);
+    const updated = await this.productCardsRepository.update(id, patch);
+    this.aiService.checkProductCard(id);
+    return updated;
   }
 
   async removeOwn(ownerId: number, id: number) {
     await this.getOwnOrThrow(ownerId, id);
     await this.productCardsRepository.delete(id);
+  }
+
+  async adminRestore(id: number) {
+    const card = await this.productCardsRepository.findById(id);
+    if (!card) {
+      throw new NotFoundException('Товар не найден');
+    }
+    if (card.status === 'abolished') {
+      throw new BadRequestException(
+        'Товар упразднён администратором — используйте отдельный процесс восстановления, а не снятие ИИ-скрытия',
+      );
+    }
+    return this.productCardsRepository.restore(id);
   }
 
   async getPublicById(id: number) {
