@@ -1,6 +1,10 @@
+-- Расширения
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+
 CREATE TYPE "public"."ai_verdict" AS ENUM('pass', 'warn', 'fail');--> statement-breakpoint
 CREATE TYPE "public"."analytics_event_type" AS ENUM('product_view', 'shop_view', 'telegram_click', 'phone_click', 'search_prompt');--> statement-breakpoint
-CREATE TYPE "public"."entity_status" AS ENUM('active', 'abolished');--> statement-breakpoint
+CREATE TYPE "public"."entity_status" AS ENUM('active', 'abolished', 'hidden');--> statement-breakpoint
 CREATE TYPE "public"."product_state" AS ENUM('new', 'old');--> statement-breakpoint
 CREATE TYPE "public"."user_role" AS ENUM('seller', 'admin');--> statement-breakpoint
 CREATE TABLE "users" (
@@ -25,6 +29,9 @@ CREATE TABLE "shops" (
 	"photo" uuid,
 	"telegram_link" varchar(255) NOT NULL,
 	"contact" varchar(20) NOT NULL,
+	"address" varchar(500),
+	"work_schedule" jsonb,
+	"location" double precision[],
 	"status" "entity_status" DEFAULT 'active' NOT NULL,
 	"abolish_reason" text,
 	"abolished_at" timestamp with time zone,
@@ -40,6 +47,8 @@ CREATE TABLE "product_cards" (
 	"photos" uuid[] DEFAULT '{}' NOT NULL,
 	"price" numeric(14, 2) NOT NULL,
 	"state" "product_state" NOT NULL,
+	"characteristics" jsonb,
+	"embedding" vector(1536),
 	"status" "entity_status" DEFAULT 'active' NOT NULL,
 	"abolish_reason" text,
 	"abolished_at" timestamp with time zone,
@@ -86,7 +95,7 @@ ALTER TABLE "analytics_events" ADD CONSTRAINT "analytics_events_product_card_id_
 ALTER TABLE "analytics_events" ADD CONSTRAINT "analytics_events_shop_id_shops_id_fk" FOREIGN KEY ("shop_id") REFERENCES "public"."shops"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ai_product_checks" ADD CONSTRAINT "ai_product_checks_product_card_id_product_cards_id_fk" FOREIGN KEY ("product_card_id") REFERENCES "public"."product_cards"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "users_telegram_id_idx" ON "users" USING btree ("telegram_id");--> statement-breakpoint
-CREATE INDEX "shops_owner_idx" ON "shops" USING btree ("owner");--> statement-breakpoint
+CREATE UNIQUE INDEX "shops_owner_unique_idx" ON "shops" USING btree ("owner");--> statement-breakpoint
 CREATE INDEX "shops_status_idx" ON "shops" USING btree ("status");--> statement-breakpoint
 CREATE INDEX "product_cards_shop_id_idx" ON "product_cards" USING btree ("shop_id");--> statement-breakpoint
 CREATE INDEX "product_cards_status_idx" ON "product_cards" USING btree ("status");--> statement-breakpoint
@@ -96,3 +105,5 @@ CREATE INDEX "analytics_events_shop_id_idx" ON "analytics_events" USING btree ("
 CREATE INDEX "analytics_events_product_card_id_idx" ON "analytics_events" USING btree ("product_card_id");--> statement-breakpoint
 CREATE INDEX "analytics_events_session_id_idx" ON "analytics_events" USING btree ("session_id");--> statement-breakpoint
 CREATE INDEX "ai_product_checks_product_card_id_idx" ON "ai_product_checks" USING btree ("product_card_id");
+
+

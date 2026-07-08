@@ -1,6 +1,6 @@
 {
-  "id": "775b4570-259b-491f-b388-8aa1c5d76931",
-  "prevId": "d327922f-f274-4fec-aacb-52e47264a74d",
+  "id": "8a0a5f6a-e01f-4104-bb7f-b746f7cefb7b",
+  "prevId": "560b1bca-b25f-451c-8c6c-f42f46767a6a",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -85,9 +85,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {},
@@ -95,10 +95,10 @@
       "uniqueConstraints": {
         "users_telegram_id_unique": {
           "name": "users_telegram_id_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "telegram_id"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -216,9 +216,9 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "shops_status_idx": {
           "name": "shops_status_idx",
@@ -231,24 +231,24 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "shops_owner_users_id_fk": {
           "name": "shops_owner_users_id_fk",
           "tableFrom": "shops",
-          "tableTo": "users",
           "columnsFrom": [
             "owner"
           ],
+          "tableTo": "users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -311,6 +311,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "embedding": {
+          "name": "embedding",
+          "type": "vector(1536)",
+          "primaryKey": false,
+          "notNull": false
+        },
         "status": {
           "name": "status",
           "type": "entity_status",
@@ -358,9 +364,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "product_cards_status_idx": {
           "name": "product_cards_status_idx",
@@ -373,24 +379,24 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "product_cards_shop_id_shops_id_fk": {
           "name": "product_cards_shop_id_shops_id_fk",
           "tableFrom": "product_cards",
-          "tableTo": "shops",
           "columnsFrom": [
             "shop_id"
           ],
+          "tableTo": "shops",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -454,37 +460,37 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "reports_shop_id_shops_id_fk": {
           "name": "reports_shop_id_shops_id_fk",
           "tableFrom": "reports",
-          "tableTo": "shops",
           "columnsFrom": [
             "shop_id"
           ],
+          "tableTo": "shops",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "reports_product_card_id_product_cards_id_fk": {
           "name": "reports_product_card_id_product_cards_id_fk",
           "tableFrom": "reports",
-          "tableTo": "product_cards",
           "columnsFrom": [
             "product_card_id"
           ],
+          "tableTo": "product_cards",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -560,9 +566,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "analytics_events_shop_id_idx": {
           "name": "analytics_events_shop_id_idx",
@@ -575,9 +581,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "analytics_events_product_card_id_idx": {
           "name": "analytics_events_product_card_id_idx",
@@ -590,9 +596,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "analytics_events_session_id_idx": {
           "name": "analytics_events_session_id_idx",
@@ -605,37 +611,37 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "analytics_events_product_card_id_product_cards_id_fk": {
           "name": "analytics_events_product_card_id_product_cards_id_fk",
           "tableFrom": "analytics_events",
-          "tableTo": "product_cards",
           "columnsFrom": [
             "product_card_id"
           ],
+          "tableTo": "product_cards",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "analytics_events_shop_id_shops_id_fk": {
           "name": "analytics_events_shop_id_shops_id_fk",
           "tableFrom": "analytics_events",
-          "tableTo": "shops",
           "columnsFrom": [
             "shop_id"
           ],
+          "tableTo": "shops",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -717,24 +723,24 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "ai_product_checks_product_card_id_product_cards_id_fk": {
           "name": "ai_product_checks_product_card_id_product_cards_id_fk",
           "tableFrom": "ai_product_checks",
-          "tableTo": "product_cards",
           "columnsFrom": [
             "product_card_id"
           ],
+          "tableTo": "product_cards",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -770,7 +776,8 @@
       "schema": "public",
       "values": [
         "active",
-        "abolished"
+        "abolished",
+        "hidden"
       ]
     },
     "public.product_state": {
@@ -791,10 +798,10 @@
     }
   },
   "schemas": {},
+  "views": {},
   "sequences": {},
   "roles": {},
   "policies": {},
-  "views": {},
   "_meta": {
     "columns": {},
     "schemas": {},

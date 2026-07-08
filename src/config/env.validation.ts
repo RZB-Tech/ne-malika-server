@@ -83,6 +83,12 @@ class EnvironmentVariables {
 
   @IsString()
   OPENAI_MODEL: string;
+  @IsOptional()
+  @IsString()
+  REDIS_URL?: string;
+
+  @IsString()
+  OPENAI_EMBEDDING_MODEL: string;
 }
 
 export function validate(config: Record<string, unknown>) {

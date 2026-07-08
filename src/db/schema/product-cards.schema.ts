@@ -12,6 +12,7 @@ import {
 import { pgTable } from 'drizzle-orm/pg-core';
 import { shops } from './shops.schema';
 import { entityStatusEnum, productStateEnum } from './enums';
+import { vector } from './vector-type';
 
 export interface ProductCharacteristic {
   key: string;
@@ -37,6 +38,8 @@ export const productCards = pgTable(
 
     // Новое поле — произвольные пользовательские характеристики
     characteristics: jsonb('characteristics').$type<ProductCharacteristic[]>(),
+
+    embedding: vector('embedding', { dimensions: 1536 }),
 
     status: entityStatusEnum('status').notNull().default('active'),
     abolishReason: text('abolish_reason'),

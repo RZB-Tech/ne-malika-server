@@ -1,6 +1,6 @@
 {
-  "id": "32687818-0baa-47bd-8eed-11880bbd29dc",
-  "prevId": "775b4570-259b-491f-b388-8aa1c5d76931",
+  "id": "5c9d9530-3540-40c4-b32d-2ae0214a2fb4",
+  "prevId": "8a0a5f6a-e01f-4104-bb7f-b746f7cefb7b",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -311,6 +311,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "embedding": {
+          "name": "embedding",
+          "type": "vector(1536)",
+          "primaryKey": false,
+          "notNull": false
+        },
         "status": {
           "name": "status",
           "type": "entity_status",
@@ -493,157 +499,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.analytics_events": {
-      "name": "analytics_events",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "bigserial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "type": {
-          "name": "type",
-          "type": "analytics_event_type",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "product_card_id": {
-          "name": "product_card_id",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "shop_id": {
-          "name": "shop_id",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "session_id": {
-          "name": "session_id",
-          "type": "varchar(128)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "meta": {
-          "name": "meta",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "analytics_events_type_created_at_idx": {
-          "name": "analytics_events_type_created_at_idx",
-          "columns": [
-            {
-              "expression": "type",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "analytics_events_shop_id_idx": {
-          "name": "analytics_events_shop_id_idx",
-          "columns": [
-            {
-              "expression": "shop_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "analytics_events_product_card_id_idx": {
-          "name": "analytics_events_product_card_id_idx",
-          "columns": [
-            {
-              "expression": "product_card_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "analytics_events_session_id_idx": {
-          "name": "analytics_events_session_id_idx",
-          "columns": [
-            {
-              "expression": "session_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "analytics_events_product_card_id_product_cards_id_fk": {
-          "name": "analytics_events_product_card_id_product_cards_id_fk",
-          "tableFrom": "analytics_events",
-          "tableTo": "product_cards",
-          "columnsFrom": [
-            "product_card_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "analytics_events_shop_id_shops_id_fk": {
-          "name": "analytics_events_shop_id_shops_id_fk",
-          "tableFrom": "analytics_events",
-          "tableTo": "shops",
-          "columnsFrom": [
-            "shop_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.ai_product_checks": {
       "name": "ai_product_checks",
       "schema": "",
@@ -752,17 +607,6 @@
         "pass",
         "warn",
         "fail"
-      ]
-    },
-    "public.analytics_event_type": {
-      "name": "analytics_event_type",
-      "schema": "public",
-      "values": [
-        "product_view",
-        "shop_view",
-        "telegram_click",
-        "phone_click",
-        "search_prompt"
       ]
     },
     "public.entity_status": {

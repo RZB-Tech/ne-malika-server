@@ -3,7 +3,6 @@ import { users } from './users.schema';
 import { shops } from './shops.schema';
 import { productCards } from './product-cards.schema';
 import { reports } from './reports.schema';
-import { analyticsEvents } from './analytic-events.schema';
 import { aiProductChecks } from './ai-products-checks.schema';
 
 export const usersRelations = relations(users, ({ many }) => ({
@@ -17,7 +16,6 @@ export const shopsRelations = relations(shops, ({ one, many }) => ({
   }),
   productCards: many(productCards),
   reports: many(reports),
-  analyticsEvents: many(analyticsEvents),
 }));
 
 export const productCardsRelations = relations(
@@ -28,7 +26,6 @@ export const productCardsRelations = relations(
       references: [shops.id],
     }),
     reports: many(reports),
-    analyticsEvents: many(analyticsEvents),
     aiChecks: many(aiProductChecks),
   }),
 );
@@ -43,20 +40,6 @@ export const reportsRelations = relations(reports, ({ one }) => ({
     references: [productCards.id],
   }),
 }));
-
-export const analyticsEventsRelations = relations(
-  analyticsEvents,
-  ({ one }) => ({
-    shop: one(shops, {
-      fields: [analyticsEvents.shopId],
-      references: [shops.id],
-    }),
-    productCard: one(productCards, {
-      fields: [analyticsEvents.productCardId],
-      references: [productCards.id],
-    }),
-  }),
-);
 
 export const aiProductChecksRelations = relations(
   aiProductChecks,

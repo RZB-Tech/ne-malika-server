@@ -12,6 +12,7 @@ import { UpdateProductCardDto } from './dto/update-product-card.dto';
 import { FindProductCardsQueryDto } from './dto/find-product-cards-query.dto';
 import { buildPaginatedResult } from 'src/common/dto/paginated-response.dto';
 import { AiService } from '../ai/ai.service';
+import { EmbeddingsService } from '../ai/embeddings.service';
 
 @Injectable()
 export class ProductCardsService {
@@ -20,6 +21,8 @@ export class ProductCardsService {
     private readonly shopsService: ShopsService,
     @Inject(forwardRef(() => AiService))
     private readonly aiService: AiService,
+    @Inject(forwardRef(() => EmbeddingsService))
+    private readonly embeddingsService: EmbeddingsService,
   ) {}
 
   async createForSeller(
@@ -40,6 +43,8 @@ export class ProductCardsService {
     });
 
     this.aiService.checkProductCard(card.id);
+    this.embeddingsService.generateAndSaveEmbedding(card.id);
+
     return card;
   }
 
@@ -67,6 +72,9 @@ export class ProductCardsService {
     };
     const updated = await this.productCardsRepository.update(id, patch);
     this.aiService.checkProductCard(id);
+    if (dto.name !== undefined || dto.description !== undefined) {
+      this.embeddingsService.generateAndSaveEmbedding(id);
+    }
     return updated;
   }
 

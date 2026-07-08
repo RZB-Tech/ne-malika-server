@@ -9,6 +9,16 @@ import {
 } from '../../db/schema';
 import { FindProductCardsQueryDto } from './dto/find-product-cards-query.dto';
 
+interface BaseFilters {
+  price_min?: number;
+  price_max?: number;
+  state?: 'new' | 'old';
+  shop_id?: number;
+  sort?: 'price_asc' | 'price_desc' | 'newest';
+  page?: number;
+  limit?: number;
+}
+
 @Injectable()
 export class ProductCardsRepository {
   constructor(@Inject(DRIZZLE) private readonly db: DrizzleDb) {}
@@ -183,6 +193,106 @@ export class ProductCardsRepository {
       .where(eq(productCards.id, id))
       .returning()
       .then((r) => r[0]);
+  }
+  async updateEmbedding(id: number, embedding: number[]): Promise<void> {
+    return this.db
+      .update(productCards)
+      .set({ embedding, updatedAt: new Date() })
+      .where(eq(productCards.id, id))
+      .then(() => undefined);
+  }
+
+  async fullTextSearch(prompt: string, filters: BaseFilters) {
+    const conditions = this.buildBaseConditions(filters);
+    conditions.push(
+      sql`${productCards}.search_vector @@ websearch_to_tsquery('russian', ${prompt})`,
+    );
+    const whereClause = and(...conditions);
+
+    const selectFields = this.publicSelectFields();
+    const orderBy = this.resolveSort(filters.sort);
+    const limit = filters.limit ?? 20;
+    const offset = ((filters.page ?? 1) - 1) * limit;
+
+    const [data, totalRows] = await Promise.all([
+      this.db
+        .select(selectFields)
+        .from(productCards)
+        .innerJoin(shops, eq(productCards.shopId, shops.id))
+        .where(whereClause)
+        .orderBy(orderBy)
+        .limit(limit)
+        .offset(offset),
+      this.db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(productCards)
+        .innerJoin(shops, eq(productCards.shopId, shops.id))
+        .where(whereClause),
+    ]);
+
+    return { data, total: totalRows[0]?.count ?? 0 };
+  }
+
+  async vectorSearch(
+    queryEmbedding: number[],
+    filters: BaseFilters,
+    limit = 20,
+  ) {
+    const conditions = this.buildBaseConditions(filters);
+    conditions.push(sql`${productCards.embedding} IS NOT NULL`);
+    const whereClause = and(...conditions);
+
+    const embeddingLiteral = `[${queryEmbedding.join(',')}]`;
+
+    return this.db
+      .select({
+        ...this.publicSelectFields(),
+        distance: sql<number>`${productCards.embedding} <=> ${embeddingLiteral}::vector`,
+      })
+      .from(productCards)
+      .innerJoin(shops, eq(productCards.shopId, shops.id))
+      .where(whereClause)
+      .orderBy(sql`${productCards.embedding} <=> ${embeddingLiteral}::vector`)
+      .limit(limit);
+  }
+
+  async plainSearch(filters: FindProductCardsQueryDto) {
+    // Реализация идентична существующему findPublicList — см. предыдущие шаги.
+    return this.findPublicList(filters);
+  }
+
+  private buildBaseConditions(filters: BaseFilters): SQL[] {
+    const conditions: SQL[] = [
+      eq(productCards.status, 'active'),
+      eq(shops.status, 'active'),
+    ];
+    if (filters.price_min !== undefined) {
+      conditions.push(gte(productCards.price, filters.price_min.toString()));
+    }
+    if (filters.price_max !== undefined) {
+      conditions.push(lte(productCards.price, filters.price_max.toString()));
+    }
+    if (filters.state) {
+      conditions.push(eq(productCards.state, filters.state));
+    }
+    if (filters.shop_id) {
+      conditions.push(eq(productCards.shopId, filters.shop_id));
+    }
+    return conditions;
+  }
+
+  private publicSelectFields() {
+    return {
+      id: productCards.id,
+      shopId: productCards.shopId,
+      name: productCards.name,
+      description: productCards.description,
+      photos: productCards.photos,
+      price: productCards.price,
+      state: productCards.state,
+      createdAt: productCards.createdAt,
+      shopName: shops.name,
+    };
   }
 
   private resolveSort(sort?: string) {
