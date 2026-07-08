@@ -52,7 +52,7 @@ async function bootstrap() {
     .addTag('product-cards-public', 'Публичная выдача товаров (покупатель)')
     .addTag('product-cards-seller', 'Управление своими товарами (продавец)')
     .addTag('product-cards-admin', 'Упразднение товаров (администратор)')
-    .addTag('files', 'Presigned-загрузка фото в S3 (продавец)')
+    .addTag('files', 'Загрузка и получение файлов из S3')
     .addTag('reports', 'Жалобы покупателей и их просмотр администратором')
     .build();
 

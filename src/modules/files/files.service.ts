@@ -1,12 +1,34 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  BadGatewayException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomUUID } from 'crypto';
 import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
-import { S3Client } from '@aws-sdk/client-s3';
+import {
+  GetObjectCommand,
+  GetObjectCommandOutput,
+  S3Client,
+} from '@aws-sdk/client-s3';
+import { Readable } from 'stream';
 import { S3_CLIENT } from './s3-client.provider';
 import { CreateUploadUrlDto } from './dto/create-upload-url.dto';
 import { UploadUrlResponseDto } from './dto/upload-url-response.dto';
 import { MAX_FILE_SIZE_BYTES, PRESIGNED_URL_TTL_SEC } from './files.constants';
+
+type S3FileBody = NonNullable<GetObjectCommandOutput['Body']>;
+
+export interface S3File {
+  body: Readable;
+  contentType?: string;
+  contentLength?: number;
+  etag?: string;
+  lastModified?: Date;
+  cacheControl?: string;
+}
 
 @Injectable()
 export class FilesService {
@@ -56,8 +78,78 @@ export class FilesService {
     };
   }
 
+  async getFile(key: string): Promise<S3File> {
+    const bucket = this.configService.get<string>('s3.bucket')!;
+
+    try {
+      const object = await this.s3.send(
+        new GetObjectCommand({
+          Bucket: bucket,
+          Key: key,
+        }),
+      );
+
+      if (!object.Body) {
+        throw new NotFoundException('Файл не найден');
+      }
+
+      return {
+        body: await this.toReadable(object.Body),
+        contentType: object.ContentType,
+        contentLength: object.ContentLength,
+        etag: object.ETag,
+        lastModified: object.LastModified,
+        cacheControl: object.CacheControl,
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+
+      if (this.isS3NotFound(error)) {
+        throw new NotFoundException('Файл не найден');
+      }
+
+      this.logger.error(
+        `Не удалось получить файл ${key} из S3`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      throw new BadGatewayException('Не удалось получить файл из S3');
+    }
+  }
+
   buildPublicUrl(key: string): string {
     const base = this.configService.get<string>('s3.publicBase')!;
     return `${base.replace(/\/$/, '')}/${key}`;
+  }
+
+  private async toReadable(body: S3FileBody): Promise<Readable> {
+    if (body instanceof Readable) {
+      return body;
+    }
+
+    const sdkBody = body as {
+      transformToByteArray?: () => Promise<Uint8Array>;
+    };
+
+    if (typeof sdkBody.transformToByteArray === 'function') {
+      const bytes = await sdkBody.transformToByteArray();
+      return Readable.from([Buffer.from(bytes)]);
+    }
+
+    return Readable.from(body as AsyncIterable<Uint8Array>);
+  }
+
+  private isS3NotFound(error: unknown): boolean {
+    const s3Error = error as {
+      name?: string;
+      $metadata?: { httpStatusCode?: number };
+    };
+
+    return (
+      s3Error.$metadata?.httpStatusCode === 404 ||
+      s3Error.name === 'NoSuchKey' ||
+      s3Error.name === 'NotFound'
+    );
   }
 }
