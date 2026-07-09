@@ -69,6 +69,7 @@ export class ProductCardsRepository {
         state: productCards.state,
         createdAt: productCards.createdAt,
         shopName: shops.name,
+        characteristics: productCards.characteristics,
       })
       .from(productCards)
       .innerJoin(shops, eq(productCards.shopId, shops.id))
