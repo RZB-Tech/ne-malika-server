@@ -127,6 +127,7 @@ export class ProductCardsRepository {
       state: productCards.state,
       createdAt: productCards.createdAt,
       shopName: shops.name,
+      characteristics: productCards.characteristics,
     };
 
     const [data, totalRows] = await Promise.all([
@@ -293,6 +294,7 @@ export class ProductCardsRepository {
       state: productCards.state,
       createdAt: productCards.createdAt,
       shopName: shops.name,
+      characteristics: productCards.characteristics,
     };
   }
 
