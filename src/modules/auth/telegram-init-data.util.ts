@@ -71,7 +71,7 @@ export function validateTelegramInitData(
 
   let user: TelegramUserPayload;
   try {
-    user = JSON.parse(userRaw);
+    user = JSON.parse(userRaw) as TelegramUserPayload;
   } catch {
     throw new Error('initData: не удалось разобрать поле user');
   }

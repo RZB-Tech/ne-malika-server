@@ -6,6 +6,7 @@ import { FindReportsQueryDto } from './dto/find-reports-query.dto';
 
 @ApiTags('reports')
 @ApiBearerAuth('access-token')
+@AdminOnly()
 @Controller('admin/reports')
 export class AdminReportsController {
   constructor(private readonly reportsService: ReportsService) {}

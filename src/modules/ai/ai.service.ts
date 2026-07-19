@@ -102,7 +102,7 @@ export class AiService {
         throw new Error('Пустой ответ от OpenAI');
       }
 
-      const result: AiProductCheckResult = JSON.parse(rawContent);
+      const result = JSON.parse(rawContent) as AiProductCheckResult;
       const tokensUsed = response.usage?.total_tokens;
 
       await this.aiProductChecksRepository.create({

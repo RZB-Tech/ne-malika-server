@@ -27,7 +27,7 @@ export class AuthService {
       );
     }
 
-    let parsed;
+    let parsed: ReturnType<typeof validateTelegramInitData>;
     try {
       parsed = validateTelegramInitData(initData, botToken, ttlSec);
     } catch (err) {

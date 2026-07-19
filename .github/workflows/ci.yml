@@ -1,0 +1,46 @@
+name: CI (server)
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  lint-build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Скрипт "lint" в package.json содержит --fix и переписывает файлы.
+      # В CI проверка должна только проверять, поэтому eslint вызывается напрямую.
+      - name: Lint
+        run: pnpm exec eslint "{src,apps,libs,test}/**/*.ts"
+
+      - name: Build
+        run: pnpm build
+
+      # Скрипта "test" в package.json пока нет (в test/ лежит только
+      # заготовка e2e без раннера). --if-present не даёт CI падать сейчас
+      # и подхватит тесты автоматически, когда скрипт появится.
+      - name: Unit tests
+        run: pnpm run --if-present test
+
+      - name: Docker build (sanity check, no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: nemalika-server:ci

@@ -18,7 +18,7 @@ export class SemanticCacheService {
     try {
       const key = this.buildKey(prompt);
       const cached = await this.redis.get(key);
-      return cached ? JSON.parse(cached) : null;
+      return cached ? (JSON.parse(cached) as number[]) : null;
     } catch (err) {
       this.logger.warn(`Semantic cache get failed: ${(err as Error).message}`);
       return null;

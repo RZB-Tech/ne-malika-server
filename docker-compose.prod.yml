@@ -1,0 +1,60 @@
+# Продакшн-компоновка бекенда.
+# Разворачивается на VPS в /opt/nemalika/server рядом с .env (см. .env.example в репозитории).
+# Требует внешнюю сеть "web", которую поднимает infra/docker-compose.yml (Traefik).
+#
+# Использование на сервере:
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
+#   docker compose -f docker-compose.prod.yml exec -T api node dist/db/migrate.js
+
+services:
+  api:
+    image: ${GHCR_IMAGE:-ghcr.io/OWNER/ne-malika-server}:${IMAGE_TAG:-latest}
+    container_name: nemalika-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - internal
+      - web
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=web"
+      - "traefik.http.routers.nemalika-api.rule=Host(`${API_DOMAIN:-api.nemalika.uz}`)"
+      - "traefik.http.routers.nemalika-api.entrypoints=websecure"
+      - "traefik.http.routers.nemalika-api.tls.certresolver=le"
+      - "traefik.http.services.nemalika-api.loadbalancer.server.port=3000"
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: nemalika-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: nemalika
+    volumes:
+      - nemalika_pg_data:/var/lib/postgresql/data
+    networks:
+      - internal
+
+  redis:
+    image: redis:7-alpine
+    container_name: nemalika-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - internal
+
+networks:
+  internal:
+  web:
+    external: true
+
+volumes:
+  nemalika_pg_data:
+  redis_data:

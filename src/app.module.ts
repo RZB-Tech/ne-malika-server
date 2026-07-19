@@ -18,6 +18,8 @@ import { AiModule } from './modules/ai/ai.module';
 import { OpenAiModule } from './modules/openai/openai.module';
 import { SearchModule } from './modules/search/search.module';
 import { RedisModule } from './modules/redis/redis.module';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
 
 @Module({
   imports: [
@@ -39,7 +41,9 @@ import { RedisModule } from './modules/redis/redis.module';
     // ShopsModule, ProductCardsModule, ReportsModule, SearchModule,
     // StatsModule, FilesModule, AiModule, BotModule — далее
   ],
+  controllers: [AppController],
   providers: [
+    AppService,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],

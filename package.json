@@ -28,14 +28,16 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "cookie-parser": "^1.4.7",
+    "dotenv": "^16.4.5",
     "drizzle-orm": "^0.45.2",
+    "ioredis": "^5.4.1",
     "openai": "^4.63.0",
     "pg": "^8.13.0",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1",
-    "ioredis": "^5.4.1"
+    "rxjs": "^7.8.1"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "@nestjs/cli": "^10.4.5",
     "@nestjs/schematics": "^10.2.3",
     "@types/cookie-parser": "^1.4.7",
@@ -43,7 +45,13 @@
     "@types/node": "^20.16.5",
     "@types/pg": "^8.11.10",
     "drizzle-kit": "^0.31.10",
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^9.1.2",
+    "eslint-plugin-prettier": "^5.5.6",
+    "globals": "^15.15.0",
+    "prettier": "^3.9.5",
     "tsx": "^4.19.1",
-    "typescript": "^5.5.4"
+    "typescript": "^5.5.4",
+    "typescript-eslint": "^8.64.0"
   }
 }

@@ -59,8 +59,8 @@ export class SearchService {
 
     // Шаг 3 — опциональный LLM re-ranking, только по кандидатам шага 2.
 
-    let finalResults = candidates;
-    let stage: string = 'vector';
+    const finalResults = candidates;
+    const stage: string = 'vector';
 
     // Пагинация применяется уже после каскада — векторный шаг сам по себе
     // не является полным списком (limit 20 кандидатов), поэтому total

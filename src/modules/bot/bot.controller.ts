@@ -24,7 +24,7 @@ export class BotController {
   @Public()
   @Post('webhook')
   @HttpCode(HttpStatus.OK)
-  async webhook(
+  webhook(
     @Body() update: TelegramUpdate,
     @Headers('x-telegram-bot-api-secret-token') secretHeader?: string,
   ) {
@@ -39,7 +39,6 @@ export class BotController {
     // иначе при медленной обработке Telegram посчитает вебхук недоступным
     // и продолжит ретраить апдейт.
     this.botService.handleUpdate(update).catch((err) => {
-      // eslint-disable-next-line no-console
       console.error('Ошибка обработки апдейта бота', err);
     });
 

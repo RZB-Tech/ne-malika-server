@@ -62,7 +62,7 @@ export class TelegramApiService {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      const data = await res.json();
+      const data = (await res.json()) as { ok?: boolean };
       if (!data.ok) {
         this.logger.error(
           `Telegram API ${method} failed: ${JSON.stringify(data)}`,
