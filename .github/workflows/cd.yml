@@ -9,7 +9,9 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  IMAGE: ghcr.io/${{ github.repository_owner }}/ne-malika-server
+  # Путь к образу обязан быть в нижнем регистре, а github.repository_owner
+  # отдаёт владельца как есть ("RZB-Tech") — buildx на этом падает.
+  IMAGE: ghcr.io/rzb-tech/ne-malika-server
 
 jobs:
   build-and-push:
