@@ -7,16 +7,16 @@ RUN corepack enable && corepack prepare pnpm@11.5.2 --activate
 # ---- prod-зависимости (идут в финальный образ) ------------------------
 FROM base AS deps
 WORKDIR /app
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN --mount=type=cache,id=pnpm-server,target=/pnpm/store \
-    pnpm install --frozen-lockfile --prod --config.strictDepBuilds=false
+    pnpm install --frozen-lockfile --prod
 
 # ---- полные зависимости (нужны только для сборки: typescript, nest-cli) ---
 FROM base AS build-deps
 WORKDIR /app
-COPY package.json pnpm-lock.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN --mount=type=cache,id=pnpm-server,target=/pnpm/store \
-    pnpm install --frozen-lockfile --config.strictDepBuilds=false
+    pnpm install --frozen-lockfile
 
 # ---- сборка -------------------------------------------------------------
 FROM base AS builder
