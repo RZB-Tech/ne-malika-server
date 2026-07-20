@@ -59,6 +59,9 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          # Ключ защищён парольной фразой — без неё ssh-action падает на
+          # "ssh.ParsePrivateKey: this private key is passphrase protected".
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
           port: ${{ secrets.SSH_PORT || 22 }}
           script: |
             set -e
