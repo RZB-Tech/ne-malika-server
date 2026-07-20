@@ -1,6 +1,7 @@
 {
   "name": "nemalika-backend",
   "version": "1.0.0",
+  "author": "RZB Tech company<contact@rzbtech.uz>",
   "private": true,
   "scripts": {
     "build": "nest build",
