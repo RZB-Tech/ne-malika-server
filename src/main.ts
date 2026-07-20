@@ -56,14 +56,22 @@ async function bootstrap() {
     .addTag('reports', 'Жалобы покупателей и их просмотр администратором')
     .build();
 
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup(`${apiPrefix}/docs`, app, document, {
-    swaggerOptions: { persistAuthorization: true },
-  });
+  // Документация описывает и приватные эндпоинты (продавец, администратор),
+  // поэтому в проде не публикуется. NODE_ENV=production выставлен в Dockerfile
+  // рантайм-стадии; локально переменной нет либо стоит development.
+  const swaggerEnabled = process.env.NODE_ENV !== 'production';
+  if (swaggerEnabled) {
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup(`${apiPrefix}/docs`, app, document, {
+      swaggerOptions: { persistAuthorization: true },
+    });
+  }
 
   const port = config.get<number>('port')!;
   await app.listen(port);
   console.log(`НеМалика backend running on port ${port}`);
-  console.log(`Swagger UI: http://localhost:${port}/${apiPrefix}/docs`);
+  if (swaggerEnabled) {
+    console.log(`Swagger UI: http://localhost:${port}/${apiPrefix}/docs`);
+  }
 }
 bootstrap();
