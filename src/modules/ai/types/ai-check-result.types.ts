@@ -10,7 +10,6 @@ export interface AiProductCheckResult {
   checks: {
     description: AiCheckDetail;
     photos: AiCheckDetail;
-    photoMatch: AiCheckDetail;
   };
   summary: string;
 }
@@ -46,17 +45,8 @@ export const AI_PRODUCT_CHECK_JSON_SCHEMA = {
             },
             required: ['verdict', 'notes'],
           },
-          photoMatch: {
-            type: 'object',
-            additionalProperties: false,
-            properties: {
-              verdict: { type: 'string', enum: ['pass', 'warn', 'fail'] },
-              notes: { type: 'string' },
-            },
-            required: ['verdict', 'notes'],
-          },
         },
-        required: ['description', 'photos', 'photoMatch'],
+        required: ['description', 'photos'],
       },
       summary: { type: 'string' },
     },
