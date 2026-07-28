@@ -38,15 +38,6 @@ export const AI_PRODUCT_CHECK_JSON_SCHEMA = {
             },
             required: ['verdict', 'notes'],
           },
-          dataConsistency: {
-            type: 'object',
-            additionalProperties: false,
-            properties: {
-              verdict: { type: 'string', enum: ['pass', 'warn', 'fail'] },
-              notes: { type: 'string' },
-            },
-            required: ['verdict', 'notes'],
-          },
           photos: {
             type: 'object',
             additionalProperties: false,
