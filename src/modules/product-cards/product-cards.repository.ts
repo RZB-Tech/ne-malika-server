@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { SQL, and, asc, desc, eq, gte, ilike, lte, or, sql } from 'drizzle-orm';
 import { DRIZZLE, type DrizzleDb } from '../../db/db.provider';
 import {
+  aiProductChecks,
   NewProductCard,
   ProductCard,
   productCards,
@@ -202,6 +203,10 @@ export class ProductCardsRepository {
       .set({ embedding, updatedAt: new Date() })
       .where(eq(productCards.id, id))
       .then(() => undefined);
+  }
+
+  async getAll() {
+    return await this.db.select().from(aiProductChecks);
   }
 
   async fullTextSearch(prompt: string, filters: BaseFilters) {

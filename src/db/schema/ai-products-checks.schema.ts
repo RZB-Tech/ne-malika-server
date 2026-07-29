@@ -22,7 +22,6 @@ export const aiProductChecks = pgTable(
 
     verdict: aiVerdictEnum('verdict').notNull(),
 
-    // { description: {...}, dataConsistency: {...}, photos: {...}, photoMatch: {...} }
     checks: jsonb('checks').$type<Record<string, unknown>>().notNull(),
 
     summary: text('summary'),

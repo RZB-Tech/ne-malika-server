@@ -15,6 +15,11 @@ export class ProductCardsController {
   findAll(@Query() query: FindProductCardsQueryDto) {
     return this.productCardsService.findPublicList(query);
   }
+  @Public()
+  @Get('activate')
+  activateAll() {
+    return this.productCardsService.activateAllCards();
+  }
 
   @Public()
   @Get(':id')

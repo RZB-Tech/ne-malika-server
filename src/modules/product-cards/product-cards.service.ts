@@ -11,18 +11,12 @@ import { CreateProductCardDto } from './dto/create-product-card.dto';
 import { UpdateProductCardDto } from './dto/update-product-card.dto';
 import { FindProductCardsQueryDto } from './dto/find-product-cards-query.dto';
 import { buildPaginatedResult } from 'src/common/dto/paginated-response.dto';
-import { AiService } from '../ai/ai.service';
-import { EmbeddingsService } from '../ai/embeddings.service';
 
 @Injectable()
 export class ProductCardsService {
   constructor(
     private readonly productCardsRepository: ProductCardsRepository,
     private readonly shopsService: ShopsService,
-    @Inject(forwardRef(() => AiService))
-    private readonly aiService: AiService,
-    @Inject(forwardRef(() => EmbeddingsService))
-    private readonly embeddingsService: EmbeddingsService,
   ) {}
 
   async createForSeller(
@@ -41,9 +35,6 @@ export class ProductCardsService {
       state: dto.state,
       characteristics: dto.characteristics,
     });
-
-    this.aiService.checkProductCard(card.id);
-    this.embeddingsService.generateAndSaveEmbedding(card.id);
 
     return card;
   }
@@ -71,10 +62,7 @@ export class ProductCardsService {
       price: dto.price !== undefined ? dto.price.toString() : undefined,
     };
     const updated = await this.productCardsRepository.update(id, patch);
-    this.aiService.checkProductCard(id);
-    if (dto.name !== undefined || dto.description !== undefined) {
-      this.embeddingsService.generateAndSaveEmbedding(id);
-    }
+
     return updated;
   }
 
@@ -116,5 +104,11 @@ export class ProductCardsService {
       throw new NotFoundException('Товар не найден');
     }
     return this.productCardsRepository.abolish(id, reason);
+  }
+
+  async activateAllCards() {
+    const cards = await this.productCardsRepository.getAll();
+    console.log(cards);
+    return cards;
   }
 }

@@ -14,9 +14,7 @@ import { ShopsModule } from './modules/shops/shops.module';
 import { ProductCardsModule } from './modules/product-cards/product-cards.module';
 import { FilesModule } from './modules/files/files.module';
 import { ReportsModule } from './modules/reports/reports.module';
-import { AiModule } from './modules/ai/ai.module';
 import { OpenAiModule } from './modules/openai/openai.module';
-import { SearchModule } from './modules/search/search.module';
 import { RedisModule } from './modules/redis/redis.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -34,8 +32,6 @@ import { AppService } from './app.service';
     ProductCardsModule,
     FilesModule,
     ReportsModule,
-    AiModule,
-    SearchModule,
     RedisModule,
 
     // ShopsModule, ProductCardsModule, ReportsModule, SearchModule,
