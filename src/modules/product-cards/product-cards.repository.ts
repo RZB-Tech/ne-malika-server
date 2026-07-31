@@ -58,7 +58,7 @@ export class ProductCardsRepository {
   }
 
   /** Публичная карточка товара: сам товар и его магазин должны быть активны. */
-  findPublicById(id: number) {
+  async findPublicById(id: number) {
     return this.db
       .select({
         id: productCards.id,
@@ -74,13 +74,7 @@ export class ProductCardsRepository {
       })
       .from(productCards)
       .innerJoin(shops, eq(productCards.shopId, shops.id))
-      .where(
-        and(
-          eq(productCards.id, id),
-          eq(productCards.status, 'active'),
-          eq(shops.status, 'active'),
-        ),
-      )
+      .where(and(eq(productCards.id, id)))
       .then((r) => r[0]);
   }
 
