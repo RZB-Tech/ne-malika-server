@@ -7,6 +7,8 @@ import {
 } from '@nestjs/common';
 import { ShopsRepository } from './shops.repository';
 import { UsersService } from '../users/users.service';
+import { RedisService } from '../redis/redis.service';
+import { PRODUCT_CACHE_PREFIX } from '../product-cards/product-cards.cache';
 import { CreateShopDto } from './dto/create-shop.dto';
 import { UpdateShopDto } from './dto/update-shop.dto';
 
@@ -15,6 +17,7 @@ export class ShopsService {
   constructor(
     private readonly shopsRepository: ShopsRepository,
     private readonly usersService: UsersService,
+    private readonly redis: RedisService,
   ) {}
 
   async createForSeller(ownerId: number, dto: CreateShopDto) {
@@ -96,12 +99,31 @@ export class ShopsService {
     return shop;
   }
 
+  adminList() {
+    return this.shopsRepository.findAllWithProductCount();
+  }
+
   async adminAbolish(shopId: number, reason: string) {
+    await this.getOrThrow(shopId);
+    const shop = await this.shopsRepository.abolish(shopId, reason);
+    // Товары упразднённого магазина исчезают из публичной выдачи — кэш устарел.
+    await this.redis.delByPrefix(PRODUCT_CACHE_PREFIX);
+    return shop;
+  }
+
+  async adminRestore(shopId: number) {
+    await this.getOrThrow(shopId);
+    const shop = await this.shopsRepository.restore(shopId);
+    await this.redis.delByPrefix(PRODUCT_CACHE_PREFIX);
+    return shop;
+  }
+
+  private async getOrThrow(shopId: number) {
     const shop = await this.shopsRepository.findById(shopId);
     if (!shop) {
       throw new NotFoundException('Магазин не найден');
     }
-    return this.shopsRepository.abolish(shopId, reason);
+    return shop;
   }
 
   /** Используется ProductCardsService для проверки принадлежности при создании товара. */

@@ -27,3 +27,10 @@ export class PaginationQueryDto {
   @Max(100)
   limit?: number = 20;
 }
+
+/** Значения по умолчанию + offset. Дефолты класса не применяются, если DTO пришёл не через ValidationPipe. */
+export function resolvePage(query: PaginationQueryDto) {
+  const page = query.page ?? 1;
+  const limit = query.limit ?? 20;
+  return { page, limit, offset: (page - 1) * limit };
+}

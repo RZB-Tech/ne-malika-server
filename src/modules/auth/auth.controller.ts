@@ -8,16 +8,25 @@ import {
   Res,
 } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { ConfigService } from '@nestjs/config';
 import { type Request, type Response } from 'express';
 import { Public } from '../../common/decorators/public.decorator';
 import { AuthService } from './auth.service';
 import { TelegramAuthDto } from './dto/telegram-auth.dto';
+import { TelegramWidgetDto } from './dto/telegram-widget.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
 
 const REFRESH_COOKIE = 'refresh_token';
+const REFRESH_COOKIE_PATH = '/api/v1/auth';
+
+type Tokens = Awaited<ReturnType<AuthService['refresh']>>;
 
 @ApiTags('auth')
+@Public()
+// Точки входа — самые привлекательные для перебора, поэтому лимит здесь
+// заметно жёстче глобального.
+@Throttle({ default: { ttl: 60_000, limit: 10 } })
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -25,39 +34,48 @@ export class AuthController {
     private readonly configService: ConfigService,
   ) {}
 
-  @Public()
   @Post('telegram')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary:
-      'Вход/регистрация продавца или администратора через Telegram initData',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Успешная авторизация',
-    type: AuthResponseDto,
-  })
+  @ApiOperation({ summary: 'Вход через Telegram Mini App (initData)' })
+  @ApiResponse({ status: 200, type: AuthResponseDto })
   @ApiResponse({
     status: 401,
-    description: 'Невалидная подпись initData или срок истёк',
+    description: 'Невалидная подпись или срок истёк',
   })
   async telegramAuth(
     @Body() dto: TelegramAuthDto,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const { accessToken, refreshToken, user } =
-      await this.authService.authenticateWithTelegram(dto.initData);
-    this.setRefreshCookie(res, refreshToken);
-    return { accessToken, user };
+    return this.respond(
+      await this.authService.authenticateWithTelegram(dto.initData),
+      res,
+    );
   }
 
-  @Public()
+  @Post('telegram/widget')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Вход через Telegram Login Widget (браузер)' })
+  @ApiResponse({ status: 200, type: AuthResponseDto })
+  @ApiResponse({
+    status: 401,
+    description: 'Невалидная подпись или срок истёк',
+  })
+  async widgetAuth(
+    @Body() dto: TelegramWidgetDto,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    return this.respond(
+      await this.authService.authenticateWithWidget(dto),
+      res,
+    );
+  }
+
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Обновление access-токена по httpOnly refresh-cookie',
   })
-  @ApiResponse({ status: 200, description: 'Новый access-токен выдан' })
+  @ApiResponse({ status: 200, type: AuthResponseDto })
   @ApiResponse({
     status: 401,
     description: 'Refresh-токен отсутствует или недействителен',
@@ -66,39 +84,34 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ) {
-    const refreshToken = (req.cookies as Record<string, string | undefined>)?.[
-      REFRESH_COOKIE
-    ];
-    const {
-      accessToken,
-      refreshToken: newRefreshToken,
-      user,
-    } = await this.authService.refresh(refreshToken);
-    this.setRefreshCookie(res, newRefreshToken);
-    return {
-      accessToken,
-      user: { id: user.id, fullname: user.fullname, role: user.role },
-    };
+    const cookies = req.cookies as Record<string, string | undefined>;
+    return this.respond(
+      await this.authService.refresh(cookies?.[REFRESH_COOKIE]),
+      res,
+    );
   }
 
-  @Public()
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Выход — очищает refresh-cookie' })
-  @ApiResponse({ status: 200, description: 'Выход выполнен' })
   logout(@Res({ passthrough: true }) res: Response) {
-    res.clearCookie(REFRESH_COOKIE, { path: '/api/v1/auth' });
+    res.clearCookie(REFRESH_COOKIE, { path: REFRESH_COOKIE_PATH });
     return { success: true };
   }
 
-  private setRefreshCookie(res: Response, token: string) {
+  /** Refresh-токен уходит только в httpOnly-cookie, в теле его быть не должно. */
+  private respond(
+    { accessToken, refreshToken, user }: Tokens,
+    res: Response,
+  ): AuthResponseDto {
     const isProd = this.configService.get('env') === 'production';
-    res.cookie(REFRESH_COOKIE, token, {
+    res.cookie(REFRESH_COOKIE, refreshToken, {
       httpOnly: true,
       secure: isProd,
       sameSite: isProd ? 'none' : 'lax',
-      path: '/api/v1/auth',
+      path: REFRESH_COOKIE_PATH,
       maxAge: 30 * 24 * 60 * 60 * 1000,
     });
+    return { accessToken, user };
   }
 }

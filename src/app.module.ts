@@ -1,30 +1,32 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import configuration from './config/configuration';
 import { validate } from './config/env.validation';
 import { DbModule } from './db/db.module';
+import { RedisModule } from './modules/redis/redis.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
 import { RolesGuard } from './common/guards/roles.guard';
-import { JwtAuthGuard } from './common/guards/jwt-auth.guards';
+import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { BotModule } from './modules/bot/bot.module';
 import { ShopsModule } from './modules/shops/shops.module';
 import { ProductCardsModule } from './modules/product-cards/product-cards.module';
 import { FilesModule } from './modules/files/files.module';
 import { ReportsModule } from './modules/reports/reports.module';
-import { OpenAiModule } from './modules/openai/openai.module';
-import { RedisModule } from './modules/redis/redis.module';
+import { SettingsModule } from './modules/settings/settings.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, load: [configuration], validate }),
-    ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
+    // Общий потолок щадящий: витрина тянет и список товаров, и картинки через
+    // /files. Точечные лимиты стоят там, где они действительно нужны (auth).
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 300 }]),
     DbModule,
-    OpenAiModule,
+    RedisModule,
     AuthModule,
     UsersModule,
     BotModule,
@@ -32,14 +34,13 @@ import { AppService } from './app.service';
     ProductCardsModule,
     FilesModule,
     ReportsModule,
-    RedisModule,
-
-    // ShopsModule, ProductCardsModule, ReportsModule, SearchModule,
-    // StatsModule, FilesModule, AiModule, BotModule — далее
+    SettingsModule,
   ],
   controllers: [AppController],
   providers: [
     AppService,
+    // Порядок важен: сначала лимит запросов, потом аутентификация, потом роли.
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],

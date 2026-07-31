@@ -28,6 +28,18 @@ services:
       - "traefik.http.routers.nemalika-api.tls.certresolver=le"
       - "traefik.http.services.nemalika-api.loadbalancer.server.port=3000"
 
+  redis:
+    image: redis:7-alpine
+    container_name: nemalika-redis
+    restart: unless-stopped
+    # appendonly: настройки админки кэшируются здесь, но источник правды — БД,
+    # поэтому потеря кэша не критична; том нужен, чтобы не греть его с нуля.
+    command: ["redis-server", "--save", "60", "1"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - internal
+
   postgres:
     image: pgvector/pgvector:pg16
     container_name: nemalika-postgres
@@ -38,15 +50,6 @@ services:
       POSTGRES_DB: nemalika
     volumes:
       - nemalika_pg_data:/var/lib/postgresql/data
-    networks:
-      - internal
-
-  redis:
-    image: redis:7-alpine
-    container_name: nemalika-redis
-    restart: unless-stopped
-    volumes:
-      - redis_data:/data
     networks:
       - internal
 

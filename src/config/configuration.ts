@@ -3,16 +3,16 @@ export default () => ({
   port: parseInt(process.env.PORT ?? '3000', 10),
   apiPrefix: process.env.API_PREFIX ?? 'api/v1',
 
+  /** Разрешённые источники для CORS. Пусто — значит «любой», допустимо только вне прода. */
+  corsOrigins: (process.env.CORS_ORIGINS ?? '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+
   database: {
     url: process.env.DATABASE_URL,
   },
 
-  jwt: {
-    accessSecret: process.env.JWT_ACCESS_SECRET,
-    accessTtl: process.env.JWT_ACCESS_TTL,
-    refreshSecret: process.env.JWT_REFRESH_SECRET,
-    refreshTtl: process.env.JWT_REFRESH_TTL,
-  },
   redis: {
     url: process.env.REDIS_URL,
   },
@@ -20,9 +20,13 @@ export default () => ({
   openai: {
     apiKey: process.env.OPENAI_API_KEY,
     model: process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
-    embeddingModel:
-      process.env.OPENAI_EMBEDDING_MODEL ?? 'text-embedding-3-small',
-    rerankEnabled: process.env.SEARCH_RERANK_ENABLED === 'true',
+  },
+
+  jwt: {
+    accessSecret: process.env.JWT_ACCESS_SECRET,
+    accessTtl: process.env.JWT_ACCESS_TTL,
+    refreshSecret: process.env.JWT_REFRESH_SECRET,
+    refreshTtl: process.env.JWT_REFRESH_TTL,
   },
 
   telegram: {

@@ -14,7 +14,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: redis
+    container_name: nemalika-redis-dev
     restart: unless-stopped
     ports:
       - '6379:6379'

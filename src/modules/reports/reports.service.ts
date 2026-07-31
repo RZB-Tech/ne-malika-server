@@ -8,7 +8,7 @@ import { ShopsRepository } from '../shops/shops.repository';
 import { ProductCardsRepository } from '../product-cards/product-cards.repository';
 import { CreateReportDto } from './dto/create-report.dto';
 import { FindReportsQueryDto } from './dto/find-reports-query.dto';
-import { buildPaginatedResult } from 'src/common/dto/paginated-response.dto';
+import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
 
 @Injectable()
 export class ReportsService {

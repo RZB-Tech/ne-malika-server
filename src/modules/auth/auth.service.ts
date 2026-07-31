@@ -2,7 +2,12 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
-import { validateTelegramInitData } from './telegram-init-data.util';
+import {
+  TelegramUserPayload,
+  validateTelegramInitData,
+  validateTelegramWidgetData,
+} from './telegram-signature.util';
+import { TelegramWidgetDto } from './dto/telegram-widget.dto';
 import {
   JwtAccessPayload,
   JwtRefreshPayload,
@@ -17,30 +22,21 @@ export class AuthService {
     private readonly configService: ConfigService,
   ) {}
 
-  async authenticateWithTelegram(initData: string) {
-    const botToken = this.configService.get<string>('telegram.botToken');
-    const ttlSec = this.configService.get<number>('telegram.initDataTtlSec')!;
+  /** Telegram Mini App: подписанная строка initData из window.Telegram.WebApp. */
+  authenticateWithTelegram(initData: string) {
+    return this.login((token, ttl) =>
+      validateTelegramInitData(initData, token, ttl),
+    );
+  }
 
-    if (!botToken) {
-      throw new UnauthorizedException(
-        'Telegram-авторизация временно недоступна',
-      );
-    }
-
-    let parsed: ReturnType<typeof validateTelegramInitData>;
-    try {
-      parsed = validateTelegramInitData(initData, botToken, ttlSec);
-    } catch (err) {
-      throw new UnauthorizedException((err as Error).message);
-    }
-
-    const user = await this.usersService.findOrCreateFromTelegram(parsed.user);
-    const tokens = this.issueTokens(user);
-
-    return {
-      ...tokens,
-      user: this.toPublicProfile(user),
-    };
+  /**
+   * Браузерный вход: ответ Telegram Login Widget уже подписан Telegram —
+   * проверяем подпись здесь, токен бота на клиент не уезжает.
+   */
+  authenticateWithWidget(dto: TelegramWidgetDto) {
+    return this.login((token, ttl) =>
+      validateTelegramWidgetData(dto, token, ttl),
+    );
   }
 
   async refresh(refreshToken: string | undefined) {
@@ -68,6 +64,28 @@ export class AuthService {
     return this.issueTokens(user);
   }
 
+  private async login(
+    validate: (botToken: string, ttlSec: number) => TelegramUserPayload,
+  ) {
+    const botToken = this.configService.get<string>('telegram.botToken');
+    if (!botToken) {
+      throw new UnauthorizedException(
+        'Telegram-авторизация временно недоступна',
+      );
+    }
+    const ttlSec = this.configService.get<number>('telegram.initDataTtlSec')!;
+
+    let payload: TelegramUserPayload;
+    try {
+      payload = validate(botToken, ttlSec);
+    } catch (err) {
+      throw new UnauthorizedException((err as Error).message);
+    }
+
+    const user = await this.usersService.findOrCreateFromTelegram(payload);
+    return this.issueTokens(user);
+  }
+
   private issueTokens(user: User) {
     const accessPayload: JwtAccessPayload = {
       sub: user.id,
@@ -80,27 +98,26 @@ export class AuthService {
       type: 'refresh',
     };
 
-    const accessToken = this.jwtService.sign(accessPayload, {
-      secret: this.configService.get<string>('jwt.accessSecret'),
-      expiresIn: this.configService.get<string>('jwt.accessTtl'),
-    });
-    const refreshToken = this.jwtService.sign(refreshPayload, {
-      secret: this.configService.get<string>('jwt.refreshSecret'),
-      expiresIn: this.configService.get<string>('jwt.refreshTtl'),
-    });
-
-    return { accessToken, refreshToken, user };
-  }
-
-  private toPublicProfile(user: User) {
     return {
-      id: user.id,
-      fullname: user.fullname,
-      role: user.role,
-      telegramUsername: user.telegramUsername,
-      telegramPhoto: user.telegramPhoto,
-      phoneNumber: user.phoneNumber,
-      hasContact: Boolean(user.phoneNumber),
+      accessToken: this.jwtService.sign(accessPayload, {
+        secret: this.configService.get<string>('jwt.accessSecret'),
+        expiresIn: this.configService.get<string>('jwt.accessTtl'),
+      }),
+      refreshToken: this.jwtService.sign(refreshPayload, {
+        secret: this.configService.get<string>('jwt.refreshSecret'),
+        expiresIn: this.configService.get<string>('jwt.refreshTtl'),
+      }),
+      // Один и тот же профиль во всех ответах auth — иначе после silent refresh
+      // клиент терял бы фото и hasContact.
+      user: {
+        id: user.id,
+        fullname: user.fullname,
+        role: user.role,
+        telegramUsername: user.telegramUsername,
+        telegramPhoto: user.telegramPhoto,
+        phoneNumber: user.phoneNumber,
+        hasContact: Boolean(user.phoneNumber),
+      },
     };
   }
 }

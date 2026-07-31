@@ -5,16 +5,30 @@ import {
 } from '@nestjs/common';
 import { ProductCardsRepository } from './product-cards.repository';
 import { ShopsService } from '../shops/shops.service';
+import { AiChecksService } from '../ai/ai-checks.service';
+import { RedisService } from '../redis/redis.service';
 import { CreateProductCardDto } from './dto/create-product-card.dto';
 import { UpdateProductCardDto } from './dto/update-product-card.dto';
 import { FindProductCardsQueryDto } from './dto/find-product-cards-query.dto';
-import { buildPaginatedResult } from 'src/common/dto/paginated-response.dto';
+import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
+import {
+  PRODUCT_CACHE_PREFIX,
+  PRODUCT_ITEM_TTL_SEC,
+  PRODUCT_LIST_TTL_SEC,
+  productItemKey,
+  productListKey,
+} from './product-cards.cache';
+
+type PublicList = Awaited<ReturnType<ProductCardsRepository['findPublicList']>>;
+type PublicItem = Awaited<ReturnType<ProductCardsRepository['findPublicById']>>;
 
 @Injectable()
 export class ProductCardsService {
   constructor(
     private readonly productCardsRepository: ProductCardsRepository,
     private readonly shopsService: ShopsService,
+    private readonly aiChecksService: AiChecksService,
+    private readonly redis: RedisService,
   ) {}
 
   async createForSeller(
@@ -34,6 +48,8 @@ export class ProductCardsService {
       characteristics: dto.characteristics,
     });
 
+    await this.invalidateCache();
+    this.aiChecksService.runInBackground(card);
     return card;
   }
 
@@ -55,62 +71,92 @@ export class ProductCardsService {
 
   async updateOwn(ownerId: number, id: number, dto: UpdateProductCardDto) {
     await this.getOwnOrThrow(ownerId, id);
-    const patch = {
+    const updated = await this.productCardsRepository.update(id, {
       ...dto,
-      price: dto.price !== undefined ? dto.price.toString() : undefined,
-    };
-    const updated = await this.productCardsRepository.update(id, patch);
+      price: dto.price?.toString(),
+    });
 
+    await this.invalidateCache();
+    // Правка меняет то, что видит покупатель, — проверяем заново.
+    this.aiChecksService.runInBackground(updated);
     return updated;
   }
 
   async removeOwn(ownerId: number, id: number) {
     await this.getOwnOrThrow(ownerId, id);
     await this.productCardsRepository.delete(id);
+    await this.invalidateCache();
   }
 
   async adminRestore(id: number) {
-    const card = await this.productCardsRepository.findById(id);
-    if (!card) {
-      throw new NotFoundException('Товар не найден');
-    }
+    const card = await this.getOrThrow(id);
     if (card.status === 'abolished') {
       throw new BadRequestException(
         'Товар упразднён администратором — используйте отдельный процесс восстановления, а не снятие ИИ-скрытия',
       );
     }
-    return this.productCardsRepository.restore(id);
+    const restored = await this.productCardsRepository.restore(id);
+    await this.invalidateCache();
+    return restored;
+  }
+
+  async adminAbolish(id: number, reason: string) {
+    await this.getOrThrow(id);
+    const abolished = await this.productCardsRepository.abolish(id, reason);
+    await this.invalidateCache();
+    return abolished;
+  }
+
+  async activateAll() {
+    const updated = await this.productCardsRepository.activateAll();
+    await this.invalidateCache();
+    return { updated };
+  }
+
+  async passAllAiChecks() {
+    return { updated: await this.productCardsRepository.passAllAiChecks() };
   }
 
   async getPublicById(id: number) {
+    const key = productItemKey(id);
+    const cached = await this.redis.get<PublicItem>(key);
+    if (cached) return cached;
+
     const card = await this.productCardsRepository.findPublicById(id);
     if (!card) {
       throw new NotFoundException('Товар не найден');
     }
+    await this.redis.set(key, card, PRODUCT_ITEM_TTL_SEC);
     return card;
   }
 
   async findPublicList(query: FindProductCardsQueryDto) {
-    const { data, total, page, limit } =
-      await this.productCardsRepository.findPublicList(query);
+    const key = productListKey({ ...query });
+    const cached = await this.redis.get<PublicList>(key);
+    const result =
+      cached ?? (await this.productCardsRepository.findPublicList(query));
+    if (!cached) {
+      await this.redis.set(key, result, PRODUCT_LIST_TTL_SEC);
+    }
+
+    const { data, total, page, limit } = result;
     return buildPaginatedResult(data, total, page, limit);
   }
 
-  async adminAbolish(id: number, reason: string) {
+  listPublicIds() {
+    return this.productCardsRepository.findPublicIds();
+  }
+
+  /** Любая запись меняет выдачу целиком: фильтров много, точечно инвалидировать нечего. */
+  private invalidateCache() {
+    return this.redis.delByPrefix(PRODUCT_CACHE_PREFIX);
+  }
+
+  private async getOrThrow(id: number) {
     const card = await this.productCardsRepository.findById(id);
     if (!card) {
       throw new NotFoundException('Товар не найден');
     }
-    return this.productCardsRepository.abolish(id, reason);
-  }
-
-  async activateAllCards() {
-    const cards = await this.productCardsRepository.getAll();
-    return cards;
-  }
-
-  async setActive() {
-    const cards = await this.productCardsRepository.setActive();
-    return cards;
+    return card;
   }
 }

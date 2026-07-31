@@ -14,7 +14,8 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
-import { CharacteristicDto } from 'src/modules/shops/dto/characteristics';
+import { CharacteristicDto } from '../../shops/dto/characteristics';
+import { MAX_PHOTOS_PER_PRODUCT } from '../../files/files.constants';
 
 export class CreateProductCardDto {
   @ApiProperty({ minLength: 2, maxLength: 200, example: 'MacBook Air M2 13"' })
@@ -31,7 +32,7 @@ export class CreateProductCardDto {
   @ApiProperty({ type: [String], format: 'uuid', minItems: 1, maxItems: 10 })
   @IsArray()
   @ArrayMinSize(1)
-  @ArrayMaxSize(10)
+  @ArrayMaxSize(MAX_PHOTOS_PER_PRODUCT)
   @IsUUID('4', { each: true })
   photos: string[];
 

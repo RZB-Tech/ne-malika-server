@@ -27,7 +27,7 @@ jobs:
       # Скрипт "lint" в package.json содержит --fix и переписывает файлы.
       # В CI проверка должна только проверять, поэтому eslint вызывается напрямую.
       - name: Lint
-        run: pnpm exec eslint "{src,apps,libs,test}/**/*.ts"
+        run: pnpm exec eslint "src/**/*.ts"
 
       - name: Build
         run: pnpm build

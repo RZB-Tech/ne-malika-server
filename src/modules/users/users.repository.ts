@@ -40,18 +40,6 @@ export class UsersRepository {
   }
 
   /** Вызывается BotModule после получения контакта через request_contact. */
-  updateContactInfo(
-    telegramId: number,
-    data: { phoneNumber: string; telegramChatId: number },
-  ): Promise<User> {
-    return this.db
-      .update(users)
-      .set({ ...data, updatedAt: new Date() })
-      .where(eq(users.telegramId, telegramId))
-      .returning()
-      .then((rows) => rows[0]);
-  }
-
   async upsertFromBotContact(data: {
     telegramId: number;
     telegramChatId: number;

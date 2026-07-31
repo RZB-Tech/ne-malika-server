@@ -2,9 +2,11 @@ import { plainToInstance } from 'class-transformer';
 import {
   IsEnum,
   IsInt,
+  IsNotEmpty,
   IsOptional,
   IsString,
   Min,
+  ValidateIf,
   validateSync,
 } from 'class-validator';
 
@@ -25,8 +27,33 @@ class EnvironmentVariables {
   @IsString()
   API_PREFIX: string;
 
+  /**
+   * Origin'ы через запятую: "https://nemalika.uz,https://www.nemalika.uz".
+   * В проде обязателен — запросы идут с credentials, открывать CORS всем нельзя.
+   */
+  @ValidateIf(
+    (env: EnvironmentVariables) => env.NODE_ENV === Environment.Production,
+  )
+  @IsString()
+  @IsNotEmpty({ message: 'CORS_ORIGINS обязателен в production' })
+  CORS_ORIGINS?: string;
+
   @IsString()
   DATABASE_URL: string;
+
+  /** Без него кэш просто выключается — приложение работает напрямую с БД. */
+  @IsOptional()
+  @IsString()
+  REDIS_URL?: string;
+
+  /** Без него ИИ-проверка товаров не запускается. */
+  @IsOptional()
+  @IsString()
+  OPENAI_API_KEY?: string;
+
+  @IsOptional()
+  @IsString()
+  OPENAI_MODEL?: string;
 
   @IsString()
   JWT_ACCESS_SECRET: string;
@@ -76,19 +103,6 @@ class EnvironmentVariables {
   @IsOptional()
   @IsString()
   S3_PUBLIC_BASE?: string;
-
-  @IsOptional()
-  @IsString()
-  OPENAI_API_KEY?: string;
-
-  @IsString()
-  OPENAI_MODEL: string;
-  @IsOptional()
-  @IsString()
-  REDIS_URL?: string;
-
-  @IsString()
-  OPENAI_EMBEDDING_MODEL: string;
 }
 
 export function validate(config: Record<string, unknown>) {

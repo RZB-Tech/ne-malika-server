@@ -1,4 +1,13 @@
-import { Body, Controller, Param, ParseIntPipe, Patch } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AdminOnly } from '../../common/decorators/roles.decorator';
 import { ProductCardsService } from './product-cards.service';
@@ -27,5 +36,23 @@ export class AdminProductCardsController {
   })
   restore(@Param('id', ParseIntPipe) id: number) {
     return this.productCardsService.adminRestore(id);
+  }
+
+  @Post('activate-all')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Обслуживание: снять скрытие со всех товаров разом',
+  })
+  activateAll() {
+    return this.productCardsService.activateAll();
+  }
+
+  @Post('ai-checks/pass-all')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Обслуживание: пометить все ИИ-проверки как пройденные',
+  })
+  passAllAiChecks() {
+    return this.productCardsService.passAllAiChecks();
   }
 }

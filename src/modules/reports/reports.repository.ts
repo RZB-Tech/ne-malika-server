@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { SQL, and, desc, eq, sql } from 'drizzle-orm';
 import { DRIZZLE, type DrizzleDb } from '../../db/db.provider';
+import { resolvePage } from '../../common/dto/pagination-query.dto';
 import { NewReport, reports } from '../../db/schema';
 import { FindReportsQueryDto } from './dto/find-reports-query.dto';
 
@@ -17,20 +18,18 @@ export class ReportsRepository {
   }
 
   async findAll(query: FindReportsQueryDto) {
-    const page = query.page ?? 1;
-    const limit = query.limit ?? 20;
-    const offset = (page - 1) * limit;
+    const { page, limit, offset } = resolvePage(query);
 
     const conditions: SQL[] = [];
     if (query.shop_id) conditions.push(eq(reports.shopId, query.shop_id));
     if (query.product_card_id) {
       conditions.push(eq(reports.productCardId, query.product_card_id));
     }
-    const whereClause = conditions.length ? and(...conditions) : undefined;
+    const where = conditions.length ? and(...conditions) : undefined;
 
     const [data, totalRows] = await Promise.all([
       this.db.query.reports.findMany({
-        where: whereClause,
+        where,
         orderBy: desc(reports.createdAt),
         limit,
         offset,
@@ -42,7 +41,7 @@ export class ReportsRepository {
       this.db
         .select({ count: sql<number>`count(*)::int` })
         .from(reports)
-        .where(whereClause),
+        .where(where),
     ]);
 
     return { data, total: totalRows[0]?.count ?? 0, page, limit };

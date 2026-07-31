@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { UsersRepository } from './users.repository';
-import { TelegramUserPayload } from '../auth/telegram-init-data.util';
+import { TelegramUserPayload } from '../auth/telegram-signature.util';
 import { User } from '../../db/schema';
 
 @Injectable()

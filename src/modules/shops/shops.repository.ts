@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { DRIZZLE, type DrizzleDb } from '../../db/db.provider';
 import { NewShop, Shop, productCards, shops } from '../../db/schema';
 
@@ -68,6 +68,41 @@ export class ShopsRepository {
       .delete(shops)
       .where(eq(shops.id, id))
       .then(() => undefined);
+  }
+
+  /** Все магазины для админки — сразу с числом товаров, чтобы не делать запрос на строку. */
+  findAllWithProductCount() {
+    return this.db
+      .select({
+        id: shops.id,
+        name: shops.name,
+        photo: shops.photo,
+        telegramLink: shops.telegramLink,
+        contact: shops.contact,
+        address: shops.address,
+        status: shops.status,
+        abolishReason: shops.abolishReason,
+        createdAt: shops.createdAt,
+        productCount: sql<number>`count(${productCards.id})::int`,
+      })
+      .from(shops)
+      .leftJoin(productCards, eq(productCards.shopId, shops.id))
+      .groupBy(shops.id)
+      .orderBy(desc(shops.createdAt));
+  }
+
+  restore(id: number): Promise<Shop> {
+    return this.db
+      .update(shops)
+      .set({
+        status: 'active',
+        abolishReason: null,
+        abolishedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(shops.id, id))
+      .returning()
+      .then((r) => r[0]);
   }
 
   abolish(id: number, reason: string): Promise<Shop> {
