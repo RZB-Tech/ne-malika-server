@@ -89,10 +89,7 @@ export class ProductCardsRepository {
     const limit = query.limit ?? 20;
     const offset = (page - 1) * limit;
 
-    const conditions: SQL[] = [
-      eq(productCards.status, 'active'),
-      eq(shops.status, 'active'),
-    ];
+    const conditions: SQL[] = [];
 
     if (query.q) {
       conditions.push(
