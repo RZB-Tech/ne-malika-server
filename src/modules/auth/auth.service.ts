@@ -1,4 +1,8 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
@@ -60,6 +64,7 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('Пользователь не найден');
     }
+    this.assertNotBlocked(user);
 
     return this.issueTokens(user);
   }
@@ -83,7 +88,23 @@ export class AuthService {
     }
 
     const user = await this.usersService.findOrCreateFromTelegram(payload);
+    this.assertNotBlocked(user);
     return this.issueTokens(user);
+  }
+
+  /**
+   * Проверяем при входе и обновлении токена, а не в guard'е: иначе каждый
+   * запрос к API тянул бы за собой чтение пользователя из БД. Уже выданный
+   * access-токен доживает свой недолгий срок — это осознанный размен.
+   */
+  private assertNotBlocked(user: User) {
+    if (user.blockedAt) {
+      throw new ForbiddenException(
+        user.blockReason
+          ? `Аккаунт заблокирован: ${user.blockReason}`
+          : 'Аккаунт заблокирован администратором',
+      );
+    }
   }
 
   private issueTokens(user: User) {

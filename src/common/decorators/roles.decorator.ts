@@ -9,6 +9,10 @@ export const Roles = (...roles: UserRole[]) => SetMetadata(ROLES_KEY, roles);
 export const SellerOnly = () =>
   applyDecorators(UseGuards(RolesGuard), Roles('seller'));
 
+/** Доступ и продавцу, и администратору — например, загрузка фото товара. */
+export const SellerOrAdmin = () =>
+  applyDecorators(UseGuards(RolesGuard), Roles('seller', 'admin'));
+
 /** Эквивалент AdminGuard из ТЗ: доступ только администратору. */
 export const AdminOnly = () =>
   applyDecorators(UseGuards(RolesGuard), Roles('admin'));

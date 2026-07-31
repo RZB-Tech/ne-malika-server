@@ -9,7 +9,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AdminOnly } from '../../common/decorators/roles.decorator';
 import { ShopsService } from './shops.service';
-import { AbolishShopDto } from './dto/abolish-shop.dto';
+import { ReasonDto } from '../../common/dto/reason.dto';
 
 @ApiTags('shops-admin')
 @ApiBearerAuth('access-token')
@@ -26,7 +26,7 @@ export class AdminShopsController {
 
   @Patch(':id/abolish')
   @ApiOperation({ summary: 'Упразднить магазин с обязательной причиной' })
-  abolish(@Param('id', ParseIntPipe) id: number, @Body() dto: AbolishShopDto) {
+  abolish(@Param('id', ParseIntPipe) id: number, @Body() dto: ReasonDto) {
     return this.shopsService.adminAbolish(id, dto.reason);
   }
 

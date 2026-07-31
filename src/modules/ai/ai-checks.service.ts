@@ -49,6 +49,11 @@ export class AiChecksService {
     return this.repository.findLatestByProductId(productCardId);
   }
 
+  /** Очередь ручной модерации для админки. */
+  listNeedingReview() {
+    return this.repository.findNeedingReview();
+  }
+
   /**
    * Запускается после сохранения товара и намеренно не ожидается вызывающим:
    * продавец не должен ждать ответа модели, чтобы увидеть свою карточку.

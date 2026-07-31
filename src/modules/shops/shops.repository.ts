@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { DRIZZLE, type DrizzleDb } from '../../db/db.provider';
-import { NewShop, Shop, productCards, shops } from '../../db/schema';
+import { NewShop, Shop, productCards, shops, users } from '../../db/schema';
 
 @Injectable()
 export class ShopsRepository {
@@ -84,10 +84,16 @@ export class ShopsRepository {
         abolishReason: shops.abolishReason,
         createdAt: shops.createdAt,
         productCount: sql<number>`count(${productCards.id})::int`,
+        ownerId: users.id,
+        ownerName: users.fullname,
+        ownerUsername: users.telegramUsername,
+        ownerBlockedAt: users.blockedAt,
+        ownerBlockReason: users.blockReason,
       })
       .from(shops)
+      .innerJoin(users, eq(shops.owner, users.id))
       .leftJoin(productCards, eq(productCards.shopId, shops.id))
-      .groupBy(shops.id)
+      .groupBy(shops.id, users.id)
       .orderBy(desc(shops.createdAt));
   }
 

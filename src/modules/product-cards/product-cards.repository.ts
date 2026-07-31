@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { SQL, and, asc, desc, eq, gte, lte, sql } from 'drizzle-orm';
+import { SQL, and, asc, desc, eq, gte, ilike, lte, or, sql } from 'drizzle-orm';
 import { DRIZZLE, type DrizzleDb } from '../../db/db.provider';
 import { resolvePage } from '../../common/dto/pagination-query.dto';
 import {
@@ -10,6 +10,7 @@ import {
   shops,
 } from '../../db/schema';
 import { FindProductCardsQueryDto } from './dto/find-product-cards-query.dto';
+import { FindAdminProductCardsQueryDto } from './dto/find-admin-product-cards-query.dto';
 
 /** Проекция товара для покупателя: без внутренних полей модерации и эмбеддинга. */
 const PUBLIC_FIELDS = {
@@ -23,6 +24,16 @@ const PUBLIC_FIELDS = {
   createdAt: productCards.createdAt,
   shopName: shops.name,
   characteristics: productCards.characteristics,
+};
+
+/** То же плюс поля модерации: администратор должен видеть, почему товар скрыт. */
+const ADMIN_FIELDS = {
+  ...PUBLIC_FIELDS,
+  status: productCards.status,
+  abolishReason: productCards.abolishReason,
+  abolishedAt: productCards.abolishedAt,
+  updatedAt: productCards.updatedAt,
+  shopStatus: shops.status,
 };
 
 const COUNT = { count: sql<number>`count(*)::int` };
@@ -108,6 +119,50 @@ export class ProductCardsRepository {
     return { data, total: totalRows[0]?.count ?? 0, page, limit };
   }
 
+  /**
+   * Выдача администратора: все статусы, включая упразднённые и скрытые ИИ.
+   * Поиск здесь по ILIKE, а не по search_vector: индекс полнотекстового поиска
+   * строится только по активным полям карточки, а искать нужно и среди скрытых.
+   */
+  async findAllForAdmin(query: FindAdminProductCardsQueryDto) {
+    const { page, limit, offset } = resolvePage(query);
+
+    const conditions: SQL[] = [];
+    if (query.status) {
+      conditions.push(eq(productCards.status, query.status));
+    }
+    if (query.shop_id) {
+      conditions.push(eq(productCards.shopId, query.shop_id));
+    }
+    if (query.q) {
+      conditions.push(
+        or(
+          ilike(productCards.name, `%${query.q}%`),
+          ilike(shops.name, `%${query.q}%`),
+        )!,
+      );
+    }
+    const where = conditions.length ? and(...conditions) : undefined;
+
+    const [data, totalRows] = await Promise.all([
+      this.db
+        .select(ADMIN_FIELDS)
+        .from(productCards)
+        .innerJoin(shops, eq(productCards.shopId, shops.id))
+        .where(where)
+        .orderBy(desc(productCards.createdAt))
+        .limit(limit)
+        .offset(offset),
+      this.db
+        .select(COUNT)
+        .from(productCards)
+        .innerJoin(shops, eq(productCards.shopId, shops.id))
+        .where(where),
+    ]);
+
+    return { data, total: totalRows[0]?.count ?? 0, page, limit };
+  }
+
   /** Только id и дата — для sitemap, без тяжёлых полей и без пагинации по кругу. */
   findPublicIds(): Promise<{ id: number; updatedAt: Date }[]> {
     return this.db
@@ -151,7 +206,12 @@ export class ProductCardsRepository {
   restore(id: number): Promise<ProductCard> {
     return this.db
       .update(productCards)
-      .set({ status: 'active', updatedAt: new Date() })
+      .set({
+        status: 'active',
+        abolishReason: null,
+        abolishedAt: null,
+        updatedAt: new Date(),
+      })
       .where(eq(productCards.id, id))
       .returning()
       .then((r) => r[0]);

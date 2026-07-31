@@ -1,8 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { ProductCardsRepository } from './product-cards.repository';
 import { ShopsService } from '../shops/shops.service';
 import { AiChecksService } from '../ai/ai-checks.service';
@@ -10,6 +6,7 @@ import { RedisService } from '../redis/redis.service';
 import { CreateProductCardDto } from './dto/create-product-card.dto';
 import { UpdateProductCardDto } from './dto/update-product-card.dto';
 import { FindProductCardsQueryDto } from './dto/find-product-cards-query.dto';
+import { FindAdminProductCardsQueryDto } from './dto/find-admin-product-cards-query.dto';
 import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
 import {
   PRODUCT_CACHE_PREFIX,
@@ -88,13 +85,9 @@ export class ProductCardsService {
     await this.invalidateCache();
   }
 
+  /** Снимает и ИИ-скрытие, и упразднение — как и восстановление магазина. */
   async adminRestore(id: number) {
-    const card = await this.getOrThrow(id);
-    if (card.status === 'abolished') {
-      throw new BadRequestException(
-        'Товар упразднён администратором — используйте отдельный процесс восстановления, а не снятие ИИ-скрытия',
-      );
-    }
+    await this.getOrThrow(id);
     const restored = await this.productCardsRepository.restore(id);
     await this.invalidateCache();
     return restored;
@@ -105,6 +98,54 @@ export class ProductCardsService {
     const abolished = await this.productCardsRepository.abolish(id, reason);
     await this.invalidateCache();
     return abolished;
+  }
+
+  async findAllForAdmin(query: FindAdminProductCardsQueryDto) {
+    const { data, total, page, limit } =
+      await this.productCardsRepository.findAllForAdmin(query);
+    return buildPaginatedResult(data, total, page, limit);
+  }
+
+  /** Создание товара администратором в любом магазине — без проверки владения. */
+  async adminCreate(shopId: number, dto: CreateProductCardDto) {
+    await this.shopsService.getOrThrowById(shopId);
+    const card = await this.productCardsRepository.create({
+      shopId,
+      name: dto.name,
+      description: dto.description,
+      photos: dto.photos,
+      price: dto.price.toString(),
+      state: dto.state,
+      characteristics: dto.characteristics,
+    });
+    await this.invalidateCache();
+    this.aiChecksService.runInBackground(card);
+    return card;
+  }
+
+  async adminUpdate(id: number, dto: UpdateProductCardDto) {
+    await this.getOrThrow(id);
+    const updated = await this.productCardsRepository.update(id, {
+      ...dto,
+      price: dto.price?.toString(),
+    });
+    await this.invalidateCache();
+    this.aiChecksService.runInBackground(updated);
+    return updated;
+  }
+
+  /** Ручной повтор ИИ-проверки — например, после сбоя сервиса. */
+  async adminRecheck(id: number) {
+    const card = await this.getOrThrow(id);
+    this.aiChecksService.runInBackground(card);
+    return { queued: true };
+  }
+
+  /** Полное удаление админом — в отличие от упразднения, восстановить нельзя. */
+  async adminRemove(id: number) {
+    await this.getOrThrow(id);
+    await this.productCardsRepository.delete(id);
+    await this.invalidateCache();
   }
 
   async activateAll() {

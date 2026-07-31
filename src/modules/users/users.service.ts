@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { UsersRepository } from './users.repository';
 import { TelegramUserPayload } from '../auth/telegram-signature.util';
 import { User } from '../../db/schema';
@@ -9,6 +9,33 @@ export class UsersService {
 
   findById(id: number) {
     return this.usersRepository.findById(id);
+  }
+
+  listForAdmin() {
+    return this.usersRepository.findAllForAdmin();
+  }
+
+  async getForAdmin(id: number) {
+    const user = await this.usersRepository.findById(id);
+    if (!user) {
+      throw new NotFoundException('Пользователь не найден');
+    }
+    const recentProducts = await this.usersRepository.findRecentActivity(id);
+    return { ...user, recentProducts };
+  }
+
+  async setRole(id: number, role: 'seller' | 'admin') {
+    await this.getForAdmin(id);
+    return this.usersRepository.setRole(id, role);
+  }
+
+  /** reason === null снимает блокировку. */
+  async setBlocked(id: number, reason: string | null) {
+    const user = await this.usersRepository.findById(id);
+    if (!user) {
+      throw new NotFoundException('Пользователь не найден');
+    }
+    return this.usersRepository.setBlocked(id, reason);
   }
 
   /**

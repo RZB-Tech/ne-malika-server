@@ -118,6 +118,11 @@ export class ShopsService {
     return shop;
   }
 
+  /** Проверка существования без владельца — нужна админским операциям. */
+  getOrThrowById(shopId: number) {
+    return this.getOrThrow(shopId);
+  }
+
   private async getOrThrow(shopId: number) {
     const shop = await this.shopsRepository.findById(shopId);
     if (!shop) {

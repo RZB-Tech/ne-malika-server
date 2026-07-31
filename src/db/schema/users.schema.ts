@@ -2,6 +2,7 @@ import {
   bigint,
   bigserial,
   index,
+  text,
   timestamp,
   varchar,
 } from 'drizzle-orm/pg-core';
@@ -22,6 +23,11 @@ export const users = pgTable(
     fullname: varchar('fullname', { length: 200 }).notNull(),
 
     role: userRoleEnum('role').notNull().default('seller'),
+
+    // Блокировка аккаунта продавца. Отдельно от статуса магазина: упразднить
+    // магазин мало — без блокировки владелец заведёт новый.
+    blockedAt: timestamp('blocked_at', { withTimezone: true }),
+    blockReason: text('block_reason'),
 
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
