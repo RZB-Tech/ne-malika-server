@@ -203,6 +203,13 @@ export class ProductCardsRepository {
       .returning();
   }
 
+  async setActive() {
+    return await this.db
+      .update(productCards)
+      .set({ status: 'active' })
+      .returning();
+  }
+
   async fullTextSearch(prompt: string, filters: BaseFilters) {
     const conditions = this.buildBaseConditions(filters);
     conditions.push(

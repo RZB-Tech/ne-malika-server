@@ -22,6 +22,12 @@ export class ProductCardsController {
   }
 
   @Public()
+  @Get('set-active')
+  setActive() {
+    return this.productCardsService.setActive();
+  }
+
+  @Public()
   @Get(':id')
   @ApiOperation({ summary: 'Карточка товара' })
   @ApiParam({ name: 'id', type: Number })

@@ -42,7 +42,6 @@ export class ShopsRepository {
     });
   }
 
-  /** Публичная карточка магазина: только активный магазин + его активные товары. */
   findPublicById(id: number) {
     return this.db.query.shops.findFirst({
       where: and(eq(shops.id, id), eq(shops.status, 'active')),

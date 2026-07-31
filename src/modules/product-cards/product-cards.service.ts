@@ -108,7 +108,11 @@ export class ProductCardsService {
 
   async activateAllCards() {
     const cards = await this.productCardsRepository.getAll();
-    console.log(cards);
+    return cards;
+  }
+
+  async setActive() {
+    const cards = await this.productCardsRepository.setActive();
     return cards;
   }
 }
