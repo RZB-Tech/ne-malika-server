@@ -17,6 +17,11 @@ import { AdminOnly } from '../../common/decorators/roles.decorator';
 import { ProductCardsService } from './product-cards.service';
 import { ReasonDto } from '../../common/dto/reason.dto';
 import { FindAdminProductCardsQueryDto } from './dto/find-admin-product-cards-query.dto';
+import {
+  PaginationQueryDto,
+  resolvePage,
+} from '../../common/dto/pagination-query.dto';
+import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
 import { CreateProductCardDto } from './dto/create-product-card.dto';
 import { UpdateProductCardDto } from './dto/update-product-card.dto';
 import { AiChecksService } from '../ai/ai-checks.service';
@@ -45,8 +50,13 @@ export class AdminProductCardsController {
     summary:
       'Очередь ручной модерации: проверки со сбоем сервиса или вердиктом fail',
   })
-  aiReview() {
-    return this.aiChecksService.listNeedingReview();
+  async aiReview(@Query() query: PaginationQueryDto) {
+    const { page, limit, offset } = resolvePage(query);
+    const { data, total } = await this.aiChecksService.listNeedingReview(
+      limit,
+      offset,
+    );
+    return buildPaginatedResult(data, total, page, limit);
   }
 
   @Post('shops/:shopId')

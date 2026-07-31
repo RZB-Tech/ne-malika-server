@@ -6,12 +6,14 @@ import {
   Param,
   ParseIntPipe,
   Patch,
+  Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AdminOnly } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { type AuthenticatedUser } from '../../common/types/auth.types';
 import { ReasonDto } from '../../common/dto/reason.dto';
+import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { SetRoleDto } from './dto/set-role.dto';
 import { UsersService } from './users.service';
 
@@ -24,8 +26,8 @@ export class AdminUsersController {
 
   @Get()
   @ApiOperation({ summary: 'Все пользователи с их магазином и числом товаров' })
-  list() {
-    return this.usersService.listForAdmin();
+  list(@Query() query: PaginationQueryDto) {
+    return this.usersService.listForAdmin(query);
   }
 
   @Get(':id')

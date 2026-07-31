@@ -1,4 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
 import { UsersRepository } from './users.repository';
 import { TelegramUserPayload } from '../auth/telegram-signature.util';
 import { User } from '../../db/schema';
@@ -11,8 +13,10 @@ export class UsersService {
     return this.usersRepository.findById(id);
   }
 
-  listForAdmin() {
-    return this.usersRepository.findAllForAdmin();
+  async listForAdmin(query: PaginationQueryDto) {
+    const { data, total, page, limit } =
+      await this.usersRepository.findAllForAdmin(query);
+    return buildPaginatedResult(data, total, page, limit);
   }
 
   async getForAdmin(id: number) {

@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { DRIZZLE, type DrizzleDb } from '../../db/db.provider';
 import {
   aiProductChecks,
@@ -16,6 +16,7 @@ export interface AiReviewRow extends Record<string, unknown> {
   summary: string | null;
   error: string | null;
   checkedAt: string;
+  reviewedAt: string | null;
   name: string;
   price: string;
   photos: string[];
@@ -50,7 +51,7 @@ export class AiChecksRepository {
    * модель забраковала товар (fail). DISTINCT ON берёт последнюю проверку на
    * товар — предыдущие попытки в очередь попадать не должны.
    */
-  async findNeedingReview(): Promise<AiReviewRow[]> {
+  async findNeedingReview(limit: number, offset: number) {
     const result = await this.db.execute<AiReviewRow>(sql`
       SELECT * FROM (
         SELECT DISTINCT ON (c.product_card_id)
@@ -60,6 +61,7 @@ export class AiChecksRepository {
           c.summary           AS "summary",
           c.error             AS "error",
           c.created_at        AS "checkedAt",
+          c.reviewed_at       AS "reviewedAt",
           p.name              AS "name",
           p.price             AS "price",
           p.photos            AS "photos",
@@ -71,10 +73,41 @@ export class AiChecksRepository {
         JOIN shops s ON s.id = p.shop_id
         ORDER BY c.product_card_id, c.created_at DESC
       ) latest
-      WHERE latest."error" IS NOT NULL OR latest."verdict" = 'fail'
+      WHERE latest."reviewedAt" IS NULL
+        AND (latest."error" IS NOT NULL OR latest."verdict" = 'fail')
       ORDER BY latest."checkedAt" DESC
+      LIMIT ${limit} OFFSET ${offset}
     `);
-    return result.rows;
+
+    const totals = await this.db.execute<{ count: number }>(sql`
+      SELECT count(*)::int AS "count" FROM (
+        SELECT DISTINCT ON (c.product_card_id)
+          c.verdict, c.error, c.reviewed_at AS "reviewedAt"
+        FROM ai_product_checks c
+        JOIN product_cards p ON p.id = c.product_card_id
+        ORDER BY c.product_card_id, c.created_at DESC
+      ) latest
+      WHERE latest."reviewedAt" IS NULL
+        AND (latest."error" IS NOT NULL OR latest.verdict = 'fail')
+    `);
+
+    return { data: result.rows, total: totals.rows[0]?.count ?? 0 };
+  }
+
+  /** Помечает последнюю проверку товара разобранной — она уходит из очереди. */
+  async markLatestReviewed(productCardId: number): Promise<void> {
+    const latest = await this.findLatestByProductId(productCardId);
+    if (!latest || latest.reviewedAt) return;
+
+    await this.db
+      .update(aiProductChecks)
+      .set({ reviewedAt: new Date() })
+      .where(
+        and(
+          eq(aiProductChecks.id, latest.id),
+          isNull(aiProductChecks.reviewedAt),
+        ),
+      );
   }
 
   /**

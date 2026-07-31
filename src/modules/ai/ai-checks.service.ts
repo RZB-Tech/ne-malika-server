@@ -50,8 +50,13 @@ export class AiChecksService {
   }
 
   /** Очередь ручной модерации для админки. */
-  listNeedingReview() {
-    return this.repository.findNeedingReview();
+  listNeedingReview(limit: number, offset: number) {
+    return this.repository.findNeedingReview(limit, offset);
+  }
+
+  /** Человек разобрался с проверкой — она уходит из очереди. */
+  markReviewed(productCardId: number) {
+    return this.repository.markLatestReviewed(productCardId);
   }
 
   /**

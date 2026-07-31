@@ -1,5 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { desc, eq, sql } from 'drizzle-orm';
+import {
+  PaginationQueryDto,
+  resolvePage,
+} from '../../common/dto/pagination-query.dto';
 import { DRIZZLE, type DrizzleDb } from '../../db/db.provider';
 import { NewUser, User, productCards, shops, users } from '../../db/schema';
 
@@ -23,8 +27,10 @@ export class UsersRepository {
    * Список для админки: пользователь, его магазин и число товаров.
    * Магазин присоединяем слева — админы и продавцы без магазина тоже нужны.
    */
-  findAllForAdmin() {
-    return this.db
+  async findAllForAdmin(query: PaginationQueryDto) {
+    const { page, limit, offset } = resolvePage(query);
+
+    const data = await this.db
       .select({
         id: users.id,
         fullname: users.fullname,
@@ -46,7 +52,15 @@ export class UsersRepository {
       .leftJoin(shops, eq(shops.owner, users.id))
       .leftJoin(productCards, eq(productCards.shopId, shops.id))
       .groupBy(users.id, shops.id)
-      .orderBy(desc(users.createdAt));
+      .orderBy(desc(users.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    const totalRows = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(users);
+
+    return { data, total: totalRows[0]?.count ?? 0, page, limit };
   }
 
   /** Последние изменённые товары пользователя — «недавние действия» в карточке. */

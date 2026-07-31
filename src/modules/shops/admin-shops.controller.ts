@@ -5,11 +5,13 @@ import {
   Param,
   ParseIntPipe,
   Patch,
+  Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AdminOnly } from '../../common/decorators/roles.decorator';
 import { ShopsService } from './shops.service';
 import { ReasonDto } from '../../common/dto/reason.dto';
+import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 
 @ApiTags('shops-admin')
 @ApiBearerAuth('access-token')
@@ -20,8 +22,8 @@ export class AdminShopsController {
 
   @Get()
   @ApiOperation({ summary: 'Все магазины с числом товаров' })
-  list() {
-    return this.shopsService.adminList();
+  list(@Query() query: PaginationQueryDto) {
+    return this.shopsService.adminList(query);
   }
 
   @Patch(':id/abolish')

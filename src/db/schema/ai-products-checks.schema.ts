@@ -26,6 +26,14 @@ export const aiProductChecks = pgTable(
 
     summary: text('summary'),
 
+    /**
+     * Отметка «человек разобрался». Проверка со сбоем или вердиктом fail висит
+     * в очереди модерации, пока администратор её не одобрит или не отправит
+     * на повтор — сам по себе статус товара для этого не годится: при сбое
+     * сервиса товар остаётся активным, но проверен всё равно не был.
+     */
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+
     model: varchar('model', { length: 100 }).notNull(),
     tokensUsed: integer('tokens_used'),
     error: text('error'),

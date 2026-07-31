@@ -1,0 +1,1 @@
+ALTER TABLE "ai_product_checks" ADD COLUMN "reviewed_at" timestamp with time zone;

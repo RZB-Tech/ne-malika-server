@@ -86,9 +86,14 @@ export class ProductCardsService {
   }
 
   /** Снимает и ИИ-скрытие, и упразднение — как и восстановление магазина. */
+  /**
+   * Возврат товара в выдачу — он же ручное одобрение после ИИ-проверки,
+   * поэтому снимаем проверку с очереди модерации: решение принято человеком.
+   */
   async adminRestore(id: number) {
     await this.getOrThrow(id);
     const restored = await this.productCardsRepository.restore(id);
+    await this.aiChecksService.markReviewed(id);
     await this.invalidateCache();
     return restored;
   }
@@ -137,6 +142,9 @@ export class ProductCardsService {
   /** Ручной повтор ИИ-проверки — например, после сбоя сервиса. */
   async adminRecheck(id: number) {
     const card = await this.getOrThrow(id);
+    // Старую запись закрываем сразу: она уже неактуальна, а новая появится,
+    // когда модель ответит. Иначе товар висел бы в очереди дважды.
+    await this.aiChecksService.markReviewed(id);
     this.aiChecksService.runInBackground(card);
     return { queued: true };
   }

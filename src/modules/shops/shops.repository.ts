@@ -1,5 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, desc, eq, sql } from 'drizzle-orm';
+import { resolvePage } from '../../common/dto/pagination-query.dto';
+import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { DRIZZLE, type DrizzleDb } from '../../db/db.provider';
 import { NewShop, Shop, productCards, shops, users } from '../../db/schema';
 
@@ -71,8 +73,10 @@ export class ShopsRepository {
   }
 
   /** Все магазины для админки — сразу с числом товаров, чтобы не делать запрос на строку. */
-  findAllWithProductCount() {
-    return this.db
+  async findAllWithProductCount(query: PaginationQueryDto) {
+    const { page, limit, offset } = resolvePage(query);
+
+    const data = await this.db
       .select({
         id: shops.id,
         name: shops.name,
@@ -94,7 +98,15 @@ export class ShopsRepository {
       .innerJoin(users, eq(shops.owner, users.id))
       .leftJoin(productCards, eq(productCards.shopId, shops.id))
       .groupBy(shops.id, users.id)
-      .orderBy(desc(shops.createdAt));
+      .orderBy(desc(shops.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    const totalRows = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(shops);
+
+    return { data, total: totalRows[0]?.count ?? 0, page, limit };
   }
 
   restore(id: number): Promise<Shop> {

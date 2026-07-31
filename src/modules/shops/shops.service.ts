@@ -8,6 +8,8 @@ import {
 import { ShopsRepository } from './shops.repository';
 import { UsersService } from '../users/users.service';
 import { RedisService } from '../redis/redis.service';
+import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
 import { PRODUCT_CACHE_PREFIX } from '../product-cards/product-cards.cache';
 import { CreateShopDto } from './dto/create-shop.dto';
 import { UpdateShopDto } from './dto/update-shop.dto';
@@ -99,8 +101,10 @@ export class ShopsService {
     return shop;
   }
 
-  adminList() {
-    return this.shopsRepository.findAllWithProductCount();
+  async adminList(query: PaginationQueryDto) {
+    const { data, total, page, limit } =
+      await this.shopsRepository.findAllWithProductCount(query);
+    return buildPaginatedResult(data, total, page, limit);
   }
 
   async adminAbolish(shopId: number, reason: string) {
