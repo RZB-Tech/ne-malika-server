@@ -5,6 +5,7 @@ import {
   resolvePage,
 } from '../../common/dto/pagination-query.dto';
 import { DRIZZLE, type DrizzleDb } from '../../db/db.provider';
+import { UserRole } from '../../common/types/auth.types';
 import { NewUser, User, productCards, shops, users } from '../../db/schema';
 
 @Injectable()
@@ -82,7 +83,7 @@ export class UsersRepository {
       .limit(limit);
   }
 
-  setRole(id: number, role: 'seller' | 'admin'): Promise<User> {
+  setRole(id: number, role: UserRole): Promise<User> {
     return this.db
       .update(users)
       .set({ role, updatedAt: new Date() })
@@ -153,7 +154,9 @@ export class UsersRepository {
       telegramUsername: data.telegramUsername,
       phoneNumber: data.phoneNumber,
       fullname: data.fullname,
-      role: 'seller',
+      // Контакт из бота — ещё не заявка на магазин: роль как при обычной
+      // регистрации, продавцом сделает создание магазина.
+      role: 'user',
     });
   }
 }

@@ -1,6 +1,11 @@
 import { pgEnum } from 'drizzle-orm/pg-core';
 
-export const userRoleEnum = pgEnum('user_role', ['seller', 'admin']);
+/**
+ * `user` — обычный покупатель, роль по умолчанию при регистрации через Telegram.
+ * В `seller` он переходит сам, в момент создания магазина; `admin` назначается
+ * вручную другим администратором.
+ */
+export const userRoleEnum = pgEnum('user_role', ['user', 'seller', 'admin']);
 
 export const productStateEnum = pgEnum('product_state', ['new', 'old']);
 

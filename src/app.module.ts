@@ -13,6 +13,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { BotModule } from './modules/bot/bot.module';
 import { ShopsModule } from './modules/shops/shops.module';
 import { ProductCardsModule } from './modules/product-cards/product-cards.module';
+import { ProductViewsModule } from './modules/product-views/product-views.module';
 import { FilesModule } from './modules/files/files.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { SettingsModule } from './modules/settings/settings.module';
@@ -32,6 +33,7 @@ import { AppService } from './app.service';
     BotModule,
     ShopsModule,
     ProductCardsModule,
+    ProductViewsModule,
     FilesModule,
     ReportsModule,
     SettingsModule,

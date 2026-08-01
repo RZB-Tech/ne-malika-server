@@ -1,4 +1,4 @@
-export type UserRole = 'seller' | 'admin';
+export type UserRole = 'user' | 'seller' | 'admin';
 
 export interface JwtAccessPayload {
   sub: number;

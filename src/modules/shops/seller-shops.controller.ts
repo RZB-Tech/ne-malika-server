@@ -14,7 +14,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { SellerOnly } from '../../common/decorators/roles.decorator';
+import { AnyRole, SellerOnly } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { type AuthenticatedUser } from '../../common/types/auth.types';
 import { ShopsService } from './shops.service';
@@ -28,14 +28,18 @@ import { UpdateShopDto } from './dto/update-shop.dto';
 export class SellerShopsController {
   constructor(private readonly shopsService: ShopsService) {}
 
+  @AnyRole()
   @Get()
   @ApiOperation({ summary: 'Список собственных магазинов' })
   list(@CurrentUser() user: AuthenticatedUser) {
     return this.shopsService.listOwn(user.id);
   }
 
+  @AnyRole()
   @Post()
-  @ApiOperation({ summary: 'Создать магазин' })
+  @ApiOperation({
+    summary: 'Создать магазин (покупатель при этом становится продавцом)',
+  })
   @ApiResponse({ status: 201, description: 'Магазин создан' })
   @ApiResponse({
     status: 400,

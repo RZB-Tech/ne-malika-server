@@ -48,7 +48,7 @@ export class ShopsService {
     }
 
     try {
-      return await this.shopsRepository.create({
+      const shop = await this.shopsRepository.create({
         owner: ownerId,
         name: dto.name,
         description: dto.description,
@@ -59,6 +59,13 @@ export class ShopsService {
         workSchedule: dto.workSchedule,
         location: dto.location,
       });
+
+      // Магазин появился — покупатель стал продавцом. Порядок именно такой:
+      // повысить роль раньше значило бы оставить «продавца» без магазина,
+      // если создание упадёт.
+      await this.usersService.promoteToSeller(ownerId);
+
+      return shop;
     } catch (error) {
       if (isUniqueViolation(error, 'shops_owner_unique_idx')) {
         throw new ConflictException('У пользователя уже есть магазин');

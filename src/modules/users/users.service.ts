@@ -3,6 +3,7 @@ import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
 import { UsersRepository } from './users.repository';
 import { TelegramUserPayload } from '../auth/telegram-signature.util';
+import { UserRole } from '../../common/types/auth.types';
 import { User } from '../../db/schema';
 
 @Injectable()
@@ -28,9 +29,23 @@ export class UsersService {
     return { ...user, recentProducts };
   }
 
-  async setRole(id: number, role: 'seller' | 'admin') {
+  async setRole(id: number, role: UserRole) {
     await this.getForAdmin(id);
     return this.usersRepository.setRole(id, role);
+  }
+
+  /**
+   * Покупатель становится продавцом в момент создания магазина — отдельной
+   * заявки и одобрения администратором в этой схеме нет.
+   *
+   * Роль зашита в выданный access-токен, поэтому клиенту после создания
+   * магазина нужно дёрнуть POST /auth/refresh: там токены перевыпускаются по
+   * свежей записи пользователя.
+   */
+  async promoteToSeller(id: number) {
+    const user = await this.usersRepository.findById(id);
+    if (!user || user.role !== 'user') return user;
+    return this.usersRepository.setRole(id, 'seller');
   }
 
   /** reason === null снимает блокировку. */
@@ -51,7 +66,6 @@ export class UsersService {
   async findOrCreateFromTelegram(payload: TelegramUserPayload): Promise<User> {
     const existing = await this.usersRepository.findByTelegramId(payload.id);
     if (existing) {
-      // Обновляем «мягкие» поля из Telegram на каждый вход — они могут меняться
       return this.usersRepository.updateProfileFromTelegram(existing.id, {
         telegramUsername: payload.username ?? existing.telegramUsername,
         telegramPhoto: payload.photo_url ?? existing.telegramPhoto,
@@ -70,7 +84,7 @@ export class UsersService {
       telegramUsername: payload.username,
       telegramPhoto: payload.photo_url,
       fullname,
-      role: 'seller', // по умолчанию — продавец; admin назначается вручную (раздел 3.1)
+      role: 'user',
     });
   }
 }

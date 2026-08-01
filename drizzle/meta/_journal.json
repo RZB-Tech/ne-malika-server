@@ -50,6 +50,20 @@
       "when": 1785507239093,
       "tag": "0006_happy_exiles",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1785575182950,
+      "tag": "0007_blue_leader",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1785576277267,
+      "tag": "0008_spooky_hammerhead",
+      "breakpoints": true
     }
   ]
 }

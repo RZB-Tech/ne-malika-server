@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { type UserRole } from '../../../common/types/auth.types';
 
 class AuthUserDto {
   @ApiProperty({ example: 42 })
@@ -7,8 +8,8 @@ class AuthUserDto {
   @ApiProperty({ example: 'Иван Иванов' })
   fullname: string;
 
-  @ApiProperty({ enum: ['seller', 'admin'], example: 'seller' })
-  role: 'seller' | 'admin';
+  @ApiProperty({ enum: ['user', 'seller', 'admin'], example: 'user' })
+  role: UserRole;
 
   @ApiProperty({ nullable: true, example: 'ivan_ivanov' })
   telegramUsername?: string | null;

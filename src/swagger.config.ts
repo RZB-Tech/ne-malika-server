@@ -5,7 +5,8 @@ export const swaggerConfig = new DocumentBuilder()
   .setTitle('НеМалика API')
   .setDescription(
     'Маркетплейс компьютерной техники — REST API для веб-витрины (Next.js) и Telegram mini-app. ' +
-      'Покупатель работает без авторизации; продавец и администратор авторизуются через Telegram.',
+      'Покупать можно без авторизации; вход через Telegram нужен продавцу, администратору ' +
+      'и покупателю, который хочет видеть историю просмотров на всех своих устройствах.',
   )
   .setVersion('1.0.0')
   .addBearerAuth(
@@ -26,6 +27,10 @@ export const swaggerConfig = new DocumentBuilder()
   .addTag(
     'product-cards-admin',
     'Упразднение и обслуживание товаров (администратор)',
+  )
+  .addTag(
+    'me-product-views',
+    'Личный кабинет покупателя: история просмотренных товаров',
   )
   .addTag('files', 'Загрузка и получение файлов из S3')
   .addTag('reports', 'Жалобы покупателей и их просмотр администратором')

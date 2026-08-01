@@ -22,9 +22,11 @@ export const users = pgTable(
     phoneNumber: varchar('phone_number', { length: 20 }),
     fullname: varchar('fullname', { length: 200 }).notNull(),
 
-    role: userRoleEnum('role').notNull().default('seller'),
+    // Регистрация даёт покупателя; продавцом пользователь становится сам,
+    // когда создаёт магазин (ShopsService.createForSeller).
+    role: userRoleEnum('role').notNull().default('user'),
 
-    // Блокировка аккаунта продавца. Отдельно от статуса магазина: упразднить
+    // Блокировка аккаунта. Отдельно от статуса магазина: упразднить
     // магазин мало — без блокировки владелец заведёт новый.
     blockedAt: timestamp('blocked_at', { withTimezone: true }),
     blockReason: text('block_reason'),
