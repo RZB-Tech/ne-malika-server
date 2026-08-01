@@ -14,6 +14,7 @@ import { BotModule } from './modules/bot/bot.module';
 import { ShopsModule } from './modules/shops/shops.module';
 import { ProductCardsModule } from './modules/product-cards/product-cards.module';
 import { ProductViewsModule } from './modules/product-views/product-views.module';
+import { FavoritesModule } from './modules/favorites/favorites.module';
 import { FilesModule } from './modules/files/files.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { SettingsModule } from './modules/settings/settings.module';
@@ -23,8 +24,6 @@ import { AppService } from './app.service';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, load: [configuration], validate }),
-    // Общий потолок щадящий: витрина тянет и список товаров, и картинки через
-    // /files. Точечные лимиты стоят там, где они действительно нужны (auth).
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 300 }]),
     DbModule,
     RedisModule,
@@ -34,6 +33,7 @@ import { AppService } from './app.service';
     ShopsModule,
     ProductCardsModule,
     ProductViewsModule,
+    FavoritesModule,
     FilesModule,
     ReportsModule,
     SettingsModule,
@@ -47,4 +47,4 @@ import { AppService } from './app.service';
     { provide: APP_GUARD, useClass: RolesGuard },
   ],
 })
-export class AppModule {}
+export class AppModule { }

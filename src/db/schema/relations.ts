@@ -3,12 +3,14 @@ import { users } from './users.schema';
 import { shops } from './shops.schema';
 import { productCards } from './product-cards.schema';
 import { productViews } from './product-views.schema';
+import { favorites } from './favorites.schema';
 import { reports } from './reports.schema';
 import { aiProductChecks } from './ai-products-checks.schema';
 
 export const usersRelations = relations(users, ({ many }) => ({
   shops: many(shops),
   productViews: many(productViews),
+  favorites: many(favorites),
 }));
 
 export const shopsRelations = relations(shops, ({ one, many }) => ({
@@ -32,6 +34,17 @@ export const productCardsRelations = relations(
     views: many(productViews),
   }),
 );
+
+export const favoritesRelations = relations(favorites, ({ one }) => ({
+  user: one(users, {
+    fields: [favorites.userId],
+    references: [users.id],
+  }),
+  productCard: one(productCards, {
+    fields: [favorites.productCardId],
+    references: [productCards.id],
+  }),
+}));
 
 export const productViewsRelations = relations(productViews, ({ one }) => ({
   user: one(users, {

@@ -3,6 +3,7 @@ export * from './users.schema';
 export * from './shops.schema';
 export * from './product-cards.schema';
 export * from './product-views.schema';
+export * from './favorites.schema';
 export * from './reports.schema';
 export * from './app-settings.schema';
 export * from './ai-products-checks.schema';

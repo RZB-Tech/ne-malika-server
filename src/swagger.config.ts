@@ -32,6 +32,7 @@ export const swaggerConfig = new DocumentBuilder()
     'me-product-views',
     'Личный кабинет покупателя: история просмотренных товаров',
   )
+  .addTag('me-favorites', 'Личный кабинет покупателя: избранные товары')
   .addTag('files', 'Загрузка и получение файлов из S3')
   .addTag('reports', 'Жалобы покупателей и их просмотр администратором')
   .build();

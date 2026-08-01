@@ -1,5 +1,17 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { SQL, and, asc, desc, eq, gte, ilike, lte, or, sql } from 'drizzle-orm';
+import {
+  SQL,
+  and,
+  asc,
+  desc,
+  eq,
+  gte,
+  ilike,
+  inArray,
+  lte,
+  or,
+  sql,
+} from 'drizzle-orm';
 import { DRIZZLE, type DrizzleDb } from '../../db/db.provider';
 import { resolvePage } from '../../common/dto/pagination-query.dto';
 import {
@@ -51,7 +63,7 @@ function resolveSort(sort?: string) {
 
 @Injectable()
 export class ProductCardsRepository {
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDb) {}
+  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDb) { }
 
   create(data: NewProductCard): Promise<ProductCard> {
     return this.db
@@ -246,9 +258,12 @@ function publicConditions(query: FindProductCardsQueryDto = {}): SQL[] {
     eq(shops.status, 'active'),
   ];
 
+  if (query.ids) {
+    conditions.push(
+      query.ids.length > 0 ? inArray(productCards.id, query.ids) : sql`false`,
+    );
+  }
   if (query.q) {
-    // Полнотекстовый поиск по GIN-индексу (миграция 0002), а не ILIKE '%...%',
-    // который заставлял Postgres читать таблицу целиком.
     conditions.push(
       sql`${productCards}.search_vector @@ websearch_to_tsquery('russian', ${query.q})`,
     );

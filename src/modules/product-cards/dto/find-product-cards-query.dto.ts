@@ -1,6 +1,8 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
+  ArrayMaxSize,
+  IsArray,
   IsIn,
   IsInt,
   IsNumber,
@@ -11,6 +13,24 @@ import {
 import { PaginationQueryDto } from '../../../common/dto/pagination-query.dto';
 
 export class FindProductCardsQueryDto extends PaginationQueryDto {
+  @ApiPropertyOptional({
+    description:
+      'Выбрать конкретные товары по id, через запятую (?ids=10,12,15). ' +
+      'Нужен таблице сравнения: список товаров она держит у себя и тянет их одним запросом.',
+    example: '10,12,15',
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    String(value)
+      .split(',')
+      .map((v) => Number(v.trim()))
+      .filter((v) => Number.isInteger(v) && v > 0),
+  )
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsInt({ each: true })
+  ids?: number[];
+
   @ApiPropertyOptional({
     description: 'Текстовый поиск по name/description',
     example: 'ноутбук',
