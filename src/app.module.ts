@@ -47,4 +47,4 @@ import { AppService } from './app.service';
     { provide: APP_GUARD, useClass: RolesGuard },
   ],
 })
-export class AppModule { }
+export class AppModule {}

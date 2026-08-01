@@ -63,7 +63,7 @@ function resolveSort(sort?: string) {
 
 @Injectable()
 export class ProductCardsRepository {
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDb) { }
+  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDb) {}
 
   create(data: NewProductCard): Promise<ProductCard> {
     return this.db
