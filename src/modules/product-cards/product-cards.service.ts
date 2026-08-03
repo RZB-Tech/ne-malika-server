@@ -33,7 +33,8 @@ export class ProductCardsService {
     shopId: number,
     dto: CreateProductCardDto,
   ) {
-    await this.shopsService.assertOwnership(ownerId, shopId);
+    const shop = await this.shopsService.assertOwnership(ownerId, shopId);
+    this.shopsService.assertAcceptsProducts(shop);
 
     const card = await this.productCardsRepository.create({
       shopId,
@@ -113,7 +114,10 @@ export class ProductCardsService {
 
   /** Создание товара администратором в любом магазине — без проверки владения. */
   async adminCreate(shopId: number, dto: CreateProductCardDto) {
-    await this.shopsService.getOrThrowById(shopId);
+    const shop = await this.shopsService.getOrThrowById(shopId);
+    // Упразднённый магазин закрыт и для админа: товар всё равно не попал бы в
+    // выдачу, а продавец получил бы карточку, которой не может управлять.
+    this.shopsService.assertAcceptsProducts(shop);
     const card = await this.productCardsRepository.create({
       shopId,
       name: dto.name,

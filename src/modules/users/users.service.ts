@@ -48,6 +48,16 @@ export class UsersService {
     return this.usersRepository.setRole(id, 'seller');
   }
 
+  /**
+   * Обратная сторона promoteToSeller: магазина не стало — не стало и продавца.
+   * Администратора не трогаем: его роль выдана вручную и к магазину не привязана.
+   */
+  async demoteToUser(id: number) {
+    const user = await this.usersRepository.findById(id);
+    if (!user || user.role !== 'seller') return user;
+    return this.usersRepository.setRole(id, 'user');
+  }
+
   /** reason === null снимает блокировку. */
   async setBlocked(id: number, reason: string | null) {
     const user = await this.usersRepository.findById(id);

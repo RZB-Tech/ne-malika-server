@@ -1,9 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import { resolvePage } from '../../common/dto/pagination-query.dto';
-import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { DRIZZLE, type DrizzleDb } from '../../db/db.provider';
 import { NewShop, Shop, productCards, shops, users } from '../../db/schema';
+import { FindAdminShopsQueryDto } from './dto/find-admin-shops-query.dto';
 
 @Injectable()
 export class ShopsRepository {
@@ -73,8 +73,19 @@ export class ShopsRepository {
   }
 
   /** Все магазины для админки — сразу с числом товаров, чтобы не делать запрос на строку. */
-  async findAllWithProductCount(query: PaginationQueryDto) {
+  async findAllWithProductCount(query: FindAdminShopsQueryDto) {
     const { page, limit, offset } = resolvePage(query);
+
+    const search = query.q?.trim();
+    const where = search
+      ? or(
+          ilike(shops.name, `%${search}%`),
+          ilike(shops.contact, `%${search}%`),
+          ilike(shops.address, `%${search}%`),
+          ilike(users.fullname, `%${search}%`),
+          ilike(users.telegramUsername, `%${search}%`),
+        )
+      : undefined;
 
     const data = await this.db
       .select({
@@ -97,14 +108,19 @@ export class ShopsRepository {
       .from(shops)
       .innerJoin(users, eq(shops.owner, users.id))
       .leftJoin(productCards, eq(productCards.shopId, shops.id))
+      .where(where)
       .groupBy(shops.id, users.id)
       .orderBy(desc(shops.createdAt))
       .limit(limit)
       .offset(offset);
 
+    // Счёт идёт по тому же join'у: поиск бьёт и по владельцу, без users
+    // условие не собрать.
     const totalRows = await this.db
       .select({ count: sql<number>`count(*)::int` })
-      .from(shops);
+      .from(shops)
+      .innerJoin(users, eq(shops.owner, users.id))
+      .where(where);
 
     return { data, total: totalRows[0]?.count ?? 0, page, limit };
   }
