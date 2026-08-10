@@ -11,6 +11,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { pgTable } from 'drizzle-orm/pg-core';
 import { shops } from './shops.schema';
+import { categories } from './categories.schema';
 import { entityStatusEnum, productStateEnum } from './enums';
 import { vector } from './vector-type';
 
@@ -27,6 +28,15 @@ export const productCards = pgTable(
     shopId: bigint('shop_id', { mode: 'number' })
       .notNull()
       .references(() => shops.id, { onDelete: 'cascade' }),
+
+    /**
+     * Категория каталога. Nullable: товары, заведённые до появления категорий,
+     * остаются без неё, а удаление категории не должно уносить чужой товар.
+     */
+    categoryId: bigint('category_id', { mode: 'number' }).references(
+      () => categories.id,
+      { onDelete: 'set null' },
+    ),
 
     name: varchar('name', { length: 200 }).notNull(),
     description: text('description'),
@@ -55,6 +65,7 @@ export const productCards = pgTable(
   (table) => ({
     shopIdIdx: index('product_cards_shop_id_idx').on(table.shopId),
     statusIdx: index('product_cards_status_idx').on(table.status),
+    categoryIdIdx: index('product_cards_category_id_idx').on(table.categoryId),
   }),
 );
 

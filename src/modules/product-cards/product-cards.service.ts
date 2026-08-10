@@ -6,6 +6,7 @@ import {
 import { ProductCardsRepository } from './product-cards.repository';
 import { ShopsService } from '../shops/shops.service';
 import { AiChecksService } from '../ai/ai-checks.service';
+import { CategoriesService } from '../categories/categories.service';
 import { RedisService } from '../redis/redis.service';
 import { CreateProductCardDto } from './dto/create-product-card.dto';
 import { UpdateProductCardDto } from './dto/update-product-card.dto';
@@ -29,6 +30,7 @@ export class ProductCardsService {
     private readonly productCardsRepository: ProductCardsRepository,
     private readonly shopsService: ShopsService,
     private readonly aiChecksService: AiChecksService,
+    private readonly categoriesService: CategoriesService,
     private readonly redis: RedisService,
   ) {}
 
@@ -39,9 +41,11 @@ export class ProductCardsService {
   ) {
     const shop = await this.shopsService.assertOwnership(ownerId, shopId);
     this.shopsService.assertAcceptsProducts(shop);
+    await this.categoriesService.assertExists(dto.categoryId);
 
     const card = await this.productCardsRepository.create({
       shopId,
+      categoryId: dto.categoryId,
       name: dto.name,
       description: dto.description,
       photos: dto.photos,
@@ -73,6 +77,7 @@ export class ProductCardsService {
 
   async updateOwn(ownerId: number, id: number, dto: UpdateProductCardDto) {
     await this.getOwnOrThrow(ownerId, id);
+    await this.categoriesService.assertExists(dto.categoryId);
     const updated = await this.productCardsRepository.update(id, {
       ...dto,
       price: dto.price?.toString(),
@@ -139,8 +144,10 @@ export class ProductCardsService {
   async adminCreate(shopId: number, dto: CreateProductCardDto) {
     const shop = await this.shopsService.getOrThrowById(shopId);
     this.shopsService.assertAcceptsProducts(shop);
+    await this.categoriesService.assertExists(dto.categoryId);
     const card = await this.productCardsRepository.create({
       shopId,
+      categoryId: dto.categoryId,
       name: dto.name,
       description: dto.description,
       photos: dto.photos,
@@ -155,6 +162,7 @@ export class ProductCardsService {
 
   async adminUpdate(id: number, dto: UpdateProductCardDto) {
     await this.getOrThrow(id);
+    await this.categoriesService.assertExists(dto.categoryId);
     const updated = await this.productCardsRepository.update(id, {
       ...dto,
       price: dto.price?.toString(),
@@ -206,7 +214,11 @@ export class ProductCardsService {
     const key = productListKey({ ...query });
     const cached = await this.redis.get<PublicList>(key);
     const result =
-      cached ?? (await this.productCardsRepository.findPublicList(query));
+      cached ??
+      (await this.productCardsRepository.findPublicList(
+        query,
+        await this.resolveCategoryIds(query),
+      ));
     if (!cached) {
       await this.redis.set(key, result, PRODUCT_LIST_TTL_SEC);
     }
@@ -217,6 +229,24 @@ export class ProductCardsService {
 
   listPublicIds() {
     return this.productCardsRepository.findPublicIds();
+  }
+
+  /**
+   * Превращает фильтр каталога в список id ветки. `undefined` — фильтра нет;
+   * пустой массив — категорию запросили, но её не существует, и выдача должна
+   * быть пустой, а не полной.
+   */
+  private async resolveCategoryIds(
+    query: FindProductCardsQueryDto,
+  ): Promise<number[] | undefined> {
+    if (query.category_id !== undefined) {
+      return this.categoriesService.findSubtreeIds(query.category_id);
+    }
+    if (query.category) {
+      const root = await this.categoriesService.findRootBySlug(query.category);
+      return root ? this.categoriesService.findSubtreeIds(root.id) : [];
+    }
+    return undefined;
   }
 
   /** Любая запись меняет выдачу целиком: фильтров много, точечно инвалидировать нечего. */

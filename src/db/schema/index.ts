@@ -1,6 +1,7 @@
 export * from './enums';
 export * from './users.schema';
 export * from './shops.schema';
+export * from './categories.schema';
 export * from './product-cards.schema';
 export * from './product-views.schema';
 export * from './favorites.schema';

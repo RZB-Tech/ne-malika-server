@@ -5,6 +5,7 @@ import {
   ArrayMinSize,
   IsArray,
   IsIn,
+  IsInt,
   IsNumber,
   IsOptional,
   IsString,
@@ -28,6 +29,20 @@ export class CreateProductCardDto {
   @IsOptional()
   @IsString()
   description?: string;
+
+  /**
+   * Категория каталога. Необязательна ради товаров, заведённых до появления
+   * каталога: делать её обязательной сейчас — значит ломать правку старых
+   * карточек, у которых категории нет.
+   */
+  @ApiPropertyOptional({
+    example: 12,
+    description: 'id категории из GET /categories, обычно лист дерева',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  categoryId?: number;
 
   @ApiProperty({ type: [String], format: 'uuid', minItems: 1, maxItems: 10 })
   @IsArray()

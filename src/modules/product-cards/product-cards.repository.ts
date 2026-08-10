@@ -16,6 +16,7 @@ import { DRIZZLE, type DrizzleDb } from '../../db/db.provider';
 import { resolvePage } from '../../common/dto/pagination-query.dto';
 import {
   aiProductChecks,
+  categories,
   NewProductCard,
   ProductCard,
   productCards,
@@ -36,6 +37,13 @@ const PUBLIC_FIELDS = {
   createdAt: productCards.createdAt,
   shopName: shops.name,
   characteristics: productCards.characteristics,
+  categoryId: productCards.categoryId,
+  // Slug листа: иконку и путь до корня клиент достраивает по своему дереву,
+  // которое всё равно загружено для меню каталога.
+  categorySlug: categories.slug,
+  categoryNameRu: categories.nameRu,
+  categoryNameUzLatn: categories.nameUzLatn,
+  categoryNameUzCyrl: categories.nameUzCyrl,
 };
 
 /** То же плюс поля модерации: администратор должен видеть, почему товар скрыт. */
@@ -104,19 +112,28 @@ export class ProductCardsRepository {
       .select(PUBLIC_FIELDS)
       .from(productCards)
       .innerJoin(shops, eq(productCards.shopId, shops.id))
+      .leftJoin(categories, eq(productCards.categoryId, categories.id))
       .where(and(eq(productCards.id, id), ...publicConditions()))
       .then((r) => r[0]);
   }
 
-  async findPublicList(query: FindProductCardsQueryDto) {
+  /**
+   * `categoryIds` — уже развёрнутая ветка каталога: разворачивает её сервис,
+   * потому что рекурсивный обход дерева живёт в репозитории категорий.
+   */
+  async findPublicList(
+    query: FindProductCardsQueryDto,
+    categoryIds?: number[],
+  ) {
     const { page, limit, offset } = resolvePage(query);
-    const where = and(...publicConditions(query));
+    const where = and(...publicConditions(query, categoryIds));
 
     const [data, totalRows] = await Promise.all([
       this.db
         .select(PUBLIC_FIELDS)
         .from(productCards)
         .innerJoin(shops, eq(productCards.shopId, shops.id))
+        .leftJoin(categories, eq(productCards.categoryId, categories.id))
         .where(where)
         .orderBy(resolveSort(query.sort))
         .limit(limit)
@@ -161,6 +178,7 @@ export class ProductCardsRepository {
         .select(ADMIN_FIELDS)
         .from(productCards)
         .innerJoin(shops, eq(productCards.shopId, shops.id))
+        .leftJoin(categories, eq(productCards.categoryId, categories.id))
         .where(where)
         .orderBy(desc(productCards.createdAt))
         .limit(limit)
@@ -252,11 +270,24 @@ export class ProductCardsRepository {
  * Условия публичной выдачи. Активность товара и магазина — обязательная часть:
  * без неё упразднённые администратором карточки продолжали бы висеть в каталоге.
  */
-function publicConditions(query: FindProductCardsQueryDto = {}): SQL[] {
+function publicConditions(
+  query: FindProductCardsQueryDto = {},
+  categoryIds?: number[],
+): SQL[] {
   const conditions: SQL[] = [
     eq(productCards.status, 'active'),
     eq(shops.status, 'active'),
   ];
+
+  if (categoryIds) {
+    // Пустая ветка возможна только у несуществующей категории — тогда честнее
+    // вернуть ноль товаров, чем молча показать весь каталог.
+    conditions.push(
+      categoryIds.length > 0
+        ? inArray(productCards.categoryId, categoryIds)
+        : sql`false`,
+    );
+  }
 
   if (query.ids) {
     conditions.push(

@@ -64,6 +64,28 @@ export class FindProductCardsQueryDto extends PaginationQueryDto {
   @IsInt()
   shop_id?: number;
 
+  /**
+   * Фильтр по ветке каталога: указав корень, покупатель получает и товары из
+   * его подкатегорий — иначе «Ноутбуки» отдавали бы пустую выдачу, ведь товары
+   * лежат в листьях.
+   */
+  @ApiPropertyOptional({
+    example: 12,
+    description: 'id категории; товары подкатегорий тоже попадут в выдачу',
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  category_id?: number;
+
+  @ApiPropertyOptional({
+    example: 'laptops',
+    description: 'slug категории верхнего уровня — альтернатива category_id',
+  })
+  @IsOptional()
+  @IsString()
+  category?: string;
+
   @ApiPropertyOptional({
     enum: ['price_asc', 'price_desc', 'newest'],
     default: 'newest',

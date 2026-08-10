@@ -12,6 +12,7 @@ import { RolesGuard } from './common/guards/roles.guard';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { BotModule } from './modules/bot/bot.module';
 import { ShopsModule } from './modules/shops/shops.module';
+import { CategoriesModule } from './modules/categories/categories.module';
 import { ProductCardsModule } from './modules/product-cards/product-cards.module';
 import { ProductViewsModule } from './modules/product-views/product-views.module';
 import { FavoritesModule } from './modules/favorites/favorites.module';
@@ -31,6 +32,7 @@ import { AppService } from './app.service';
     UsersModule,
     BotModule,
     ShopsModule,
+    CategoriesModule,
     ProductCardsModule,
     ProductViewsModule,
     FavoritesModule,
