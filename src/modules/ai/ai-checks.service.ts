@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type OpenAI from 'openai';
 import { OPENAI_CLIENT } from '../openai/openai-client.provider';
@@ -14,6 +14,14 @@ import {
 } from './ai-check.types';
 
 const REQUEST_TIMEOUT_MS = 60_000;
+
+/**
+ * Порог «застревания» на проверке. Заметно больше таймаута запроса вместе с
+ * ретраем — иначе при старте второго инстанса подхватились бы карточки,
+ * которые прямо сейчас проверяет первый.
+ */
+const STUCK_PENDING_MINUTES = 15;
+const STUCK_PENDING_LIMIT = 100;
 
 const SYSTEM_PROMPT = `Ты модератор карточек товаров на маркетплейсе компьютерной техники.
 Оцени карточку и верни строго JSON без пояснений:
@@ -34,7 +42,7 @@ verdict всей карточки: fail — только при явном на�
 pass — замечаний нет. Итоговый verdict не мягче худшего из checks, кроме photoMatch без фото.`;
 
 @Injectable()
-export class AiChecksService {
+export class AiChecksService implements OnModuleInit {
   private readonly logger = new Logger(AiChecksService.name);
 
   constructor(
@@ -43,7 +51,23 @@ export class AiChecksService {
     private readonly settings: SettingsService,
     private readonly redis: RedisService,
     private readonly config: ConfigService,
-  ) {}
+  ) { }
+
+  /**
+   * Товар не публикуется, пока проверка не завершилась, поэтому упавший процесс
+   * оставил бы карточку невидимой навсегда: записи проверки нет, в очередь
+   * модерации она не попадёт, и продавцу пришлось бы идти к администратору.
+   */
+  onModuleInit(): void {
+    if (process.env.SKIP_STARTUP_JOBS) return;
+
+    void this.requeueStuckPending().catch((err: Error) =>
+      this.logger.error(
+        `Не удалось перезапустить застрявшие проверки: ${err.message}`,
+        err.stack,
+      ),
+    );
+  }
 
   getLatestFor(productCardId: number) {
     return this.repository.findLatestByProductId(productCardId);
@@ -72,10 +96,37 @@ export class AiChecksService {
     );
   }
 
+  /** Последовательно, а не параллельно: очередь после простоя может быть длинной. */
+  private async requeueStuckPending(): Promise<void> {
+    const olderThan = new Date(Date.now() - STUCK_PENDING_MINUTES * 60_000);
+    const stuck = await this.repository.findStuckPending(
+      olderThan,
+      STUCK_PENDING_LIMIT,
+    );
+    if (stuck.length === 0) return;
+
+    this.logger.warn(
+      `Возобновляем проверку ${stuck.length} товаров, застрявших на проверке`,
+    );
+    for (const card of stuck) {
+      try {
+        await this.run(card);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.error(`Повтор проверки товара ${card.id} упал: ${message}`);
+      }
+    }
+  }
+
   private async run(card: ProductCard): Promise<void> {
-    if (!this.openai) return;
+    // Проверять нечем — держать товар скрытым нельзя: это наша недоработка,
+    // а не нарушение продавца. Публикуем как есть.
+    if (!this.openai) {
+      await this.publish(card.id, 'проверка отключена: нет ключа OpenAI');
+      return;
+    }
     if (!(await this.settings.isAiChecksEnabled())) {
-      this.logger.debug(`ИИ-проверка выключена — товар ${card.id} пропущен`);
+      await this.publish(card.id, 'проверка выключена в настройках');
       return;
     }
 
@@ -98,8 +149,6 @@ export class AiChecksService {
       tokensUsed = completion.usage?.total_tokens ?? null;
       result = parseAiCheckResult(completion.choices[0]?.message?.content);
     } catch (err) {
-      // Ошибку фиксируем в истории проверок, но товар не прячем: недоступность
-      // модели — наша проблема, а не нарушение продавца.
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(`OpenAI не ответил по товару ${card.id}: ${message}`);
       await this.repository.create({
@@ -110,6 +159,7 @@ export class AiChecksService {
         model,
         error: message,
       });
+      await this.publish(card.id, 'сервис проверки недоступен');
       return;
     }
 
@@ -123,10 +173,25 @@ export class AiChecksService {
     });
 
     if (result.verdict === 'fail') {
-      await this.repository.hideProduct(card.id);
-      await this.redis.delByPrefix(PRODUCT_CACHE_PREFIX);
-      this.logger.warn(`Товар ${card.id} скрыт по вердикту ИИ-проверки`);
+      const hidden = await this.repository.hideProduct(card.id);
+      if (hidden) {
+        await this.redis.delByPrefix(PRODUCT_CACHE_PREFIX);
+        this.logger.warn(`Товар ${card.id} скрыт по вердикту ИИ-проверки`);
+      }
+      return;
     }
+
+    await this.publish(card.id, `вердикт ${result.verdict}`);
+  }
+
+  /**
+   * Выпускает товар в выдачу и сбрасывает кэш. Молчит, если публиковать было
+   * нечего: карточка уже активна либо упразднена администратором.
+   */
+  private async publish(cardId: number, reason: string): Promise<void> {
+    if (!(await this.repository.publishProduct(cardId))) return;
+    await this.redis.delByPrefix(PRODUCT_CACHE_PREFIX);
+    this.logger.log(`Товар ${cardId} опубликован — ${reason}`);
   }
 
   /**

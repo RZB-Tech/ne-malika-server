@@ -1,10 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { DRIZZLE, type DrizzleDb } from '../../db/db.provider';
 import {
   aiProductChecks,
   AiProductCheck,
   NewAiProductCheck,
+  ProductCard,
   productCards,
 } from '../../db/schema';
 
@@ -20,7 +21,7 @@ export interface AiReviewRow extends Record<string, unknown> {
   name: string;
   price: string;
   photos: string[];
-  status: 'active' | 'hidden' | 'abolished';
+  status: 'active' | 'hidden' | 'abolished' | 'pending';
   description: string | null;
   shopName: string;
 }
@@ -115,10 +116,55 @@ export class AiChecksRepository {
    * иначе модули ссылались бы друг на друга по кругу.
    * Упразднённые администратором не трогаем: решение человека выше решения модели.
    */
-  async hideProduct(id: number): Promise<void> {
-    await this.db
+  async hideProduct(id: number): Promise<boolean> {
+    const rows = await this.db
       .update(productCards)
       .set({ status: 'hidden', updatedAt: new Date() })
-      .where(and(eq(productCards.id, id), eq(productCards.status, 'active')));
+      .where(
+        and(
+          eq(productCards.id, id),
+          inArray(productCards.status, ['active', 'pending']),
+        ),
+      )
+      .returning({ id: productCards.id });
+    return rows.length > 0;
+  }
+
+  /**
+   * Публикация после успешной проверки: товар выходит из `pending`, а скрытый
+   * прошлым вердиктом возвращается в выдачу, если продавец исправил карточку.
+   * Упразднённые администратором так же неприкосновенны, как и при скрытии.
+   */
+  async publishProduct(id: number): Promise<boolean> {
+    const rows = await this.db
+      .update(productCards)
+      .set({ status: 'active', updatedAt: new Date() })
+      .where(
+        and(
+          eq(productCards.id, id),
+          inArray(productCards.status, ['pending', 'hidden']),
+        ),
+      )
+      .returning({ id: productCards.id });
+    return rows.length > 0;
+  }
+
+  /**
+   * Товары, застрявшие в `pending`: процесс умер между сохранением карточки и
+   * ответом модели. Без повторного запуска они остались бы невидимыми навсегда —
+   * проверки в БД нет, значит и в очередь модерации они не попадут.
+   */
+  findStuckPending(olderThan: Date, limit: number): Promise<ProductCard[]> {
+    return this.db
+      .select()
+      .from(productCards)
+      .where(
+        and(
+          eq(productCards.status, 'pending'),
+          lt(productCards.updatedAt, olderThan),
+        ),
+      )
+      .orderBy(productCards.updatedAt)
+      .limit(limit);
   }
 }

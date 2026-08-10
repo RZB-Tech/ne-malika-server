@@ -26,7 +26,7 @@ export class ProductCardsService {
     private readonly shopsService: ShopsService,
     private readonly aiChecksService: AiChecksService,
     private readonly redis: RedisService,
-  ) {}
+  ) { }
 
   async createForSeller(
     ownerId: number,
@@ -44,9 +44,9 @@ export class ProductCardsService {
       price: dto.price.toString(),
       state: dto.state,
       characteristics: dto.characteristics,
+      status: 'pending',
     });
 
-    await this.invalidateCache();
     this.aiChecksService.runInBackground(card);
     return card;
   }
@@ -75,7 +75,6 @@ export class ProductCardsService {
     });
 
     await this.invalidateCache();
-    // Правка меняет то, что видит покупатель, — проверяем заново.
     this.aiChecksService.runInBackground(updated);
     return updated;
   }
@@ -115,8 +114,6 @@ export class ProductCardsService {
   /** Создание товара администратором в любом магазине — без проверки владения. */
   async adminCreate(shopId: number, dto: CreateProductCardDto) {
     const shop = await this.shopsService.getOrThrowById(shopId);
-    // Упразднённый магазин закрыт и для админа: товар всё равно не попал бы в
-    // выдачу, а продавец получил бы карточку, которой не может управлять.
     this.shopsService.assertAcceptsProducts(shop);
     const card = await this.productCardsRepository.create({
       shopId,
@@ -126,8 +123,8 @@ export class ProductCardsService {
       price: dto.price.toString(),
       state: dto.state,
       characteristics: dto.characteristics,
+      status: 'pending',
     });
-    await this.invalidateCache();
     this.aiChecksService.runInBackground(card);
     return card;
   }
@@ -146,8 +143,6 @@ export class ProductCardsService {
   /** Ручной повтор ИИ-проверки — например, после сбоя сервиса. */
   async adminRecheck(id: number) {
     const card = await this.getOrThrow(id);
-    // Старую запись закрываем сразу: она уже неактуальна, а новая появится,
-    // когда модель ответит. Иначе товар висел бы в очереди дважды.
     await this.aiChecksService.markReviewed(id);
     this.aiChecksService.runInBackground(card);
     return { queued: true };

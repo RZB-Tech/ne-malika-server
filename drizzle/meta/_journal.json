@@ -71,6 +71,13 @@
       "when": 1785577921881,
       "tag": "0009_sticky_flatman",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1786339209219,
+      "tag": "0010_product_pending_status",
+      "breakpoints": true
     }
   ]
 }

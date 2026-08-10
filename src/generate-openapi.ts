@@ -13,11 +13,9 @@ import { AppModule } from './app.module';
 import { swaggerConfig } from './swagger.config';
 
 async function main() {
-  // Внешние подключения при генерации спеки не нужны и мешают процессу
-  // завершиться: вебхук бота регистрируется в onModuleInit, а клиент Redis
-  // после закрытия приложения продолжает переподключаться.
   delete process.env.TELEGRAM_WEBHOOK_URL;
   delete process.env.REDIS_URL;
+  process.env.SKIP_STARTUP_JOBS = '1';
 
   const app = await NestFactory.create(AppModule, { logger: ['error'] });
   app.setGlobalPrefix(process.env.API_PREFIX ?? 'api/v1');

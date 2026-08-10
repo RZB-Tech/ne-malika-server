@@ -7,6 +7,7 @@ export const ADMIN_PRODUCT_STATUSES = [
   'active',
   'hidden',
   'abolished',
+  'pending',
 ] as const;
 
 /**
