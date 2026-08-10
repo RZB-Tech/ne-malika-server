@@ -35,15 +35,30 @@ const PROMPT_TIMEOUT_MS = 60_000;
  * описаниях и понимают их точнее, чем перевод. Требование краткости здесь не
  * про стиль — длинный ответ модель печатает дольше, а ждёт его живой человек.
  */
-const PROMPT_SYSTEM = `You write prompts for an image generator, based on a product photo from a computer-hardware marketplace.
+const PROMPT_SYSTEM = `You write prompts for an image generator. The result must look like a marketplace product listing photo (like Amazon or Ozon), not an advertisement or a lifestyle scene.
 
 Reply with the prompt itself only: plain English text, no JSON, no quotes around it, no preamble like "Here is the prompt:".
 
-Describe the product (type, recognizable model, colour, material) and how it should be shot: angle, lighting, background, framing. Aim for a clean studio product shot — plain light background, soft even light, whole product in frame, no people, no text, no store logos, no collage, no watermarks.
+Describe the product itself — type, recognizable model, colour, material — and then the shot: product centred and filling most of the frame, three-quarter or front view, pure white seamless background, soft even studio light, subtle contact shadow under the product.
+
+Critical: the bare product only. Never a box, never retail packaging, never a product sitting in or next to a package. No hands, no people, no props, no furniture, no room, no text, no captions, no labels added, no brand logos of stores, no collage, no watermark, no borders.
 
 Do not invent specs you cannot see in the photo. If the model is unrecognizable, describe what is visible in general terms.
 
 Keep it under 60 words.`;
+
+/**
+ * Хвост, который приклеивается к любому промпту при генерации. Промпт пишет
+ * человек и может забыть про формат, а модель по умолчанию любит показать товар
+ * в коробке и в интерьере — для карточки маркетплейса это брак.
+ */
+const CARD_STYLE = [
+  'Marketplace product listing photo.',
+  'The bare product only — no box, no packaging, no props, no people, no room.',
+  'Centred, filling most of the frame, pure white seamless background,',
+  'soft even studio lighting, subtle contact shadow.',
+  'No added text, captions, labels, watermarks or borders.',
+].join(' ');
 
 @Injectable()
 export class ImageGenService {
@@ -72,9 +87,6 @@ export class ImageGenService {
       const completion = await this.router.chat.completions.create(
         {
           model,
-          // Потолок с запасом. У «рассуждающих» моделей скрытые токены тратят
-          // этот же бюджет, и при малом лимите видимый ответ приходит пустым —
-          // поэтому по умолчанию берём модель без рассуждений, а запас даём.
           max_completion_tokens: 1000,
           messages: [
             { role: 'system', content: PROMPT_SYSTEM },
@@ -87,8 +99,6 @@ export class ImageGenService {
                 },
                 {
                   type: 'image_url',
-                  // detail: low — модели хватает уменьшенной копии, чтобы
-                  // опознать товар, а обрабатывается она заметно быстрее.
                   image_url: {
                     url: await this.files.toDataUrl(photoKey),
                     detail: 'low',
@@ -104,8 +114,6 @@ export class ImageGenService {
       const choice = completion.choices[0];
       const prompt = cleanPrompt(choice?.message?.content);
       if (!prompt) {
-        // Пустой ответ чаще всего значит обрыв по лимиту: у рассуждающих
-        // моделей бюджет уходит на скрытые токены. Пишем причину сразу.
         throw new Error(
           `модель вернула пустой промпт (finish_reason: ${choice?.finish_reason ?? '—'}, ` +
             `токенов: ${completion.usage?.completion_tokens ?? '—'})`,
@@ -118,8 +126,6 @@ export class ImageGenService {
         `Промпт по фото ${photoKey} не составлен (модель ${model}): ${details}`,
       );
 
-      // Ответ провайдера сам объясняет, в какой лимит упёрлись, — его и
-      // показываем, иначе админ будет жать кнопку впустую.
       const status = (err as { status?: number }).status;
       throw new BadGatewayException(
         status === 429
@@ -218,7 +224,9 @@ export class ImageGenService {
       {
         body: {
           model,
-          prompt: dto.prompt,
+          // Стиль карточки дописываем сами и в конце: так он не спорит с
+          // описанием товара, а уточняет подачу.
+          prompt: `${dto.prompt.trim()}\n\n${CARD_STYLE}`,
           n: 1,
           size: dto.size ?? '1024x1024',
           quality: dto.quality ?? 'medium',
