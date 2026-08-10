@@ -151,6 +151,21 @@ export class FilesService {
     }
   }
 
+  /**
+   * Картинка байтами в data-URL — в таком виде её принимают модели. Ссылку на
+   * наш S3 им давать нельзя: ходили бы за ней сами, и любая заминка у нас
+   * возвращалась как «Timeout while downloading», срывая проверку и генерацию.
+   */
+  async toDataUrl(key: string): Promise<string> {
+    const file = await this.getFile(key);
+    const chunks: Buffer[] = [];
+    for await (const chunk of file.body) {
+      chunks.push(Buffer.from(chunk as Uint8Array));
+    }
+    const type = file.contentType ?? 'image/jpeg';
+    return `data:${type};base64,${Buffer.concat(chunks).toString('base64')}`;
+  }
+
   buildPublicUrl(key: string): string {
     const base = this.configService.get<string>('s3.publicBase')!;
     return `${base.replace(/\/$/, '')}/${key}`;

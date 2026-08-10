@@ -5,6 +5,7 @@ import { GROQ_CLIENT } from '../groq/groq-client.provider';
 import { AiChecksRepository } from './ai-checks.repository';
 import { SettingsService } from '../settings/settings.service';
 import { RedisService } from '../redis/redis.service';
+import { FilesService } from '../files/files.service';
 import { PRODUCT_CACHE_PREFIX } from '../product-cards/product-cards.cache';
 import type { ProductCard } from '../../db/schema';
 import {
@@ -76,6 +77,7 @@ export class AiChecksService implements OnModuleInit {
     private readonly repository: AiChecksRepository,
     private readonly settings: SettingsService,
     private readonly redis: RedisService,
+    private readonly files: FilesService,
     private readonly config: ConfigService,
   ) {}
 
@@ -220,18 +222,19 @@ export class AiChecksService implements OnModuleInit {
     }
   }
 
-  private request(
+  private async request(
     model: string,
     card: ProductCard,
     withPhotos: boolean,
   ): Promise<OpenAI.Chat.ChatCompletion> {
+    const content = await this.buildUserContent(card, withPhotos);
     const body: GroqCompletionParams = {
       model,
       response_format: { type: 'json_object' },
       reasoning_effort: 'none',
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: this.buildUserContent(card, withPhotos) },
+        { role: 'user', content },
       ],
     };
 
@@ -252,22 +255,34 @@ export class AiChecksService implements OnModuleInit {
   }
 
   /**
-   * Фото отдаём модели ссылками — они лежат в публичном S3. Если публичная база
-   * не настроена (локальная разработка) или картинки не скачались, проверяем
-   * только текст, но говорим об этом модели прямо: иначе она сочтёт, что фото
-   * нет вовсе, и забракует карточку за чужой сбой.
+   * Фото отдаём байтами в data-URL, а не ссылкой на S3. По ссылке за картинкой
+   * ходила бы сама модель, и любая заминка на нашей стороне — опечатка в
+   * домене, медленная раздача, приватный бакет — возвращалась как «Timeout
+   * while downloading», то есть проверка срывалась из-за чужого сбоя.
+   *
+   * Если байты прочитать не удалось, проверяем только текст, но говорим об этом
+   * модели прямо: иначе она сочтёт, что фото нет вовсе, и забракует карточку.
    */
-  private buildUserContent(
+  private async buildUserContent(
     card: ProductCard,
     withPhotos: boolean,
-  ): OpenAI.Chat.ChatCompletionContentPart[] {
+  ): Promise<OpenAI.Chat.ChatCompletionContentPart[]> {
     const characteristics = (card.characteristics ?? [])
       .map((c) => `${c.key}: ${c.value}`)
       .join('; ');
 
-    const base = this.config.get<string>('s3.publicBase')?.replace(/\/$/, '');
     const keys = photoKeys(card);
-    const attached = withPhotos && base ? keys : [];
+    const attached: string[] = [];
+    if (withPhotos) {
+      for (const key of keys) {
+        try {
+          attached.push(await this.files.toDataUrl(key));
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          this.logger.warn(`Фото ${key} не прочитано из S3: ${message}`);
+        }
+      }
+    }
 
     const text = [
       `Название: ${card.name}`,
@@ -282,8 +297,8 @@ export class AiChecksService implements OnModuleInit {
     const parts: OpenAI.Chat.ChatCompletionContentPart[] = [
       { type: 'text', text },
     ];
-    for (const key of attached) {
-      parts.push({ type: 'image_url', image_url: { url: `${base}/${key}` } });
+    for (const url of attached) {
+      parts.push({ type: 'image_url', image_url: { url } });
     }
 
     return parts;

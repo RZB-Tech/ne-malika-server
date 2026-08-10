@@ -71,7 +71,7 @@ export class ImageGenService {
                 { type: 'text', text: 'Опиши товар с этой фотографии.' },
                 {
                   type: 'image_url',
-                  image_url: { url: this.files.buildPublicUrl(photoKey) },
+                  image_url: { url: await this.files.toDataUrl(photoKey) },
                 },
               ],
             },
