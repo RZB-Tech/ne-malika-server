@@ -116,13 +116,26 @@ export class ImageGenService {
       dto.photoKey,
       ...(dto.referenceKey ? [dto.referenceKey] : []),
     ];
-    const images = await Promise.all(
-      sources.map(async (key, i) =>
-        toFile(await this.download(key), `source-${i}.png`, {
-          type: 'image/png',
-        }),
-      ),
-    );
+    // Чтение из S3 отделено от вызова модели: обе стадии отвечают 502, и без
+    // разных текстов админ не поймёт, чинить хранилище или ключ OpenAI.
+    let images: Awaited<ReturnType<typeof toFile>>[];
+    try {
+      images = await Promise.all(
+        sources.map(async (key, i) =>
+          toFile(await this.download(key), `source-${i}.png`, {
+            type: 'image/png',
+          }),
+        ),
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Исходное фото ${dto.photoKey} не прочитано: ${message}`,
+      );
+      throw new BadGatewayException(
+        `Не удалось прочитать исходное фото из хранилища: ${message}`,
+      );
+    }
 
     let result: OpenAI.Images.ImagesResponse;
     try {
@@ -140,9 +153,22 @@ export class ImageGenService {
         { timeout: IMAGE_TIMEOUT_MS, maxRetries: 1 },
       );
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Генерация по фото ${dto.photoKey} упала: ${message}`);
-      throw new BadGatewayException(`Генерация не удалась: ${message}`);
+      // У ошибок OpenAI SDK есть status и code — без них «502» ничего не
+      // объясняет: не видно, кончились ли деньги, нет ли доступа к модели или
+      // она отвергла размер.
+      const e = err as { status?: number; code?: string; message?: string };
+      const details = [
+        e.status ? `HTTP ${e.status}` : null,
+        e.code,
+        e.message ?? String(err),
+      ]
+        .filter(Boolean)
+        .join(' · ');
+
+      this.logger.error(
+        `Генерация по фото ${dto.photoKey} упала (модель ${model}): ${details}`,
+      );
+      throw new BadGatewayException(`Модель не отработала: ${details}`);
     }
 
     const saved: GeneratedImageDto[] = [];
