@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type OpenAI from 'openai';
-import { OPENAI_CLIENT } from '../openai/openai-client.provider';
+import { GROQ_CLIENT } from '../groq/groq-client.provider';
 import { AiChecksRepository } from './ai-checks.repository';
 import { SettingsService } from '../settings/settings.service';
 import { RedisService } from '../redis/redis.service';
@@ -16,12 +16,31 @@ import {
 const REQUEST_TIMEOUT_MS = 60_000;
 
 /**
+ * Groq принимает запросы в формате OpenAI, но `reasoning_effort: 'none'` — его
+ * собственное расширение, которого нет в типах SDK. Без него модель уходит в
+ * рассуждения, не укладывается в JSON, и Groq отвечает 400 «Failed to validate
+ * JSON»; с ним ответ ещё и вшестеро дешевле по токенам.
+ */
+type GroqCompletionParams = Omit<
+  OpenAI.Chat.ChatCompletionCreateParamsNonStreaming,
+  'reasoning_effort'
+> & { reasoning_effort: 'none' | 'default' };
+
+/**
  * Порог «застревания» на проверке. Заметно больше таймаута запроса вместе с
  * ретраем — иначе при старте второго инстанса подхватились бы карточки,
  * которые прямо сейчас проверяет первый.
  */
 const STUCK_PENDING_MINUTES = 15;
 const STUCK_PENDING_LIMIT = 100;
+/**
+ * Одно фото, а не вся галерея: у Groq лимит 8000 токенов в минуту, а картинка
+ * стоит около 2400 — на четырёх проверка упиралась бы в 429 постоянно.
+ */
+const MAX_PHOTOS = 1;
+
+/** 429 по лимиту — штатная ситуация, SDK разведёт повторы по экспоненте. */
+const MAX_RETRIES = 3;
 
 const SYSTEM_PROMPT = `Ты модератор карточек товаров на маркетплейсе компьютерной техники.
 Оцени карточку и верни строго JSON без пояснений:
@@ -46,7 +65,7 @@ export class AiChecksService implements OnModuleInit {
   private readonly logger = new Logger(AiChecksService.name);
 
   constructor(
-    @Inject(OPENAI_CLIENT) private readonly openai: OpenAI | null,
+    @Inject(GROQ_CLIENT) private readonly groq: OpenAI | null,
     private readonly repository: AiChecksRepository,
     private readonly settings: SettingsService,
     private readonly redis: RedisService,
@@ -119,8 +138,8 @@ export class AiChecksService implements OnModuleInit {
   }
 
   private async run(card: ProductCard): Promise<void> {
-    if (!this.openai) {
-      await this.publish(card.id, 'проверка отключена: нет ключа OpenAI');
+    if (!this.groq) {
+      await this.publish(card.id, 'проверка отключена: нет ключа Groq');
       return;
     }
     if (!(await this.settings.isAiChecksEnabled())) {
@@ -128,27 +147,17 @@ export class AiChecksService implements OnModuleInit {
       return;
     }
 
-    const model = this.config.get<string>('openai.model')!;
+    const model = this.config.get<string>('groq.model')!;
 
     let result: AiCheckResult;
     let tokensUsed: number | null = null;
     try {
-      const completion = await this.openai.chat.completions.create(
-        {
-          model,
-          response_format: { type: 'json_object' },
-          messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
-            { role: 'user', content: this.buildUserContent(card) },
-          ],
-        },
-        { timeout: REQUEST_TIMEOUT_MS, maxRetries: 1 },
-      );
+      const completion = await this.complete(model, card);
       tokensUsed = completion.usage?.total_tokens ?? null;
       result = parseAiCheckResult(completion.choices[0]?.message?.content);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      this.logger.error(`OpenAI не ответил по товару ${card.id}: ${message}`);
+      this.logger.error(`Groq не ответил по товару ${card.id}: ${message}`);
       await this.repository.create({
         productCardId: card.id,
         verdict: 'warn',
@@ -183,6 +192,49 @@ export class AiChecksService implements OnModuleInit {
   }
 
   /**
+   * Запрос к модели с фотографиями, а при неудачной загрузке — повтор по одному
+   * тексту. Фото лежат в публичном S3, и скачивает их сама модель: её таймаут на
+   * нашей картинке не должен превращаться в непройденную проверку.
+   */
+  private async complete(
+    model: string,
+    card: ProductCard,
+  ): Promise<OpenAI.Chat.ChatCompletion> {
+    try {
+      return await this.request(model, card, true);
+    } catch (err) {
+      if (!isImageFetchError(err) || photoKeys(card).length === 0) throw err;
+
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(
+        `Модель не смогла скачать фото товара ${card.id} (${message}) — проверяем текст`,
+      );
+      return this.request(model, card, false);
+    }
+  }
+
+  private request(
+    model: string,
+    card: ProductCard,
+    withPhotos: boolean,
+  ): Promise<OpenAI.Chat.ChatCompletion> {
+    const body: GroqCompletionParams = {
+      model,
+      response_format: { type: 'json_object' },
+      reasoning_effort: 'none',
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: this.buildUserContent(card, withPhotos) },
+      ],
+    };
+
+    return this.groq!.chat.completions.create(
+      body as unknown as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming,
+      { timeout: REQUEST_TIMEOUT_MS, maxRetries: MAX_RETRIES },
+    );
+  }
+
+  /**
    * Выпускает товар в выдачу и сбрасывает кэш. Молчит, если публиковать было
    * нечего: карточка уже активна либо упразднена администратором.
    */
@@ -194,15 +246,21 @@ export class AiChecksService implements OnModuleInit {
 
   /**
    * Фото отдаём модели ссылками — они лежат в публичном S3. Если публичная база
-   * не настроена (локальная разработка), проверяем только текст: недоступный
-   * URL модель всё равно не откроет.
+   * не настроена (локальная разработка) или картинки не скачались, проверяем
+   * только текст, но говорим об этом модели прямо: иначе она сочтёт, что фото
+   * нет вовсе, и забракует карточку за чужой сбой.
    */
   private buildUserContent(
     card: ProductCard,
+    withPhotos: boolean,
   ): OpenAI.Chat.ChatCompletionContentPart[] {
     const characteristics = (card.characteristics ?? [])
       .map((c) => `${c.key}: ${c.value}`)
       .join('; ');
+
+    const base = this.config.get<string>('s3.publicBase')?.replace(/\/$/, '');
+    const keys = photoKeys(card);
+    const attached = withPhotos && base ? keys : [];
 
     const text = [
       `Название: ${card.name}`,
@@ -210,21 +268,50 @@ export class AiChecksService implements OnModuleInit {
       `Состояние: ${card.state === 'new' ? 'новый' : 'б/у'}`,
       `Описание: ${card.description ?? '(пусто)'}`,
       `Характеристики: ${characteristics || '(нет)'}`,
+      photoNote(keys.length, attached.length),
       `Аспекты для checks: ${AI_ASPECTS.join(', ')}`,
     ].join('\n');
 
     const parts: OpenAI.Chat.ChatCompletionContentPart[] = [
       { type: 'text', text },
     ];
-
-    const publicBase = this.config.get<string>('s3.publicBase');
-    if (publicBase) {
-      const base = publicBase.replace(/\/$/, '');
-      for (const key of (card.photos ?? []).slice(0, 4)) {
-        parts.push({ type: 'image_url', image_url: { url: `${base}/${key}` } });
-      }
+    for (const key of attached) {
+      parts.push({ type: 'image_url', image_url: { url: `${base}/${key}` } });
     }
 
     return parts;
   }
+}
+
+function photoKeys(card: ProductCard): string[] {
+  return (card.photos ?? []).slice(0, MAX_PHOTOS);
+}
+
+/**
+ * Разводит два случая, которые модель иначе не различит: фото нет у товара —
+ * это к продавцу, фото есть, но не дошли до модели — это к нам.
+ */
+function photoNote(total: number, attached: number): string {
+  if (attached > 0) return `Фотографии: приложено ${attached} шт.`;
+  if (total === 0) return 'Фотографии: продавец не загрузил ни одной';
+  return (
+    `Фотографии: продавец загрузил ${total} шт., но скачать их не удалось — ` +
+    'это наш технический сбой, а не нарушение. По аспектам photos и photoMatch ' +
+    'верни warn с notes «фото недоступны для проверки» и не снижай из-за них ' +
+    'итоговый вердикт.'
+  );
+}
+
+/**
+ * Модель скачивает картинки сама, и её неудача приходит обычным 400 — отличаем
+ * такую ошибку от настоящей недоступности сервиса, чтобы повторить без фото.
+ * Формулировки у провайдеров разные: OpenAI пишет «Timeout while downloading»,
+ * Groq отдаёт ошибку своего HTTP-клиента вида `Get "****": dial tcp ...`.
+ */
+const IMAGE_FETCH_ERROR =
+  /downloading|invalid[ _]image|image_parse|unsupported_image|dial tcp|no such host|context deadline|connection refused|Get "/i;
+
+function isImageFetchError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err);
+  return IMAGE_FETCH_ERROR.test(message);
 }

@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { ProductCardsRepository } from './product-cards.repository';
 import { ShopsService } from '../shops/shops.service';
 import { AiChecksService } from '../ai/ai-checks.service';
@@ -77,6 +81,26 @@ export class ProductCardsService {
     await this.invalidateCache();
     this.aiChecksService.runInBackground(updated);
     return updated;
+  }
+
+  /**
+   * Повторная отправка на проверку продавцом — после правки фото или описания.
+   * Проверку из очереди модерации намеренно не снимаем: иначе продавец закрывал
+   * бы собственный отказ, не показав его человеку. Новый вердикт вытеснит старый
+   * сам, если карточка стала чистой.
+   */
+  async recheckOwn(ownerId: number, id: number) {
+    const card = await this.getOwnOrThrow(ownerId, id);
+    if (card.status === 'abolished') {
+      throw new ForbiddenException(
+        card.abolishReason
+          ? `Товар упразднён администратором: ${card.abolishReason}`
+          : 'Товар упразднён администратором — отправить на проверку нельзя',
+      );
+    }
+
+    this.aiChecksService.runInBackground(card);
+    return { queued: true };
   }
 
   async removeOwn(ownerId: number, id: number) {

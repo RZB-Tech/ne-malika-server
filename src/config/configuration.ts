@@ -17,9 +17,11 @@ export default () => ({
     url: process.env.REDIS_URL,
   },
 
-  openai: {
-    apiKey: process.env.OPENAI_API_KEY,
-    model: process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
+  groq: {
+    apiKey: process.env.GROQ_API_KEY,
+    // Единственная модель Groq, принимающая изображения: проверка смотрит фото.
+    model: process.env.GROQ_MODEL ?? 'qwen/qwen3.6-27b',
+    baseUrl: process.env.GROQ_BASE_URL ?? 'https://api.groq.com/openai/v1',
   },
 
   jwt: {

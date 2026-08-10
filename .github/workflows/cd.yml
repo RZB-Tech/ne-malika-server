@@ -70,6 +70,10 @@ jobs:
             export GHCR_IMAGE=${{ env.IMAGE }}
             export IMAGE_TAG=${{ needs.build-and-push.outputs.tag }}
             docker compose -f docker-compose.prod.yml pull
+            # Миграция — до подъёма API, разовым контейнером из нового образа.
+            # После `up -d` новый код успевает принять запросы на старой схеме:
+            # например, записать статус, которого ещё нет в enum. Упавшая
+            # миграция обрывает деплой (set -e), и прод остаётся на старой версии.
+            docker compose -f docker-compose.prod.yml run --rm api node dist/db/migrate.js
             docker compose -f docker-compose.prod.yml up -d
-            docker compose -f docker-compose.prod.yml exec -T api node dist/db/migrate.js
             docker image prune -f

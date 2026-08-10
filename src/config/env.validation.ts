@@ -49,11 +49,15 @@ class EnvironmentVariables {
   /** Без него ИИ-проверка товаров не запускается. */
   @IsOptional()
   @IsString()
-  OPENAI_API_KEY?: string;
+  GROQ_API_KEY?: string;
 
   @IsOptional()
   @IsString()
-  OPENAI_MODEL?: string;
+  GROQ_MODEL?: string;
+
+  @IsOptional()
+  @IsString()
+  GROQ_BASE_URL?: string;
 
   @IsString()
   JWT_ACCESS_SECRET: string;
