@@ -51,7 +51,7 @@ export class AiChecksService implements OnModuleInit {
     private readonly settings: SettingsService,
     private readonly redis: RedisService,
     private readonly config: ConfigService,
-  ) { }
+  ) {}
 
   /**
    * Товар не публикуется, пока проверка не завершилась, поэтому упавший процесс
@@ -119,8 +119,6 @@ export class AiChecksService implements OnModuleInit {
   }
 
   private async run(card: ProductCard): Promise<void> {
-    // Проверять нечем — держать товар скрытым нельзя: это наша недоработка,
-    // а не нарушение продавца. Публикуем как есть.
     if (!this.openai) {
       await this.publish(card.id, 'проверка отключена: нет ключа OpenAI');
       return;

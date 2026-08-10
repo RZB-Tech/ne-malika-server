@@ -26,7 +26,7 @@ export class ProductCardsService {
     private readonly shopsService: ShopsService,
     private readonly aiChecksService: AiChecksService,
     private readonly redis: RedisService,
-  ) { }
+  ) {}
 
   async createForSeller(
     ownerId: number,
