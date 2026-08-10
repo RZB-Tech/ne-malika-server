@@ -45,7 +45,7 @@ export class ImageGenService {
     @Inject(GROQ_CLIENT) private readonly groq: OpenAI | null,
     private readonly files: FilesService,
     private readonly config: ConfigService,
-  ) {}
+  ) { }
 
   /**
    * Промпт по фотографии — кнопка «сгенерировать промпт» в админке. Пишет его
@@ -153,20 +153,26 @@ export class ImageGenService {
         { timeout: IMAGE_TIMEOUT_MS, maxRetries: 1 },
       );
     } catch (err) {
-      // У ошибок OpenAI SDK есть status и code — без них «502» ничего не
-      // объясняет: не видно, кончились ли деньги, нет ли доступа к модели или
-      // она отвергла размер.
-      const e = err as { status?: number; code?: string; message?: string };
+      const e = err as {
+        status?: number;
+        code?: string;
+        message?: string;
+        cause?: { code?: string; message?: string };
+      };
       const details = [
         e.status ? `HTTP ${e.status}` : null,
         e.code,
         e.message ?? String(err),
+        e.cause
+          ? `причина: ${e.cause.code ?? ''} ${e.cause.message ?? ''}`.trim()
+          : null,
       ]
         .filter(Boolean)
         .join(' · ');
 
       this.logger.error(
-        `Генерация по фото ${dto.photoKey} упала (модель ${model}): ${details}`,
+        `Генерация по фото ${dto.photoKey} упала (модель ${model}, ` +
+        `${images.length} файл(ов), ${sizeKb(images)} КБ): ${details}`,
       );
       throw new BadGatewayException(`Модель не отработала: ${details}`);
     }
@@ -200,6 +206,11 @@ export class ImageGenService {
     }
     return Buffer.concat(chunks);
   }
+}
+
+/** Вес отправляемого в модель тела — первый подозреваемый при обрыве связи. */
+function sizeKb(files: { size?: number }[]): number {
+  return Math.round(files.reduce((sum, f) => sum + (f.size ?? 0), 0) / 1024);
 }
 
 /**
