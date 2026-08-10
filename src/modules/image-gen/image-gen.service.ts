@@ -183,9 +183,6 @@ export class ImageGenService {
       );
     }
 
-    // Каждый вариант — отдельный короткий запрос вместо одного длинного с n=N:
-    // долгие соединения рвут по простою, а короткие успевают. Побочно это даёт
-    // частичный успех — три картинки из четырёх лучше, чем ошибка на всю пачку.
     const attempts = await Promise.allSettled(
       Array.from({ length: count }, () =>
         this.requestOne(model, references, dto),
