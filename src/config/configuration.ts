@@ -17,27 +17,15 @@ export default () => ({
     url: process.env.REDIS_URL,
   },
 
-  /**
-   * Отдельно от groq: у Groq нет генерации картинок, а у OpenAI параметры
-   * размера, качества и количества за один запрос — штатные. Модель менять с
-   * оглядкой: произвольные размеры (вплоть до 4K) умеет gpt-image-2, а у 1.5
-   * их всего три — 1024x1024, 1024x1536 и 1536x1024.
-   */
-  openaiImages: {
-    apiKey: process.env.OPENAI_API_KEY,
-    model: process.env.OPENAI_IMAGE_MODEL ?? 'gpt-image-2',
-    /**
-     * Модель, которая смотрит фото и пишет промпт. Отдельно от рисующей и
-     * намеренно дешёвая: работа простая, а платить как за генерацию незачем.
-     */
-    visionModel: process.env.OPENAI_VISION_MODEL ?? 'gpt-5-mini',
-  },
-
-  groq: {
-    apiKey: process.env.GROQ_API_KEY,
-    // Единственная модель Groq, принимающая изображения: проверка смотрит фото.
-    model: process.env.GROQ_MODEL ?? 'qwen/qwen3.6-27b',
-    baseUrl: process.env.GROQ_BASE_URL ?? 'https://api.groq.com/openai/v1',
+  openrouter: {
+    apiKey: process.env.OPENROUTER_API_KEY,
+    baseUrl: process.env.OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1',
+    /** Модерация товаров: нужен разбор фото и связный вердикт в JSON. */
+    model: process.env.OPENROUTER_MODEL ?? 'openai/gpt-5-mini',
+    /** Промпт по фотографии — работа простая, берём модель подешевле. */
+    visionModel: process.env.OPENROUTER_VISION_MODEL ?? 'openai/gpt-5-nano',
+    /** Рисование. Идёт не в чат, а в отдельный Images API OpenRouter. */
+    imageModel: process.env.OPENROUTER_IMAGE_MODEL ?? 'openai/gpt-image-2',
   },
 
   jwt: {

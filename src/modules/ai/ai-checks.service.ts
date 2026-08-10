@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type OpenAI from 'openai';
-import { GROQ_CLIENT } from '../groq/groq-client.provider';
+import { OPENROUTER_CLIENT } from '../openrouter/openrouter-client.provider';
 import { AiChecksRepository } from './ai-checks.repository';
 import { SettingsService } from '../settings/settings.service';
 import { RedisService } from '../redis/redis.service';
@@ -17,17 +17,6 @@ import {
 const REQUEST_TIMEOUT_MS = 60_000;
 
 /**
- * Groq принимает запросы в формате OpenAI, но `reasoning_effort: 'none'` — его
- * собственное расширение, которого нет в типах SDK. Без него модель уходит в
- * рассуждения, не укладывается в JSON, и Groq отвечает 400 «Failed to validate
- * JSON»; с ним ответ ещё и вшестеро дешевле по токенам.
- */
-type GroqCompletionParams = Omit<
-  OpenAI.Chat.ChatCompletionCreateParamsNonStreaming,
-  'reasoning_effort'
-> & { reasoning_effort: 'none' | 'default' };
-
-/**
  * Порог «застревания» на проверке. Заметно больше таймаута запроса вместе с
  * ретраем — иначе при старте второго инстанса подхватились бы карточки,
  * которые прямо сейчас проверяет первый.
@@ -35,8 +24,8 @@ type GroqCompletionParams = Omit<
 const STUCK_PENDING_MINUTES = 15;
 const STUCK_PENDING_LIMIT = 100;
 /**
- * Одно фото, а не вся галерея: у Groq лимит 8000 токенов в минуту, а картинка
- * стоит около 2400 — на четырёх проверка упиралась бы в 429 постоянно.
+ * Одно фото, а не вся галерея: картинка стоит около 2400 токенов, и четыре
+ * из них удорожали бы каждую проверку вчетверо без заметной пользы.
  */
 const MAX_PHOTOS = 1;
 
@@ -73,7 +62,7 @@ export class AiChecksService implements OnModuleInit {
   private readonly logger = new Logger(AiChecksService.name);
 
   constructor(
-    @Inject(GROQ_CLIENT) private readonly groq: OpenAI | null,
+    @Inject(OPENROUTER_CLIENT) private readonly ai: OpenAI | null,
     private readonly repository: AiChecksRepository,
     private readonly settings: SettingsService,
     private readonly redis: RedisService,
@@ -147,8 +136,8 @@ export class AiChecksService implements OnModuleInit {
   }
 
   private async run(card: ProductCard): Promise<void> {
-    if (!this.groq) {
-      await this.publish(card.id, 'проверка отключена: нет ключа Groq');
+    if (!this.ai) {
+      await this.publish(card.id, 'проверка отключена: нет ключа OpenRouter');
       return;
     }
     if (!(await this.settings.isAiChecksEnabled())) {
@@ -156,7 +145,7 @@ export class AiChecksService implements OnModuleInit {
       return;
     }
 
-    const model = this.config.get<string>('groq.model')!;
+    const model = this.config.get<string>('openrouter.model')!;
 
     let result: AiCheckResult;
     let tokensUsed: number | null = null;
@@ -166,7 +155,7 @@ export class AiChecksService implements OnModuleInit {
       result = parseAiCheckResult(completion.choices[0]?.message?.content);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Groq не ответил по товару ${card.id}: ${message}`);
+      this.logger.error(`Модель не ответила по товару ${card.id}: ${message}`);
       await this.repository.create({
         productCardId: card.id,
         verdict: 'warn',
@@ -228,20 +217,19 @@ export class AiChecksService implements OnModuleInit {
     withPhotos: boolean,
   ): Promise<OpenAI.Chat.ChatCompletion> {
     const content = await this.buildUserContent(card, withPhotos);
-    const body: GroqCompletionParams = {
+    const body: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
       model,
       response_format: { type: 'json_object' },
-      reasoning_effort: 'none',
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content },
       ],
     };
 
-    return this.groq!.chat.completions.create(
-      body as unknown as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming,
-      { timeout: REQUEST_TIMEOUT_MS, maxRetries: MAX_RETRIES },
-    );
+    return this.ai!.chat.completions.create(body, {
+      timeout: REQUEST_TIMEOUT_MS,
+      maxRetries: MAX_RETRIES,
+    });
   }
 
   /**
@@ -327,8 +315,8 @@ function photoNote(total: number, attached: number): string {
 /**
  * Модель скачивает картинки сама, и её неудача приходит обычным 400 — отличаем
  * такую ошибку от настоящей недоступности сервиса, чтобы повторить без фото.
- * Формулировки у провайдеров разные: OpenAI пишет «Timeout while downloading»,
- * Groq отдаёт ошибку своего HTTP-клиента вида `Get "****": dial tcp ...`.
+ * Формулировки разные: одни пишут «Timeout while downloading»,
+ * другие отдают ошибку HTTP-клиента вида `Get "****": dial tcp ...`.
  */
 const IMAGE_FETCH_ERROR =
   /downloading|invalid[ _]image|image_parse|unsupported_image|dial tcp|no such host|context deadline|connection refused|Get "/i;

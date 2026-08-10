@@ -46,32 +46,26 @@ class EnvironmentVariables {
   @IsString()
   REDIS_URL?: string;
 
-  /** Без него ИИ-проверка товаров не запускается. */
+  /** Без него не работают ИИ-проверка товаров и составление промпта. */
   @IsOptional()
   @IsString()
-  GROQ_API_KEY?: string;
+  OPENROUTER_API_KEY?: string;
 
   @IsOptional()
   @IsString()
-  GROQ_MODEL?: string;
+  OPENROUTER_MODEL?: string;
 
   @IsOptional()
   @IsString()
-  GROQ_BASE_URL?: string;
-
-  /** Без него не работает генерация фотографий в админке. Всё остальное — работает. */
-  @IsOptional()
-  @IsString()
-  OPENAI_API_KEY?: string;
+  OPENROUTER_VISION_MODEL?: string;
 
   @IsOptional()
   @IsString()
-  OPENAI_IMAGE_MODEL?: string;
+  OPENROUTER_IMAGE_MODEL?: string;
 
-  /** Дешёвая модель с распознаванием картинок — пишет промпт по фотографии. */
   @IsOptional()
   @IsString()
-  OPENAI_VISION_MODEL?: string;
+  OPENROUTER_BASE_URL?: string;
 
   @IsString()
   JWT_ACCESS_SECRET: string;

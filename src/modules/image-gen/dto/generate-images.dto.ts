@@ -16,17 +16,11 @@ export const IMAGE_QUALITIES = ['low', 'medium', 'high'] as const;
 export type ImageQuality = (typeof IMAGE_QUALITIES)[number];
 
 /**
- * Четыре квадратных разрешения. Квадрат — потому что карточка товара везде
- * квадратная. Верхняя граница не выдумана: gpt-image-2 принимает произвольный
- * размер, но обе стороны должны быть кратны 16, а всего пикселей не больше
- * 8 294 400 — в этот лимит 2880x2880 упирается ровно.
+ * Разрешения тирами, как их принимает Images API OpenRouter. Пиксельные пары
+ * он тоже понимает, но тиры надёжнее: у каждой модели свои допустимые размеры,
+ * а тир провайдер разворачивает сам. Тира «3K» в списке нет — его и не бывает.
  */
-export const IMAGE_SIZES = [
-  '1024x1024',
-  '2048x2048',
-  '2560x2560',
-  '2880x2880',
-] as const;
+export const IMAGE_SIZES = ['512', '1K', '2K', '4K'] as const;
 export type ImageSize = (typeof IMAGE_SIZES)[number];
 
 export const MAX_GENERATED_IMAGES = 4;

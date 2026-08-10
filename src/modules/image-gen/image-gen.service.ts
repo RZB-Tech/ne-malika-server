@@ -6,8 +6,8 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import OpenAI, { toFile } from 'openai';
-import { OPENAI_IMAGE_CLIENT } from './openai-image.provider';
+import type OpenAI from 'openai';
+import { OPENROUTER_CLIENT } from '../openrouter/openrouter-client.provider';
 import { FilesService } from '../files/files.service';
 import {
   GenerateImagesDto,
@@ -15,7 +15,16 @@ import {
   MAX_GENERATED_IMAGES,
 } from './dto/generate-images.dto';
 
-type ImageEditSize = NonNullable<OpenAI.Images.ImageEditParams['size']>;
+/** Образец для правки: Images API принимает и ссылку, и data-URL. */
+interface ImageReference {
+  type: 'image_url';
+  image_url: { url: string };
+}
+
+/** Ответ /images: картинки приходят байтами в base64, а не ссылками. */
+interface OpenRouterImagesResponse {
+  data?: { b64_json?: string; media_type?: string }[];
+}
 
 /** Картинки идут дольше текста, а их может быть до четырёх за запрос. */
 const IMAGE_TIMEOUT_MS = 180_000;
@@ -41,31 +50,28 @@ export class ImageGenService {
   private readonly logger = new Logger(ImageGenService.name);
 
   constructor(
-    @Inject(OPENAI_IMAGE_CLIENT) private readonly openai: OpenAI | null,
+    @Inject(OPENROUTER_CLIENT) private readonly router: OpenAI | null,
     private readonly files: FilesService,
     private readonly config: ConfigService,
   ) {}
 
   /**
-   * Промпт по фотографии — кнопка «сгенерировать промпт» в админке. Раньше это
-   * делал Groq, но там суточная квота общая с ИИ-проверкой товаров: пара
-   * нажатий съедала лимит, и проверка оставалась без токенов. Теперь работает
-   * дешёвая модель OpenAI — рисование всё равно идёт туда же.
+   * Промпт по фотографии — кнопка «составить промпт» в админке. Смотрит фото
+   * модель из OpenRouter: она дешевле рисующей, а работа тут простая. Рисование
+   * остаётся у OpenAI — только там есть размер, качество и количество за запрос.
    */
   async describePrompt(photoKey: string): Promise<{ prompt: string }> {
-    if (!this.openai) {
+    if (!this.router) {
       throw new ServiceUnavailableException(
-        'OPENAI_API_KEY не задан — промпт можно написать вручную',
+        'OPENROUTER_API_KEY не задан — промпт можно написать вручную',
       );
     }
 
-    const model = this.config.get<string>('openaiImages.visionModel')!;
+    const model = this.config.get<string>('openrouter.visionModel')!;
     try {
-      const completion = await this.openai.chat.completions.create(
+      const completion = await this.router.chat.completions.create(
         {
           model,
-          // Потолок на ответ: промпт укладывается в пару сотен токенов, а без
-          // ограничения модель может печатать долго — и админ ждёт впустую.
           max_completion_tokens: 500,
           messages: [
             { role: 'system', content: PROMPT_SYSTEM },
@@ -103,6 +109,8 @@ export class ImageGenService {
         `Промпт по фото ${photoKey} не составлен (модель ${model}): ${details}`,
       );
 
+      // Ответ провайдера сам объясняет, в какой лимит упёрлись, — его и
+      // показываем, иначе админ будет жать кнопку впустую.
       const status = (err as { status?: number }).status;
       throw new BadGatewayException(
         status === 429
@@ -113,35 +121,32 @@ export class ImageGenService {
   }
 
   /**
-   * Перерисовывает фотографию товара. Исходник уходит в модель как основа,
+   * Перерисовывает фотографию товара. Исходник уходит модели как образец,
    * поэтому на выходе тот же товар, а не похожий: для карточки это принципиально.
    */
   async generate(dto: GenerateImagesDto): Promise<GeneratedImageDto[]> {
-    if (!this.openai) {
+    if (!this.router) {
       throw new ServiceUnavailableException(
-        'OPENAI_API_KEY не задан — генерация фотографий отключена',
+        'OPENROUTER_API_KEY не задан — генерация фотографий отключена',
       );
     }
 
     const count = Math.min(dto.count ?? 2, MAX_GENERATED_IMAGES);
-    const model = this.config.get<string>('openaiImages.model')!;
+    const model = this.config.get<string>('openrouter.imageModel')!;
 
-    // Референс идёт вторым кадром: модель принимает несколько картинок и
-    // ориентируется на них вместе.
-    const sources = [
+    // Образцы отдаём байтами: Images API принимает и ссылку, но тогда за
+    // картинкой ходил бы провайдер, и наш недоступный CDN снова ломал бы всё.
+    const keys = [
       dto.photoKey,
       ...(dto.referenceKey ? [dto.referenceKey] : []),
     ];
-    // Чтение из S3 отделено от вызова модели: обе стадии отвечают 502, и без
-    // разных текстов админ не поймёт, чинить хранилище или ключ OpenAI.
-    let images: Awaited<ReturnType<typeof toFile>>[];
+    let references: ImageReference[];
     try {
-      images = await Promise.all(
-        sources.map(async (key, i) =>
-          toFile(await this.download(key), `source-${i}.png`, {
-            type: 'image/png',
-          }),
-        ),
+      references = await Promise.all(
+        keys.map(async (key) => ({
+          type: 'image_url' as const,
+          image_url: { url: await this.files.toDataUrl(key) },
+        })),
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -153,8 +158,13 @@ export class ImageGenService {
       );
     }
 
+    // Каждый вариант — отдельный короткий запрос вместо одного длинного с n=N:
+    // долгие соединения рвут по простою, а короткие успевают. Побочно это даёт
+    // частичный успех — три картинки из четырёх лучше, чем ошибка на всю пачку.
     const attempts = await Promise.allSettled(
-      Array.from({ length: count }, () => this.requestOne(model, images, dto)),
+      Array.from({ length: count }, () =>
+        this.requestOne(model, references, dto),
+      ),
     );
 
     const saved: GeneratedImageDto[] = [];
@@ -170,8 +180,7 @@ export class ImageGenService {
           : 'модель не вернула ни одной картинки';
 
       this.logger.error(
-        `Генерация по фото ${dto.photoKey} упала (модель ${model}, ` +
-          `${images.length} файл(ов), ${sizeKb(images)} КБ): ${details}`,
+        `Генерация по фото ${dto.photoKey} упала (модель ${model}): ${details}`,
       );
       throw new BadGatewayException(`Модель не отработала: ${details}`);
     }
@@ -184,24 +193,31 @@ export class ImageGenService {
     return saved;
   }
 
-  /** Один вариант за запрос: короткое соединение живёт до ответа, длинное рвут. */
+  /**
+   * Один вариант за запрос. Идёт не в chat/completions, а в отдельный
+   * /images — только там есть размер, качество и правка по образцу.
+   * SDK такого эндпоинта не знает, поэтому дёргаем его через client.post:
+   * так сохраняются базовый адрес, ключ, keep-alive и повторы.
+   */
   private async requestOne(
     model: string,
-    images: Awaited<ReturnType<typeof toFile>>[],
+    references: ImageReference[],
     dto: GenerateImagesDto,
   ): Promise<GeneratedImageDto[]> {
-    const result = await this.openai!.images.edit(
+    const result = await this.router!.post<unknown, OpenRouterImagesResponse>(
+      '/images',
       {
-        model,
-        image: images.length === 1 ? images[0] : images,
-        prompt: dto.prompt,
-        n: 1,
-        // Размеры вроде 2048x2048 и 2880x2880 принимает gpt-image-2, но в
-        // типах SDK перечислены только старые — union там отстаёт от API.
-        size: (dto.size ?? '1024x1024') as ImageEditSize,
-        quality: dto.quality ?? 'medium',
+        body: {
+          model,
+          prompt: dto.prompt,
+          n: 1,
+          size: dto.size ?? '1K',
+          quality: dto.quality ?? 'medium',
+          input_references: references,
+        },
+        timeout: IMAGE_TIMEOUT_MS,
+        maxRetries: 2,
       },
-      { timeout: IMAGE_TIMEOUT_MS, maxRetries: 2 },
     );
 
     const saved: GeneratedImageDto[] = [];
@@ -209,21 +225,11 @@ export class ImageGenService {
       if (!item.b64_json) continue;
       const key = await this.files.saveBuffer(
         Buffer.from(item.b64_json, 'base64'),
-        'image/png',
+        item.media_type === 'image/jpeg' ? 'image/jpeg' : 'image/png',
       );
       saved.push({ key, url: this.files.buildPublicUrl(key) });
     }
     return saved;
-  }
-
-  /** Исходник лежит в нашем S3 — тянем его байтами, а не ссылкой: приватный бакет модель не откроет. */
-  private async download(key: string): Promise<Buffer> {
-    const file = await this.files.getFile(key);
-    const chunks: Buffer[] = [];
-    for await (const chunk of file.body) {
-      chunks.push(Buffer.from(chunk as Uint8Array));
-    }
-    return Buffer.concat(chunks);
   }
 }
 
@@ -249,11 +255,6 @@ function describeError(err: unknown): string {
   ]
     .filter(Boolean)
     .join(' · ');
-}
-
-/** Вес отправляемого в модель тела — первый подозреваемый при обрыве связи. */
-function sizeKb(files: { size?: number }[]): number {
-  return Math.round(files.reduce((sum, f) => sum + (f.size ?? 0), 0) / 1024);
 }
 
 /**
