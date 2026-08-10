@@ -220,7 +220,7 @@ export class ImageGenService {
           model,
           prompt: dto.prompt,
           n: 1,
-          size: dto.size ?? '1K',
+          size: dto.size ?? '1024x1024',
           quality: dto.quality ?? 'medium',
           input_references: references,
         },

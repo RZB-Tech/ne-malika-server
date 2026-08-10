@@ -16,11 +16,19 @@ export const IMAGE_QUALITIES = ['low', 'medium', 'high'] as const;
 export type ImageQuality = (typeof IMAGE_QUALITIES)[number];
 
 /**
- * Разрешения тирами, как их принимает Images API OpenRouter. Пиксельные пары
- * он тоже понимает, но тиры надёжнее: у каждой модели свои допустимые размеры,
- * а тир провайдер разворачивает сам. Тира «3K» в списке нет — его и не бывает.
+ * Размеры только в пикселях. Тиры вроде «1K» в документации OpenRouter описаны,
+ * но gpt-image-2 их отвергает: «Invalid size '1K'. Expected WIDTHxHEIGHT».
+ *
+ * Значения не произвольные — модель требует, чтобы обе стороны были кратны 16,
+ * а всего пикселей было не больше 8 294 400. В этот потолок 2880x2880 упирается
+ * ровно, поэтому он и есть максимум для квадрата.
  */
-export const IMAGE_SIZES = ['512', '1K', '2K', '4K'] as const;
+export const IMAGE_SIZES = [
+  '1024x1024',
+  '2048x2048',
+  '2560x2560',
+  '2880x2880',
+] as const;
 export type ImageSize = (typeof IMAGE_SIZES)[number];
 
 export const MAX_GENERATED_IMAGES = 4;
