@@ -72,7 +72,10 @@ export class ImageGenService {
       const completion = await this.router.chat.completions.create(
         {
           model,
-          max_completion_tokens: 500,
+          // Потолок с запасом. У «рассуждающих» моделей скрытые токены тратят
+          // этот же бюджет, и при малом лимите видимый ответ приходит пустым —
+          // поэтому по умолчанию берём модель без рассуждений, а запас даём.
+          max_completion_tokens: 1000,
           messages: [
             { role: 'system', content: PROMPT_SYSTEM },
             {
@@ -98,9 +101,15 @@ export class ImageGenService {
         { timeout: PROMPT_TIMEOUT_MS, maxRetries: 1 },
       );
 
-      const prompt = cleanPrompt(completion.choices[0]?.message?.content);
+      const choice = completion.choices[0];
+      const prompt = cleanPrompt(choice?.message?.content);
       if (!prompt) {
-        throw new Error('модель вернула пустой промпт');
+        // Пустой ответ чаще всего значит обрыв по лимиту: у рассуждающих
+        // моделей бюджет уходит на скрытые токены. Пишем причину сразу.
+        throw new Error(
+          `модель вернула пустой промпт (finish_reason: ${choice?.finish_reason ?? '—'}, ` +
+            `токенов: ${completion.usage?.completion_tokens ?? '—'})`,
+        );
       }
       return { prompt };
     } catch (err) {

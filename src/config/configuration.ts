@@ -20,10 +20,14 @@ export default () => ({
   openrouter: {
     apiKey: process.env.OPENROUTER_API_KEY,
     baseUrl: process.env.OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1',
-    /** Модерация товаров: нужен разбор фото и связный вердикт в JSON. */
-    model: process.env.OPENROUTER_MODEL ?? 'openai/gpt-5-mini',
+    /**
+     * Модерация и составление промпта. Модели намеренно без «рассуждений»:
+     * у рассуждающих скрытые токены тратят тот же бюджет ответа, из-за чего
+     * видимый текст приходит пустым, а строгий JSON ломается.
+     */
+    model: process.env.OPENROUTER_MODEL ?? 'openai/gpt-4.1-mini',
     /** Промпт по фотографии — работа простая, берём модель подешевле. */
-    visionModel: process.env.OPENROUTER_VISION_MODEL ?? 'openai/gpt-5-nano',
+    visionModel: process.env.OPENROUTER_VISION_MODEL ?? 'openai/gpt-4o-mini',
     /** Рисование. Идёт не в чат, а в отдельный Images API OpenRouter. */
     imageModel: process.env.OPENROUTER_IMAGE_MODEL ?? 'openai/gpt-image-2',
   },
