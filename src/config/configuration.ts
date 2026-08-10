@@ -26,6 +26,11 @@ export default () => ({
   openaiImages: {
     apiKey: process.env.OPENAI_API_KEY,
     model: process.env.OPENAI_IMAGE_MODEL ?? 'gpt-image-2',
+    /**
+     * Модель, которая смотрит фото и пишет промпт. Отдельно от рисующей и
+     * намеренно дешёвая: работа простая, а платить как за генерацию незачем.
+     */
+    visionModel: process.env.OPENAI_VISION_MODEL ?? 'gpt-5-mini',
   },
 
   groq: {

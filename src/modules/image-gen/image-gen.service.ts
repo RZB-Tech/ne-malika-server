@@ -7,7 +7,6 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import OpenAI, { toFile } from 'openai';
-import { GROQ_CLIENT } from '../groq/groq-client.provider';
 import { OPENAI_IMAGE_CLIENT } from './openai-image.provider';
 import { FilesService } from '../files/files.service';
 import {
@@ -42,29 +41,28 @@ export class ImageGenService {
 
   constructor(
     @Inject(OPENAI_IMAGE_CLIENT) private readonly openai: OpenAI | null,
-    @Inject(GROQ_CLIENT) private readonly groq: OpenAI | null,
     private readonly files: FilesService,
     private readonly config: ConfigService,
   ) {}
 
   /**
-   * Промпт по фотографии — кнопка «сгенерировать промпт» в админке. Пишет его
-   * Groq, а не OpenAI: он уже читает фото товаров в ИИ-проверке и стоит дешевле,
-   * а рисование всё равно уходит в OpenAI.
+   * Промпт по фотографии — кнопка «сгенерировать промпт» в админке. Раньше это
+   * делал Groq, но там суточная квота общая с ИИ-проверкой товаров: пара
+   * нажатий съедала лимит, и проверка оставалась без токенов. Теперь работает
+   * дешёвая модель OpenAI — рисование всё равно идёт туда же.
    */
   async describePrompt(photoKey: string): Promise<{ prompt: string }> {
-    if (!this.groq) {
+    if (!this.openai) {
       throw new ServiceUnavailableException(
-        'Groq не настроен — промпт можно написать вручную',
+        'OPENAI_API_KEY не задан — промпт можно написать вручную',
       );
     }
 
-    const model = this.config.get<string>('groq.model')!;
+    const model = this.config.get<string>('openaiImages.visionModel')!;
     try {
-      const completion = await this.groq.chat.completions.create(
+      const completion = await this.openai.chat.completions.create(
         {
           model,
-          reasoning_effort: 'none',
           messages: [
             { role: 'system', content: PROMPT_SYSTEM },
             {
@@ -78,7 +76,7 @@ export class ImageGenService {
               ],
             },
           ],
-        } as unknown as OpenAI.Chat.ChatCompletionCreateParamsNonStreaming,
+        },
         { timeout: PROMPT_TIMEOUT_MS, maxRetries: 1 },
       );
 
@@ -88,10 +86,18 @@ export class ImageGenService {
       }
       return { prompt };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Промпт по фото ${photoKey} не составлен: ${message}`);
+      const details = describeError(err);
+      this.logger.error(
+        `Промпт по фото ${photoKey} не составлен (модель ${model}): ${details}`,
+      );
+
+      // Ответ провайдера сам объясняет, в какой лимит упёрлись — его и
+      // показываем, иначе админ будет жать кнопку впустую.
+      const status = (err as { status?: number }).status;
       throw new BadGatewayException(
-        'Не удалось составить промпт — попробуйте ещё раз или напишите его сами',
+        status === 429
+          ? `Лимит запросов исчерпан. ${details}`
+          : `Не удалось составить промпт: ${details}`,
       );
     }
   }
@@ -137,11 +143,6 @@ export class ImageGenService {
       );
     }
 
-    // Каждый вариант — отдельный короткий запрос вместо одного длинного с n=N.
-    // Так задумано не ради параллельности: запрос с n=2 висел полторы минуты и
-    // ему рвали соединение (`Connection error` без HTTP-кода), а одиночный
-    // укладывается в десятки секунд. Побочно это даёт частичный успех — три
-    // картинки из четырёх лучше, чем ошибка на всю пачку.
     const attempts = await Promise.allSettled(
       Array.from({ length: count }, () => this.requestOne(model, images, dto)),
     );

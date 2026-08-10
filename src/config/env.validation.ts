@@ -68,6 +68,11 @@ class EnvironmentVariables {
   @IsString()
   OPENAI_IMAGE_MODEL?: string;
 
+  /** Дешёвая модель с распознаванием картинок — пишет промпт по фотографии. */
+  @IsOptional()
+  @IsString()
+  OPENAI_VISION_MODEL?: string;
+
   @IsString()
   JWT_ACCESS_SECRET: string;
 
