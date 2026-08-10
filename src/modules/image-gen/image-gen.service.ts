@@ -68,7 +68,7 @@ export class ImageGenService {
     @Inject(OPENROUTER_CLIENT) private readonly router: OpenAI | null,
     private readonly files: FilesService,
     private readonly config: ConfigService,
-  ) { }
+  ) {}
 
   /**
    * Промпт по фотографии — кнопка «составить промпт» в админке. Смотрит фото
@@ -116,7 +116,7 @@ export class ImageGenService {
       if (!prompt) {
         throw new Error(
           `модель вернула пустой промпт (finish_reason: ${choice?.finish_reason ?? '—'}, ` +
-          `токенов: ${completion.usage?.completion_tokens ?? '—'})`,
+            `токенов: ${completion.usage?.completion_tokens ?? '—'})`,
         );
       }
       return { prompt };
@@ -201,7 +201,7 @@ export class ImageGenService {
     const failed = attempts.length - saved.length;
     this.logger.log(
       `Сгенерировано ${saved.length} из ${count} фото по ключу ${dto.photoKey}` +
-      (failed > 0 ? ` (${failed} попыток не удалось)` : ''),
+        (failed > 0 ? ` (${failed} попыток не удалось)` : ''),
     );
     return saved;
   }

@@ -1,0 +1,16 @@
+{
+  // Форматирует Prettier из проекта, а не встроенный в редактор форматтер TS.
+  // Встроенный пишет пустой блок как `{ }` и иначе переносит длинные строки —
+  // CI на этом падал: eslint здесь запускает те же правила prettier.
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.formatOnSave": true,
+  "[typescript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[javascript]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  }
+}
