@@ -10,6 +10,7 @@ import type OpenAI from 'openai';
 import { OPENROUTER_CLIENT } from '../openrouter/openrouter-client.provider';
 import { FilesService } from '../files/files.service';
 import {
+  DescribePromptDto,
   GenerateImagesDto,
   GeneratedImageDto,
   MAX_GENERATED_IMAGES,
@@ -31,11 +32,36 @@ const IMAGE_TIMEOUT_MS = 180_000;
 const PROMPT_TIMEOUT_MS = 60_000;
 
 /**
+ * Промпт для карточки-инфографики — то, что продаётся на Wildberries и Ozon:
+ * товар на оформленном фоне, крупный заголовок и выноски с характеристиками.
+ *
  * Промпт пишем по-английски: генераторы изображений обучены на английских
- * описаниях и понимают их точнее, чем перевод. Требование краткости здесь не
- * про стиль — длинный ответ модель печатает дольше, а ждёт его живой человек.
+ * описаниях. Русские надписи — исключение: их модель должна нарисовать дословно,
+ * поэтому они идут в кавычках прямо внутри английского текста.
  */
-const PROMPT_SYSTEM = `You write prompts for an image generator. The result must look like a marketplace product listing photo (like Amazon or Ozon), not an advertisement or a lifestyle scene.
+const PROMPT_SYSTEM_CARD = `You write prompts for an image generator. The result must be a vertical marketplace listing card in the style of Wildberries or Ozon: a photoreal product composited onto a designed background with Russian marketing text over it. Not a bare studio photo, not a lifestyle scene.
+
+Reply with the prompt itself only: plain English text, no JSON, no quotes around the whole answer, no preamble like "Here is the prompt:".
+
+Build the prompt in this order:
+1. The product: type, brand and model if they are readable, colour, material, and the details that must survive — ports, buttons, cable, screen, logo placement.
+2. The hero shot: product large and angled, filling most of the frame, dramatic studio light with a rim highlight, realistic reflection and contact shadow.
+3. The background: a bold gradient or scene that suits the product — deep red and black for gaming gear, cool blue and white for office gear — with a glow behind the product. Never plain white.
+4. The Russian text, every string quoted verbatim in double quotes:
+   - a heavy bold Cyrillic headline across the top, one or two words naming the main benefit;
+   - a small brand or model line above the headline;
+   - two or three feature callouts placed next to the part they describe, each a short Cyrillic label with a number or unit, sitting in a rounded badge or coloured block.
+5. Layout words: clean commercial e-commerce infographic, flat vector badges over a photoreal product, high contrast, generous margins.
+
+Only state specs that are visible in the photo or printed on the product. When a number is unknown use a benefit word instead: "Беспроводная", "Компактный", "Быстрая зарядка", "4 в 1".
+
+Keep it under 130 words.`;
+
+/**
+ * Промпт для обычной студийной съёмки — режим «фото на белом». Здесь надписи и
+ * фон, наоборот, запрещены: карточка получится из самого товара.
+ */
+const PROMPT_SYSTEM_PHOTO = `You write prompts for an image generator. The result must look like a marketplace product listing photo (like Amazon or Ozon), not an advertisement or a lifestyle scene.
 
 Reply with the prompt itself only: plain English text, no JSON, no quotes around it, no preamble like "Here is the prompt:".
 
@@ -48,23 +74,55 @@ Do not invent specs you cannot see in the photo. If the model is unrecognizable,
 Keep it under 60 words.`;
 
 /**
- * Хвост, который приклеивается к любому промпту при генерации. Промпт пишет
- * человек и может забыть про формат, а модель по умолчанию любит показать товар
- * в коробке и в интерьере — для карточки маркетплейса это брак.
+ * Задание для того же составителя промпта, когда админ приложил референс. Без
+ * этого текста модель смотрит на две картинки как на два фото товара и пишет
+ * описание по первой — вёрстка образца в промпт не попадает, а значит и в
+ * рисунок тоже.
  */
-/**
- * Когда картинок две, модели надо объяснить, кто есть кто. Без этого она видит
- * два равноправных образца, берёт за основу первый и второй не использует —
- * снаружи это выглядит как «референс не работает».
- */
-const REFERENCE_ROLES = [
-  'Two reference images are provided.',
-  'IMAGE 1 is the product to depict: keep its exact model, shape, colour, ports and markings.',
-  'IMAGE 2 is a style reference only: follow its framing, camera angle, lighting and background treatment.',
-  'Never copy the product, packaging or any object from IMAGE 2 — take only the visual style from it.',
+const PROMPT_WITH_REFERENCE = [
+  'IMAGE 1 is the product photo. IMAGE 2 is a finished card whose design must be copied.',
+  'Describe the product from IMAGE 1 placed into the layout of IMAGE 2:',
+  'repeat the background, colour scheme, text block positions, badge shapes and typography weight of IMAGE 2,',
+  'but write new Russian wording that fits the product from IMAGE 1.',
+  'Never describe the product or reuse the wording from IMAGE 2.',
 ].join(' ');
 
+/**
+ * Роли картинок при генерации. Модель получает два образца и без пояснения
+ * считает оба товаром: берёт за основу первый, второй игнорирует — снаружи это
+ * выглядит как «референс не работает».
+ */
+const REFERENCE_ROLES = [
+  'Two images are provided.',
+  'IMAGE 1 is the product: reproduce its exact model, shape, colour, ports, buttons and markings.',
+  'IMAGE 2 is the design reference: copy its layout, background, colour scheme, lighting, text placement, badge shapes and typography weight.',
+  'Take only the design from IMAGE 2 — never its product and never its wording.',
+].join(' ');
+
+/**
+ * Хвост при генерации по референсу. Он намеренно короткий: подачу задаёт
+ * образец, и любое своё описание фона или вёрстки с ним спорит. Остаются
+ * требования, которые по картинке не считываются.
+ */
+const REFERENCE_STYLE = [
+  'Render every Russian word in correct, sharp Cyrillic — no invented letters, no misspellings, no Latin transliteration.',
+  'No watermark, no marketplace logo, no placeholder text.',
+].join(' ');
+
+/**
+ * Хвост для карточки без референса. Промпт пишет человек и про формат забывает,
+ * а модель по умолчанию рисует товар на белом — для карточки это брак.
+ */
 const CARD_STYLE = [
+  'Vertical marketplace listing card, Wildberries / Ozon style infographic.',
+  'Photoreal product composited on a designed background: bold gradient or scene, glow and rim light behind the product, realistic contact shadow.',
+  'Heavy bold Cyrillic headline across the top, short Russian feature callouts in rounded badges beside the parts they describe.',
+  'Render every Russian word in correct, sharp Cyrillic — no invented letters, no misspellings, no Latin transliteration.',
+  'Clean commercial layout, generous margins, high contrast, no watermark, no marketplace logo, no placeholder text.',
+].join(' ');
+
+/** Хвост для режима «фото на белом»: ни фона, ни надписей, только товар. */
+const PHOTO_STYLE = [
   'Marketplace product listing photo.',
   'The bare product only — no box, no packaging, no props, no people, no room.',
   'Centred, filling most of the frame, pure white seamless background,',
@@ -84,10 +142,11 @@ export class ImageGenService {
 
   /**
    * Промпт по фотографии — кнопка «составить промпт» в админке. Смотрит фото
-   * модель из OpenRouter: она дешевле рисующей, а работа тут простая. Рисование
-   * остаётся у OpenAI — только там есть размер, качество и количество за запрос.
+   * модель из OpenRouter: она дешевле рисующей, а работа тут простая. Если админ
+   * приложил референс, тот уходит вторым изображением — иначе описание вёрстки
+   * взять неоткуда и образец на результат не влияет.
    */
-  async describePrompt(photoKey: string): Promise<{ prompt: string }> {
+  async describePrompt(dto: DescribePromptDto): Promise<{ prompt: string }> {
     if (!this.router) {
       throw new ServiceUnavailableException(
         'OPENROUTER_API_KEY не задан — промпт можно написать вручную',
@@ -95,27 +154,39 @@ export class ImageGenService {
     }
 
     const model = this.config.get<string>('openrouter.visionModel')!;
+    const withReference = Boolean(dto.referenceKey);
+    const system =
+      dto.style === 'photo' ? PROMPT_SYSTEM_PHOTO : PROMPT_SYSTEM_CARD;
+
     try {
+      const images = await Promise.all(
+        [dto.photoKey, ...(dto.referenceKey ? [dto.referenceKey] : [])].map(
+          async (key) => ({
+            type: 'image_url' as const,
+            image_url: {
+              url: await this.files.toDataUrl(key),
+              detail: 'low' as const,
+            },
+          }),
+        ),
+      );
+
       const completion = await this.router.chat.completions.create(
         {
           model,
           max_completion_tokens: 1000,
           messages: [
-            { role: 'system', content: PROMPT_SYSTEM },
+            { role: 'system', content: system },
             {
               role: 'user',
               content: [
                 {
                   type: 'text',
-                  text: 'Write the image prompt for this product photo.',
+                  text: withReference
+                    ? PROMPT_WITH_REFERENCE
+                    : 'Write the image prompt for this product photo.',
                 },
-                {
-                  type: 'image_url',
-                  image_url: {
-                    url: await this.files.toDataUrl(photoKey),
-                    detail: 'low',
-                  },
-                },
+                ...images,
               ],
             },
           ],
@@ -135,7 +206,7 @@ export class ImageGenService {
     } catch (err) {
       const details = describeError(err);
       this.logger.error(
-        `Промпт по фото ${photoKey} не составлен (модель ${model}): ${details}`,
+        `Промпт по фото ${dto.photoKey} не составлен (модель ${model}): ${details}`,
       );
 
       const status = (err as { status?: number }).status;
@@ -231,19 +302,12 @@ export class ImageGenService {
       {
         body: {
           model,
-          // Стиль карточки дописываем сами и в конце: так он не спорит с
-          // описанием товара, а уточняет подачу. Роли картинок объясняем
-          // отдельно — без этого модель считает обе образцами товара и
-          // референс просто игнорирует.
           prompt: [
             dto.prompt.trim(),
-            references.length > 1 ? REFERENCE_ROLES : null,
-            CARD_STYLE,
-          ]
-            .filter(Boolean)
-            .join('\n\n'),
+            ...styleTail(references.length, dto),
+          ].join('\n\n'),
           n: 1,
-          size: dto.size ?? '1024x1024',
+          size: dto.size ?? '960x1280',
           quality: dto.quality ?? 'medium',
           input_references: references,
         },
@@ -263,6 +327,16 @@ export class ImageGenService {
     }
     return saved;
   }
+}
+
+/**
+ * Что дописать к промпту админа. С референсом подачу диктует образец, поэтому
+ * свой стиль не добавляем: раньше хвост требовал белый фон и запрещал надписи —
+ * и перебивал любую картинку-образец.
+ */
+function styleTail(referenceCount: number, dto: GenerateImagesDto): string[] {
+  if (referenceCount > 1) return [REFERENCE_ROLES, REFERENCE_STYLE];
+  return [dto.style === 'photo' ? PHOTO_STYLE : CARD_STYLE];
 }
 
 /**

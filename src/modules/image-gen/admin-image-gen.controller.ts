@@ -26,7 +26,7 @@ export class AdminImageGenController {
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @ApiOperation({ summary: 'Составить промпт по фотографии товара' })
   describe(@Body() dto: DescribePromptDto) {
-    return this.imageGenService.describePrompt(dto.photoKey);
+    return this.imageGenService.describePrompt(dto);
   }
 
   /** Лимит жёстче обычного: каждый запрос — до четырёх платных картинок. */
