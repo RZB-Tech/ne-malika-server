@@ -52,6 +52,18 @@ Keep it under 60 words.`;
  * человек и может забыть про формат, а модель по умолчанию любит показать товар
  * в коробке и в интерьере — для карточки маркетплейса это брак.
  */
+/**
+ * Когда картинок две, модели надо объяснить, кто есть кто. Без этого она видит
+ * два равноправных образца, берёт за основу первый и второй не использует —
+ * снаружи это выглядит как «референс не работает».
+ */
+const REFERENCE_ROLES = [
+  'Two reference images are provided.',
+  'IMAGE 1 is the product to depict: keep its exact model, shape, colour, ports and markings.',
+  'IMAGE 2 is a style reference only: follow its framing, camera angle, lighting and background treatment.',
+  'Never copy the product, packaging or any object from IMAGE 2 — take only the visual style from it.',
+].join(' ');
+
 const CARD_STYLE = [
   'Marketplace product listing photo.',
   'The bare product only — no box, no packaging, no props, no people, no room.',
@@ -223,8 +235,16 @@ export class ImageGenService {
         body: {
           model,
           // Стиль карточки дописываем сами и в конце: так он не спорит с
-          // описанием товара, а уточняет подачу.
-          prompt: `${dto.prompt.trim()}\n\n${CARD_STYLE}`,
+          // описанием товара, а уточняет подачу. Роли картинок объясняем
+          // отдельно — без этого модель считает обе образцами товара и
+          // референс просто игнорирует.
+          prompt: [
+            dto.prompt.trim(),
+            references.length > 1 ? REFERENCE_ROLES : null,
+            CARD_STYLE,
+          ]
+            .filter(Boolean)
+            .join('\n\n'),
           n: 1,
           size: dto.size ?? '1024x1024',
           quality: dto.quality ?? 'medium',
