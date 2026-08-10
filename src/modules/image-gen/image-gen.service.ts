@@ -45,7 +45,7 @@ export class ImageGenService {
     @Inject(GROQ_CLIENT) private readonly groq: OpenAI | null,
     private readonly files: FilesService,
     private readonly config: ConfigService,
-  ) { }
+  ) {}
 
   /**
    * Промпт по фотографии — кнопка «сгенерировать промпт» в админке. Пишет его
@@ -172,7 +172,7 @@ export class ImageGenService {
 
       this.logger.error(
         `Генерация по фото ${dto.photoKey} упала (модель ${model}, ` +
-        `${images.length} файл(ов), ${sizeKb(images)} КБ): ${details}`,
+          `${images.length} файл(ов), ${sizeKb(images)} КБ): ${details}`,
       );
       throw new BadGatewayException(`Модель не отработала: ${details}`);
     }
