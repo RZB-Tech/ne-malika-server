@@ -59,6 +59,15 @@ class EnvironmentVariables {
   @IsString()
   GROQ_BASE_URL?: string;
 
+  /** Без него не работает генерация фотографий в админке. Всё остальное — работает. */
+  @IsOptional()
+  @IsString()
+  OPENAI_API_KEY?: string;
+
+  @IsOptional()
+  @IsString()
+  OPENAI_IMAGE_MODEL?: string;
+
   @IsString()
   JWT_ACCESS_SECRET: string;
 

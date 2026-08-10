@@ -11,13 +11,18 @@ import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
 import {
   GetObjectCommand,
   GetObjectCommandOutput,
+  PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
 import { Readable } from 'stream';
 import { S3_CLIENT } from './s3-client.provider';
 import { CreateUploadUrlDto } from './dto/create-upload-url.dto';
 import { UploadUrlResponseDto } from './dto/upload-url-response.dto';
-import { MAX_FILE_SIZE_BYTES, PRESIGNED_URL_TTL_SEC } from './files.constants';
+import {
+  AllowedMimeType,
+  MAX_FILE_SIZE_BYTES,
+  PRESIGNED_URL_TTL_SEC,
+} from './files.constants';
 
 type S3FileBody = NonNullable<GetObjectCommandOutput['Body']>;
 
@@ -76,6 +81,34 @@ export class FilesService {
       fields,
       expiresInSec: PRESIGNED_URL_TTL_SEC,
     };
+  }
+
+  /**
+   * Кладёт в хранилище файл, пришедший не от браузера, а из нашего же кода —
+   * сейчас это картинки от генератора. Presigned-ссылка тут не годится: она
+   * рассчитана на загрузку с клиента, а байты уже у нас.
+   *
+   * Ключ такой же — чистый uuid, поэтому сгенерированное фото ничем не
+   * отличается от загруженного и ложится в product_cards.photos как есть.
+   */
+  async saveBuffer(
+    body: Buffer,
+    contentType: AllowedMimeType,
+  ): Promise<string> {
+    const bucket = this.configService.get<string>('s3.bucket')!;
+    const key = randomUUID();
+
+    await this.s3.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: body,
+        ContentType: contentType,
+      }),
+    );
+
+    this.logger.debug(`Сохранён сгенерированный файл ${key}`);
+    return key;
   }
 
   async getFile(key: string): Promise<S3File> {
