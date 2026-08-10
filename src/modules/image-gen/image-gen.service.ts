@@ -137,38 +137,26 @@ export class ImageGenService {
       );
     }
 
-    let result: OpenAI.Images.ImagesResponse;
-    try {
-      result = await this.openai.images.edit(
-        {
-          model,
-          image: images.length === 1 ? images[0] : images,
-          prompt: dto.prompt,
-          n: count,
-          // Размеры вроде 2048x2048 и 3840x2160 принимает gpt-image-2, но в
-          // типах SDK перечислены только старые — union там отстаёт от API.
-          size: (dto.size ?? '1024x1024') as ImageEditSize,
-          quality: dto.quality ?? 'medium',
-        },
-        { timeout: IMAGE_TIMEOUT_MS, maxRetries: 1 },
-      );
-    } catch (err) {
-      const e = err as {
-        status?: number;
-        code?: string;
-        message?: string;
-        cause?: { code?: string; message?: string };
-      };
-      const details = [
-        e.status ? `HTTP ${e.status}` : null,
-        e.code,
-        e.message ?? String(err),
-        e.cause
-          ? `причина: ${e.cause.code ?? ''} ${e.cause.message ?? ''}`.trim()
-          : null,
-      ]
-        .filter(Boolean)
-        .join(' · ');
+    // Каждый вариант — отдельный короткий запрос вместо одного длинного с n=N.
+    // Так задумано не ради параллельности: запрос с n=2 висел полторы минуты и
+    // ему рвали соединение (`Connection error` без HTTP-кода), а одиночный
+    // укладывается в десятки секунд. Побочно это даёт частичный успех — три
+    // картинки из четырёх лучше, чем ошибка на всю пачку.
+    const attempts = await Promise.allSettled(
+      Array.from({ length: count }, () => this.requestOne(model, images, dto)),
+    );
+
+    const saved: GeneratedImageDto[] = [];
+    for (const attempt of attempts) {
+      if (attempt.status === 'fulfilled') saved.push(...attempt.value);
+    }
+
+    if (saved.length === 0) {
+      const reason = attempts.find((a) => a.status === 'rejected');
+      const details =
+        reason?.status === 'rejected'
+          ? describeError(reason.reason)
+          : 'модель не вернула ни одной картинки';
 
       this.logger.error(
         `Генерация по фото ${dto.photoKey} упала (модель ${model}, ` +
@@ -176,6 +164,34 @@ export class ImageGenService {
       );
       throw new BadGatewayException(`Модель не отработала: ${details}`);
     }
+
+    const failed = attempts.length - saved.length;
+    this.logger.log(
+      `Сгенерировано ${saved.length} из ${count} фото по ключу ${dto.photoKey}` +
+        (failed > 0 ? ` (${failed} попыток не удалось)` : ''),
+    );
+    return saved;
+  }
+
+  /** Один вариант за запрос: короткое соединение живёт до ответа, длинное рвут. */
+  private async requestOne(
+    model: string,
+    images: Awaited<ReturnType<typeof toFile>>[],
+    dto: GenerateImagesDto,
+  ): Promise<GeneratedImageDto[]> {
+    const result = await this.openai!.images.edit(
+      {
+        model,
+        image: images.length === 1 ? images[0] : images,
+        prompt: dto.prompt,
+        n: 1,
+        // Размеры вроде 2048x2048 и 2880x2880 принимает gpt-image-2, но в
+        // типах SDK перечислены только старые — union там отстаёт от API.
+        size: (dto.size ?? '1024x1024') as ImageEditSize,
+        quality: dto.quality ?? 'medium',
+      },
+      { timeout: IMAGE_TIMEOUT_MS, maxRetries: 2 },
+    );
 
     const saved: GeneratedImageDto[] = [];
     for (const item of result.data ?? []) {
@@ -186,14 +202,6 @@ export class ImageGenService {
       );
       saved.push({ key, url: this.files.buildPublicUrl(key) });
     }
-
-    if (saved.length === 0) {
-      throw new BadGatewayException('Модель не вернула ни одной картинки');
-    }
-
-    this.logger.log(
-      `Сгенерировано ${saved.length} фото по товару из ключа ${dto.photoKey}`,
-    );
     return saved;
   }
 
@@ -206,6 +214,30 @@ export class ImageGenService {
     }
     return Buffer.concat(chunks);
   }
+}
+
+/**
+ * Разбор ошибки SDK. Отдельно вытаскиваем cause: при обрыве связи наружу летит
+ * общее «Connection error.», а настоящая причина (ECONNRESET, таймаут заголовков,
+ * сброс TLS) лежит только там — без неё чинить нечего.
+ */
+function describeError(err: unknown): string {
+  const e = err as {
+    status?: number;
+    code?: string;
+    message?: string;
+    cause?: { code?: string; message?: string };
+  };
+  return [
+    e.status ? `HTTP ${e.status}` : null,
+    e.code,
+    e.message ?? String(err),
+    e.cause
+      ? `причина: ${e.cause.code ?? ''} ${e.cause.message ?? ''}`.trim()
+      : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 }
 
 /** Вес отправляемого в модель тела — первый подозреваемый при обрыве связи. */
