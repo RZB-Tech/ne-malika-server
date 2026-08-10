@@ -21,19 +21,20 @@ type ImageEditSize = NonNullable<OpenAI.Images.ImageEditParams['size']>;
 const IMAGE_TIMEOUT_MS = 180_000;
 const PROMPT_TIMEOUT_MS = 60_000;
 
-const PROMPT_SYSTEM = `Ты пишешь промпт для генератора изображений по фотографии товара с маркетплейса компьютерной техники.
+/**
+ * Промпт пишем по-английски: генераторы изображений обучены на английских
+ * описаниях и понимают их точнее, чем перевод. Требование краткости здесь не
+ * про стиль — длинный ответ модель печатает дольше, а ждёт его живой человек.
+ */
+const PROMPT_SYSTEM = `You write prompts for an image generator, based on a product photo from a computer-hardware marketplace.
 
-Ответ — только сам промпт обычным текстом. Без JSON, без кавычек вокруг,
-без заголовков и пояснений вроде «Вот промпт:».
+Reply with the prompt itself only: plain English text, no JSON, no quotes around it, no preamble like "Here is the prompt:".
 
-В промпте по-русски опиши: что это за товар (тип, узнаваемая модель, цвет, материал),
-как он должен быть снят (ракурс, свет, фон, кадрирование) и что важно сохранить.
-Пиши так, чтобы получилась чистая студийная карточка для маркетплейса:
-однородный светлый фон, мягкий свет, товар целиком, без людей, без текста и логотипов
-магазинов, без коллажей и водяных знаков.
+Describe the product (type, recognizable model, colour, material) and how it should be shot: angle, lighting, background, framing. Aim for a clean studio product shot — plain light background, soft even light, whole product in frame, no people, no text, no store logos, no collage, no watermarks.
 
-Не выдумывай характеристики, которых не видно на фото. Если модель не опознаётся —
-опиши то, что видно, общими словами.`;
+Do not invent specs you cannot see in the photo. If the model is unrecognizable, describe what is visible in general terms.
+
+Keep it under 60 words.`;
 
 @Injectable()
 export class ImageGenService {
@@ -63,15 +64,26 @@ export class ImageGenService {
       const completion = await this.openai.chat.completions.create(
         {
           model,
+          // Потолок на ответ: промпт укладывается в пару сотен токенов, а без
+          // ограничения модель может печатать долго — и админ ждёт впустую.
+          max_completion_tokens: 500,
           messages: [
             { role: 'system', content: PROMPT_SYSTEM },
             {
               role: 'user',
               content: [
-                { type: 'text', text: 'Опиши товар с этой фотографии.' },
+                {
+                  type: 'text',
+                  text: 'Write the image prompt for this product photo.',
+                },
                 {
                   type: 'image_url',
-                  image_url: { url: await this.files.toDataUrl(photoKey) },
+                  // detail: low — модели хватает уменьшенной копии, чтобы
+                  // опознать товар, а обрабатывается она заметно быстрее.
+                  image_url: {
+                    url: await this.files.toDataUrl(photoKey),
+                    detail: 'low',
+                  },
                 },
               ],
             },
@@ -91,8 +103,6 @@ export class ImageGenService {
         `Промпт по фото ${photoKey} не составлен (модель ${model}): ${details}`,
       );
 
-      // Ответ провайдера сам объясняет, в какой лимит упёрлись — его и
-      // показываем, иначе админ будет жать кнопку впустую.
       const status = (err as { status?: number }).status;
       throw new BadGatewayException(
         status === 429
