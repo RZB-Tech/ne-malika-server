@@ -99,6 +99,13 @@
       "when": 1786345184646,
       "tag": "0013_categories_seed_more",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1786345184647,
+      "tag": "0014_drop_phones_tablets",
+      "breakpoints": true
     }
   ]
 }
