@@ -70,6 +70,23 @@ export class NotificationsService {
   }
 
   /**
+   * Уведомление одному человеку: автору отзыва о решении модератора, продавцу
+   * о новом отзыве. Если чат с ботом не открыт, молча ничего не делает —
+   * первым бот написать не вправе, и это не ошибка вызывающего.
+   */
+  async notifyUser(userId: number, text: string): Promise<void> {
+    try {
+      const recipient = await this.repository.recipient(userId);
+      if (!recipient) return;
+      await this.deliver([recipient], text);
+    } catch (err) {
+      this.logger.error(
+        `Не удалось уведомить пользователя ${userId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /**
    * Рассылка из админки. Запись в журнале создаётся до отправки, а счётчики
    * дописываются после: если процесс упадёт на середине, в истории останется
    * след того, что рассылка вообще запускалась.

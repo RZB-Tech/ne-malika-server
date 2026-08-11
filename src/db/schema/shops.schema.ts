@@ -3,6 +3,7 @@ import {
   bigserial,
   doublePrecision,
   index,
+  integer,
   jsonb,
   text,
   timestamp,
@@ -50,6 +51,14 @@ export const shops = pgTable(
     creditsReserved: bigint('credits_reserved', { mode: 'number' })
       .notNull()
       .default(0),
+
+    /**
+     * Оценка продавца. Считается по всем опубликованным отзывам, привязанным к
+     * магазину, — и о нём самом, и о его товарах: покупатель судит о продавце
+     * по товарам, а отдельный отзыв «о магазине» пишут единицы.
+     */
+    ratingAvg: doublePrecision('rating_avg').notNull().default(0),
+    ratingCount: integer('rating_count').notNull().default(0),
 
     address: varchar('address', { length: 500 }),
     workSchedule: jsonb('work_schedule').$type<WorkScheduleEntry[]>(),

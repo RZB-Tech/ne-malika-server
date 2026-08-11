@@ -8,6 +8,7 @@ import {
   gte,
   ilike,
   inArray,
+  isNull,
   lte,
   or,
   sql,
@@ -24,6 +25,8 @@ import {
 } from '../../db/schema';
 import { FindProductCardsQueryDto } from './dto/find-product-cards-query.dto';
 import { FindAdminProductCardsQueryDto } from './dto/find-admin-product-cards-query.dto';
+import { recomputeShopRating } from '../../db/rating';
+import { buildProductSearch, type ProductSearch } from './product-search';
 
 /** Проекция товара для покупателя: без внутренних полей модерации и эмбеддинга. */
 const PUBLIC_FIELDS = {
@@ -36,6 +39,9 @@ const PUBLIC_FIELDS = {
   state: productCards.state,
   createdAt: productCards.createdAt,
   shopName: shops.name,
+  /** Оценка товара по опубликованным отзывам — звёзды на плитке каталога. */
+  ratingAvg: productCards.ratingAvg,
+  ratingCount: productCards.ratingCount,
   characteristics: productCards.characteristics,
   categoryId: productCards.categoryId,
   // Slug листа: иконку и путь до корня клиент достраивает по своему дереву,
@@ -58,15 +64,46 @@ const ADMIN_FIELDS = {
 
 const COUNT = { count: sql<number>`count(*)::int` };
 
-function resolveSort(sort?: string) {
-  switch (sort) {
-    case 'price_asc':
-      return asc(productCards.price);
-    case 'price_desc':
-      return desc(productCards.price);
-    default:
-      return desc(productCards.createdAt);
-  }
+/**
+ * Текст, по которому ищут. Собирается прямо в запросе, а не хранится в столбце:
+ * выражение целиком лежит в индексе, и Postgres пересчитывает его сам при
+ * каждой записи. Предвычисленный столбец однажды уже разъехался с данными —
+ * латиница в нём была, кириллица нет, и «МФУ» не находило «Струйное МФУ Canon».
+ *
+ * Точная копия выражения из `product_cards_search_idx`: планировщик сверяет
+ * выражения, и любое расхождение (даже параметр вместо литерала) отправит
+ * запрос в полный перебор таблицы.
+ */
+const SEARCH_DOCUMENT = sql`coalesce(${productCards.name}, '') || ' ' || coalesce(${productCards.description}, '')`;
+
+/**
+ * Два словаря на один текст. `russian` приводит слово к основе, поэтому
+ * «ноутбуков» находит «ноутбук»; `simple` хранит слово как есть, и от этого
+ * зависят узбекские и английские названия, которых русский словарь не знает.
+ */
+const SEARCH_VECTOR = sql`(to_tsvector('russian', ${SEARCH_DOCUMENT}) || to_tsvector('simple', ${SEARCH_DOCUMENT}))`;
+
+/**
+ * Порядок выдачи. При поиске сортировка по новизне бессмысленна: сверху обязан
+ * оказаться товар, у которого совпало название, а не тот, что заведён вчера и
+ * упомянут в описании вскользь.
+ */
+function resolveSort(query: FindProductCardsQueryDto): SQL[] {
+  if (query.sort === 'price_asc') return [asc(productCards.price)];
+  if (query.sort === 'price_desc') return [desc(productCards.price)];
+
+  const search = query.q ? buildProductSearch(query.q) : null;
+  if (!search) return [desc(productCards.createdAt)];
+
+  // Ранг считается по названию, а не по всему тексту: совпадение в названии
+  // весомее упоминания в описании. Нормализация 1 делит вес на логарифм длины,
+  // и товар «Клавиатура» оказывается выше «Клавиатуры AULA F75 … 80 клавиш».
+  return [
+    desc(
+      sql`ts_rank(to_tsvector('russian', coalesce(${productCards.name}, '')), to_tsquery('russian', ${search.queries[0]}), 1)`,
+    ),
+    desc(productCards.createdAt),
+  ];
 }
 
 @Injectable()
@@ -135,7 +172,7 @@ export class ProductCardsRepository {
         .innerJoin(shops, eq(productCards.shopId, shops.id))
         .leftJoin(categories, eq(productCards.categoryId, categories.id))
         .where(where)
-        .orderBy(resolveSort(query.sort))
+        .orderBy(...resolveSort(query))
         .limit(limit)
         .offset(offset),
       this.db
@@ -170,6 +207,13 @@ export class ProductCardsRepository {
           ilike(shops.name, `%${query.q}%`),
         )!,
       );
+    }
+    // Товары без категории. Такие остаются после удаления раздела каталога
+    // (product_cards.category_id → SET NULL) и не попадают ни в один фильтр по
+    // категории: inArray по списку id не совпадает с NULL. Без этого условия
+    // администратору нечем их найти, кроме перебора всего каталога.
+    if (query.uncategorized) {
+      conditions.push(isNull(productCards.categoryId));
     }
     const where = conditions.length ? and(...conditions) : undefined;
 
@@ -212,11 +256,20 @@ export class ProductCardsRepository {
       .then((r) => r[0]);
   }
 
-  delete(id: number): Promise<void> {
-    return this.db
-      .delete(productCards)
-      .where(eq(productCards.id, id))
-      .then(() => undefined);
+  /**
+   * Вместе с товаром каскадом уходят и отзывы о нём, поэтому оценку продавца
+   * приходится пересобрать здесь: в модуле отзывов об этом удалении никто не
+   * узнает, и «4,7 · 12 отзывов» осталось бы висеть от несуществующих.
+   */
+  async delete(id: number): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      const [deleted] = await tx
+        .delete(productCards)
+        .where(eq(productCards.id, id))
+        .returning({ shopId: productCards.shopId });
+
+      if (deleted) await recomputeShopRating(tx, deleted.shopId);
+    });
   }
 
   abolish(id: number, reason: string): Promise<ProductCard> {
@@ -295,9 +348,10 @@ function publicConditions(
     );
   }
   if (query.q) {
-    conditions.push(
-      sql`${productCards}.search_vector @@ websearch_to_tsquery('russian', ${query.q})`,
-    );
+    const search = buildProductSearch(query.q);
+    // Слов не осталось — искали одни знаки препинания. Отдать в таком случае
+    // весь каталог нельзя: человек решит, что нашлось всё это.
+    conditions.push(search ? searchCondition(search) : sql`false`);
   }
   if (query.price_min !== undefined) {
     conditions.push(gte(productCards.price, query.price_min.toString()));
@@ -313,4 +367,27 @@ function publicConditions(
   }
 
   return conditions;
+}
+
+/**
+ * Совпадение по товару. Веток несколько, и объединены они через OR намеренно:
+ * каждая ловит свой промах предыдущей.
+ *
+ * - полнотекстовые ветки — по слову с начала, включая вариант запроса в другой
+ *   письменности («printer» → «принтер»);
+ * - подстрока в названии — по хвосту артикула: «4470» полнотекстовым поиском
+ *   не найдётся, потому что это не начало слова «G4470»;
+ * - подстрока в названии магазина — покупатели ищут и по продавцу.
+ */
+function searchCondition(search: ProductSearch): SQL {
+  const branches: SQL[] = search.queries.map(
+    (query) => sql`${SEARCH_VECTOR} @@ to_tsquery('russian', ${query})`,
+  );
+
+  if (search.like) {
+    branches.push(ilike(productCards.name, search.like));
+    branches.push(ilike(shops.name, search.like));
+  }
+
+  return or(...branches)!;
 }

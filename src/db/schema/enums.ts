@@ -40,3 +40,14 @@ export const creditTxnKindEnum = pgEnum('credit_txn_kind', [
   'refund',
   'adjust',
 ]);
+
+/**
+ * Отзыв ждёт модерации, опубликован или отклонён. И в выдаче, и в рейтинге
+ * учитывается только `approved`: до решения человека отзыв не должен ни висеть
+ * на карточке, ни менять оценку магазина.
+ */
+export const reviewStatusEnum = pgEnum('review_status', [
+  'pending',
+  'approved',
+  'rejected',
+]);

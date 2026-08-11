@@ -54,6 +54,20 @@ export class NotificationsRepository {
   }
 
   /**
+   * Один адресат. `undefined` — писать некому: чат не открыт, уведомления
+   * выключены или аккаунт заблокирован. Условие то же, что и у рассылки,
+   * поэтому одиночное уведомление не проходит мимо отписки.
+   */
+  recipient(userId: number): Promise<Recipient | undefined> {
+    return this.db
+      .select({ id: users.id, chatId: sql<number>`${users.telegramChatId}` })
+      .from(users)
+      .where(and(REACHABLE, eq(users.id, userId)))
+      .limit(1)
+      .then((rows) => rows[0]);
+  }
+
+  /**
    * Условие выборки для аудитории. Одно на всех: раньше тот же тернарник был
    * скопирован в audience() и countAudience(), и правка в одной копии дала бы
    * «показали N, отправили M» — а при потере роли рассылка ушла бы всей базе.

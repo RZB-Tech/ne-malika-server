@@ -2,6 +2,13 @@
 /dist
 /node_modules
 /build
+*.tsbuildinfo
+
+# Пакетный менеджер здесь только pnpm — им ставит и Dockerfile, и CI. Чужой
+# lock-файл от случайного `npm i` разъедется с pnpm-lock и однажды соберёт
+# другой набор версий.
+package-lock.json
+yarn.lock
 
 # Logs
 logs
@@ -14,6 +21,9 @@ lerna-debug.log*
 
 # OS
 .DS_Store
+# Windows создаёт их сам в любой открытой в проводнике папке.
+Thumbs.db
+desktop.ini
 
 # Tests
 /coverage

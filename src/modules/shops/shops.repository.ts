@@ -98,6 +98,8 @@ export class ShopsRepository {
         status: shops.status,
         abolishReason: shops.abolishReason,
         createdAt: shops.createdAt,
+        ratingAvg: shops.ratingAvg,
+        ratingCount: shops.ratingCount,
         productCount: sql<number>`count(${productCards.id})::int`,
         ownerId: users.id,
         ownerName: users.fullname,

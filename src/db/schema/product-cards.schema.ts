@@ -1,7 +1,9 @@
 import {
   bigint,
   bigserial,
+  doublePrecision,
   index,
+  integer,
   jsonb,
   numeric,
   text,
@@ -50,6 +52,16 @@ export const productCards = pgTable(
     characteristics: jsonb('characteristics').$type<ProductCharacteristic[]>(),
 
     embedding: vector('embedding', { dimensions: 1536 }),
+
+    /**
+     * Оценка по опубликованным отзывам. Хранится готовой, а не считается на
+     * лету: она нужна каждой плитке каталога, и подзапрос на строку выдачи
+     * превратил бы список из двадцати товаров в двадцать агрегатов.
+     * Пересчитывается целиком при каждом изменении статуса отзыва — накопление
+     * приращениями рано или поздно разъезжается с фактом.
+     */
+    ratingAvg: doublePrecision('rating_avg').notNull().default(0),
+    ratingCount: integer('rating_count').notNull().default(0),
 
     status: entityStatusEnum('status').notNull().default('active'),
     abolishReason: text('abolish_reason'),

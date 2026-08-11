@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsString } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString } from 'class-validator';
 import { PaginationQueryDto } from '../../../common/dto/pagination-query.dto';
 
 export const ADMIN_PRODUCT_STATUSES = [
@@ -33,4 +33,24 @@ export class FindAdminProductCardsQueryDto extends PaginationQueryDto {
   @Type(() => Number)
   @IsInt()
   shop_id?: number;
+
+  /**
+   * Только товары без категории. Их не найти фильтром по разделу каталога:
+   * такие карточки появляются, когда раздел удаляют (category_id → SET NULL)
+   * или когда продавец завёл товар до появления справочника категорий.
+   *
+   * Разбираем строку вручную: @Type(() => Boolean) превратил бы 'false' в true,
+   * потому что Boolean('false') — это true.
+   */
+  @ApiPropertyOptional({
+    type: Boolean,
+    example: true,
+    description: 'Только товары без категории',
+  })
+  @IsOptional()
+  @Transform(
+    ({ value }: { value: unknown }) => value === 'true' || value === true,
+  )
+  @IsBoolean()
+  uncategorized?: boolean;
 }

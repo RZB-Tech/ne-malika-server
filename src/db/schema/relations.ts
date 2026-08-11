@@ -5,12 +5,14 @@ import { productCards } from './product-cards.schema';
 import { productViews } from './product-views.schema';
 import { favorites } from './favorites.schema';
 import { reports } from './reports.schema';
+import { reviews } from './reviews.schema';
 import { aiProductChecks } from './ai-products-checks.schema';
 
 export const usersRelations = relations(users, ({ many }) => ({
   shops: many(shops),
   productViews: many(productViews),
   favorites: many(favorites),
+  reviews: many(reviews),
 }));
 
 export const shopsRelations = relations(shops, ({ one, many }) => ({
@@ -20,6 +22,7 @@ export const shopsRelations = relations(shops, ({ one, many }) => ({
   }),
   productCards: many(productCards),
   reports: many(reports),
+  reviews: many(reviews),
 }));
 
 export const productCardsRelations = relations(
@@ -30,10 +33,26 @@ export const productCardsRelations = relations(
       references: [shops.id],
     }),
     reports: many(reports),
+    reviews: many(reviews),
     aiChecks: many(aiProductChecks),
     views: many(productViews),
   }),
 );
+
+export const reviewsRelations = relations(reviews, ({ one }) => ({
+  author: one(users, {
+    fields: [reviews.authorId],
+    references: [users.id],
+  }),
+  shop: one(shops, {
+    fields: [reviews.shopId],
+    references: [shops.id],
+  }),
+  productCard: one(productCards, {
+    fields: [reviews.productCardId],
+    references: [productCards.id],
+  }),
+}));
 
 export const favoritesRelations = relations(favorites, ({ one }) => ({
   user: one(users, {

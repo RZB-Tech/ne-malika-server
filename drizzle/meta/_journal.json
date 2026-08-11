@@ -148,6 +148,34 @@
       "when": 1786345184653,
       "tag": "0020_push_subscriptions",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1786345184654,
+      "tag": "0021_product_search",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1786442679907,
+      "tag": "0023_reviews",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1786442679908,
+      "tag": "0024_categories_pc_parts",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1786442679909,
+      "tag": "0025_categories_peripherals",
+      "breakpoints": true
     }
   ]
 }
