@@ -15,7 +15,11 @@ import { SellerNudgeService } from './seller-nudge.service';
 @Module({
   imports: [BotModule],
   controllers: [AdminBroadcastsController],
-  providers: [NotificationsRepository, NotificationsService, SellerNudgeService],
+  providers: [
+    NotificationsRepository,
+    NotificationsService,
+    SellerNudgeService,
+  ],
   exports: [NotificationsService],
 })
 export class NotificationsModule {}

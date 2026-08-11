@@ -138,6 +138,9 @@ export class AuthService {
         telegramPhoto: user.telegramPhoto,
         phoneNumber: user.phoneNumber,
         hasContact: Boolean(user.phoneNumber),
+        // Открыт ли чат с ботом. Пока нет — уведомления физически не дойдут,
+        // и сайт показывает подсказку «нажмите Старт в боте».
+        telegramLinked: Boolean(user.telegramChatId),
       },
     };
   }

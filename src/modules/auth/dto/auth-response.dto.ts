@@ -25,6 +25,13 @@ class AuthUserDto {
     example: false,
   })
   hasContact: boolean;
+
+  @ApiProperty({
+    description:
+      'Открыт ли чат с ботом. Пока false, уведомления в Telegram не доходят',
+    example: false,
+  })
+  telegramLinked: boolean;
 }
 
 export class AuthResponseDto {

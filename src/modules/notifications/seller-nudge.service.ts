@@ -62,9 +62,8 @@ export class SellerNudgeService {
     const staleBefore = new Date(now - STALE_DAYS * DAY_MS);
     const nudgedBefore = new Date(now - NUDGE_COOLDOWN_DAYS * DAY_MS);
 
-    let sellers: Awaited<
-      ReturnType<NotificationsRepository['staleSellers']>
-    > = [];
+    let sellers: Awaited<ReturnType<NotificationsRepository['staleSellers']>> =
+      [];
     try {
       sellers = await this.repository.staleSellers(staleBefore, nudgedBefore);
     } catch (err) {
@@ -102,17 +101,26 @@ export class SellerNudgeService {
   }
 
   private buildText(
-    seller: { shopName: string; productCount: number; lastProductAt: Date | null },
+    seller: {
+      shopName: string;
+      productCount: number;
+      lastProductAt: Date | null;
+    },
     now: number,
   ): string {
     const shop = escapeHtml(seller.shopName);
 
     if (seller.productCount === 0) {
-      return pick(EMPTY_SHOP_TEXTS, shop.length).replace('{shop}', shop) + FOOTER;
+      return (
+        pick(EMPTY_SHOP_TEXTS, shop.length).replace('{shop}', shop) + FOOTER
+      );
     }
 
     const days = seller.lastProductAt
-      ? Math.max(1, Math.round((now - new Date(seller.lastProductAt).getTime()) / DAY_MS))
+      ? Math.max(
+          1,
+          Math.round((now - new Date(seller.lastProductAt).getTime()) / DAY_MS),
+        )
       : STALE_DAYS;
 
     return (
