@@ -19,7 +19,8 @@ export interface AiReviewRow extends Record<string, unknown> {
   checkedAt: string;
   reviewedAt: string | null;
   name: string;
-  price: string;
+  /** null — «цена договорная». */
+  price: string | null;
   photos: string[];
   status: 'active' | 'hidden' | 'abolished' | 'pending';
   description: string | null;

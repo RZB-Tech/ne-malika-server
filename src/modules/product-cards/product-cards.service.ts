@@ -24,6 +24,19 @@ import {
 type PublicList = Awaited<ReturnType<ProductCardsRepository['findPublicList']>>;
 type PublicItem = Awaited<ReturnType<ProductCardsRepository['findPublicById']>>;
 
+/**
+ * Цена для записи в столбец. Три состояния, и все три разные:
+ * `undefined` — поля в запросе не было, значение трогать нельзя;
+ * `null` — продавец выбрал «договорную», цену надо стереть;
+ * число — обычная цена, numeric в drizzle принимает строкой.
+ */
+function priceColumn(
+  price: number | null | undefined,
+): string | null | undefined {
+  if (price === undefined) return undefined;
+  return price === null ? null : price.toString();
+}
+
 @Injectable()
 export class ProductCardsService {
   constructor(
@@ -49,7 +62,7 @@ export class ProductCardsService {
       name: dto.name,
       description: dto.description,
       photos: dto.photos,
-      price: dto.price.toString(),
+      price: priceColumn(dto.price) ?? null,
       state: dto.state,
       characteristics: dto.characteristics,
       status: 'pending',
@@ -80,7 +93,7 @@ export class ProductCardsService {
     await this.categoriesService.assertExists(dto.categoryId);
     const updated = await this.productCardsRepository.update(id, {
       ...dto,
-      price: dto.price?.toString(),
+      price: priceColumn(dto.price),
     });
 
     await this.invalidateCache();
@@ -151,7 +164,7 @@ export class ProductCardsService {
       name: dto.name,
       description: dto.description,
       photos: dto.photos,
-      price: dto.price.toString(),
+      price: priceColumn(dto.price) ?? null,
       state: dto.state,
       characteristics: dto.characteristics,
       status: 'pending',
@@ -165,7 +178,7 @@ export class ProductCardsService {
     await this.categoriesService.assertExists(dto.categoryId);
     const updated = await this.productCardsRepository.update(id, {
       ...dto,
-      price: dto.price?.toString(),
+      price: priceColumn(dto.price),
     });
     await this.invalidateCache();
     this.aiChecksService.runInBackground(updated);

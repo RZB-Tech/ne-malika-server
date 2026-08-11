@@ -127,6 +127,43 @@ export class DescribePromptDto {
   style?: CardStyle;
 }
 
+/** Сколько символов описания принимаем и отдаём обратно. */
+export const DESCRIPTION_MAX = 2000;
+
+export class RewriteDescriptionDto {
+  @ApiProperty({
+    format: 'uuid',
+    description: 'Фото товара: по нему модель сверяет написанное',
+  })
+  @IsUUID('4')
+  photoKey: string;
+
+  @ApiProperty({
+    maxLength: DESCRIPTION_MAX,
+    description:
+      'Текст продавца. Пустой допустим — тогда описание пишется по одной фотографии',
+    example: 'клавиатура механическа RGB подсветка беспроводная',
+  })
+  @IsString()
+  @MaxLength(DESCRIPTION_MAX)
+  text: string;
+
+  @ApiPropertyOptional({
+    maxLength: 200,
+    description:
+      'Название товара. Модель его не переписывает, но опирается на него',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  name?: string;
+}
+
+export class RewrittenDescriptionDto {
+  @ApiProperty({ description: 'Исправленное описание' })
+  text: string;
+}
+
 export class GeneratedImageDto {
   @ApiProperty({ format: 'uuid' })
   key: string;

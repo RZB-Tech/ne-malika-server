@@ -283,7 +283,7 @@ export class AiChecksService implements OnModuleInit {
 
     const text = [
       `Название: ${card.name}`,
-      `Цена: ${card.price}`,
+      `Цена: ${card.price ?? 'договорная'}`,
       `Состояние: ${card.state === 'new' ? 'новый' : 'б/у'}`,
       `Описание: ${card.description ?? '(пусто)'}`,
       `Характеристики: ${characteristics || '(нет)'}`,

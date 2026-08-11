@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
@@ -51,11 +51,29 @@ export class CreateProductCardDto {
   @IsUUID('4', { each: true })
   photos: string[];
 
-  @ApiProperty({ minimum: 0, example: 899.99 })
-  @Type(() => Number)
+  /**
+   * Цена в сумах. Пусто — «цена договорная»: часть техники на рынке продают по
+   * договорённости, и раньше продавцу приходилось выдумывать число.
+   *
+   * Приводим через Transform, а не Type: `@Type(() => Number)` превратил бы
+   * присланный null в ноль, и «договорная» стала бы товаром за 0 сум.
+   */
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    minimum: 0,
+    example: 899.99,
+    description: 'Пусто или null — «Цена договорная»',
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    value === null || value === undefined || value === ''
+      ? null
+      : Number(value),
+  )
   @IsNumber()
   @Min(0)
-  price: number;
+  price?: number | null;
 
   @ApiProperty({ enum: ['new', 'old'], example: 'new' })
   @IsIn(['new', 'old'])

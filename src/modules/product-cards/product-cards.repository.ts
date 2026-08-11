@@ -2,7 +2,6 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   SQL,
   and,
-  asc,
   desc,
   eq,
   gte,
@@ -89,8 +88,15 @@ const SEARCH_VECTOR = sql`(to_tsvector('russian', ${SEARCH_DOCUMENT}) || to_tsve
  * упомянут в описании вскользь.
  */
 function resolveSort(query: FindProductCardsQueryDto): SQL[] {
-  if (query.sort === 'price_asc') return [asc(productCards.price)];
-  if (query.sort === 'price_desc') return [desc(productCards.price)];
+  // NULLS LAST в обе стороны: у товаров с договорной ценой её нет, и по
+  // умолчанию Postgres поднял бы их наверх при сортировке «сначала дорогие» —
+  // список открывался бы товарами вообще без цены.
+  if (query.sort === 'price_asc') {
+    return [sql`${productCards.price} asc nulls last`];
+  }
+  if (query.sort === 'price_desc') {
+    return [sql`${productCards.price} desc nulls last`];
+  }
 
   const search = query.q ? buildProductSearch(query.q) : null;
   if (!search) return [desc(productCards.createdAt)];

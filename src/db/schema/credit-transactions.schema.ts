@@ -14,8 +14,8 @@ import { users } from './users.schema';
 
 /** Что записано в meta: подробности расхода для разбора спорных списаний. */
 export interface CreditTxnMeta {
-  /** Операция: составление промпта или генерация картинок. */
-  operation?: 'prompt' | 'image';
+  /** Операция: промпт, правка описания или генерация картинок. */
+  operation?: 'prompt' | 'description' | 'image';
   model?: string;
   /** Фактическая стоимость у OpenRouter, доллары. */
   usd?: number;

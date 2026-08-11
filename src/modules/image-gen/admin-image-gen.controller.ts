@@ -24,6 +24,8 @@ import {
   GenerateImagesDto,
   GeneratedImageDto,
   ImageGenBalanceDto,
+  RewriteDescriptionDto,
+  RewrittenDescriptionDto,
   StoredImageDto,
 } from './dto/generate-images.dto';
 
@@ -66,6 +68,23 @@ export class ImageGenController {
     @Body() dto: DescribePromptDto,
   ) {
     return this.imageGenService.describePrompt(dto, {
+      id: user.id,
+      isAdmin: user.role === 'admin',
+    });
+  }
+
+  @Post('description')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @ApiOperation({
+    summary: 'Исправить описание товара, сверяясь с его фотографией',
+  })
+  @ApiResponse({ status: 200, type: RewrittenDescriptionDto })
+  rewriteDescription(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: RewriteDescriptionDto,
+  ): Promise<RewrittenDescriptionDto> {
+    return this.imageGenService.rewriteDescription(dto, {
       id: user.id,
       isAdmin: user.role === 'admin',
     });

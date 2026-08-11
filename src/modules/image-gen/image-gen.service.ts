@@ -16,10 +16,12 @@ import {
   PROMPT_ESTIMATE_CREDITS,
 } from '../credits/credits.constants';
 import {
+  DESCRIPTION_MAX,
   DescribePromptDto,
   GenerateImagesDto,
   GeneratedImageDto,
   MAX_GENERATED_IMAGES,
+  RewriteDescriptionDto,
 } from './dto/generate-images.dto';
 
 /** Образец для правки: Images API принимает и ссылку, и data-URL. */
@@ -78,6 +80,32 @@ Build the prompt in this order:
 Only state specs that are visible in the photo or printed on the product. When a number is unknown use a benefit word instead: "Беспроводная", "Компактный", "Быстрая зарядка", "4 в 1".
 
 Keep it under 130 words.`;
+
+/**
+ * Правка описания товара по фотографии.
+ *
+ * Задание по-русски, в отличие от промптов для рисования: тут модель не рисует,
+ * а пишет для покупателя, и примеры формулировок должны быть на том же языке,
+ * что и результат.
+ *
+ * Главный запрет — придумывать характеристики. Продавец нажимает кнопку ради
+ * грамотного текста, а получив приписанные «16 ГБ» и «гарантия 2 года», он
+ * отправит покупателю обещание, которого не давал.
+ */
+const DESCRIPTION_SYSTEM = `Ты редактор объявлений на маркетплейсе компьютерной техники. Тебе дают текст продавца и фотографию товара. Верни исправленный текст описания — и ничего больше: без вступлений, заголовков, markdown и кавычек вокруг ответа.
+
+Что делать:
+- исправь орфографию, грамматику, пунктуацию и КАПС;
+- сохрани все факты продавца: модель, состояние, комплектацию, гарантию, количество;
+- сверься с фотографией и добавь только то, что на ней видно: цвет, разъёмы, проводной или беспроводной, форм-фактор, комплектацию в кадре;
+- пиши на том же языке, на котором писал продавец (русский, узбекская латиница или узбекская кириллица). Если текста не было — по-русски.
+
+Чего не делать:
+- не придумывай характеристики, которых нет ни в тексте, ни на фото: частоты, объёмы памяти, год выпуска, срок гарантии;
+- не пиши телефоны, ссылки, ник в Telegram, цену и призывы «пишите в директ» — для связи на сайте есть своя кнопка, а такие объявления снимает модерация;
+- не добавляй эмодзи и рекламные восклицания.
+
+Объём: от двух до пяти коротких предложений, до 600 символов. Если фактов мало — короткий текст лучше выдуманного длинного.`;
 
 /**
  * Промпт для обычной студийной съёмки — режим «фото на белом». Здесь надписи и
@@ -314,6 +342,99 @@ export class ImageGenService {
         status === 429
           ? `Лимит запросов исчерпан. ${details}`
           : `Не удалось составить промпт: ${details}`,
+      );
+    }
+  }
+
+  /**
+   * Приводит в порядок описание, написанное продавцом, сверяясь с фотографией.
+   *
+   * Отдельная операция, а не часть ИИ-проверки: проверка выносит вердикт и
+   * прячет карточку, а здесь продавец сам просит помощи и сам решает, оставить
+   * ли результат. Поэтому и списывается как обычный запрос к модели.
+   */
+  async rewriteDescription(
+    dto: RewriteDescriptionDto,
+    author: { id: number; isAdmin: boolean },
+  ): Promise<{ text: string }> {
+    if (!this.router) {
+      throw new ServiceUnavailableException(
+        'OPENROUTER_API_KEY не задан — описание можно поправить вручную',
+      );
+    }
+
+    const hold = await this.credits.hold(
+      author,
+      PROMPT_ESTIMATE_CREDITS,
+      'правка описания',
+    );
+
+    const model = this.config.get<string>('openrouter.visionModel')!;
+
+    try {
+      const photo = await this.files.toDataUrl(dto.photoKey);
+      const source = dto.text.trim();
+
+      const completion = await this.router.chat.completions.create(
+        {
+          model,
+          max_completion_tokens: 700,
+          messages: [
+            { role: 'system', content: DESCRIPTION_SYSTEM },
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: [
+                    dto.name ? `Название товара: ${dto.name}` : null,
+                    source
+                      ? `Описание продавца:\n${source}`
+                      : 'Продавец описание не написал — составь его по фотографии.',
+                  ]
+                    .filter(Boolean)
+                    .join('\n\n'),
+                },
+                {
+                  type: 'image_url' as const,
+                  image_url: { url: photo, detail: 'low' as const },
+                },
+              ],
+            },
+          ],
+        },
+        { timeout: PROMPT_TIMEOUT_MS, maxRetries: 1 },
+      );
+
+      await this.credits.settle(hold, usageCost(completion.usage), {
+        operation: 'description',
+        model,
+      });
+
+      const choice = completion.choices[0];
+      const text = cleanPrompt(choice?.message?.content).slice(
+        0,
+        DESCRIPTION_MAX,
+      );
+      if (!text) {
+        throw new Error(
+          `модель вернула пустой текст (finish_reason: ${choice?.finish_reason ?? '—'})`,
+        );
+      }
+      return { text };
+    } catch (err) {
+      await this.credits.cancel(hold);
+
+      const details = describeError(err);
+      this.logger.error(
+        `Описание по фото ${dto.photoKey} не исправлено (модель ${model}): ${details}`,
+      );
+
+      const status = (err as { status?: number }).status;
+      throw new BadGatewayException(
+        status === 429
+          ? `Лимит запросов исчерпан. ${details}`
+          : `Не удалось исправить описание: ${details}`,
       );
     }
   }

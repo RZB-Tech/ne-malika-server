@@ -45,7 +45,12 @@ export const productCards = pgTable(
 
     photos: uuid('photos').array().notNull().default([]),
 
-    price: numeric('price', { precision: 14, scale: 2 }).notNull(),
+    /**
+     * Пусто — «цена договорная». Отдельного флага нет намеренно: цена либо
+     * названа, либо нет, и два поля позволили бы им разойтись — «договорная»
+     * с числом рядом.
+     */
+    price: numeric('price', { precision: 14, scale: 2 }),
     state: productStateEnum('state').notNull(),
 
     // Новое поле — произвольные пользовательские характеристики
