@@ -197,6 +197,13 @@
       "when": 1786449680527,
       "tag": "0028_reviews_ai_verdict",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1786449680528,
+      "tag": "0029_categories_bags",
+      "breakpoints": true
     }
   ]
 }
