@@ -90,8 +90,16 @@ class EnvironmentVariables {
   @IsString()
   TELEGRAM_WEBHOOK_URL?: string;
 
-  @IsOptional()
+  /**
+   * Секрет заголовка X-Telegram-Bot-Api-Secret-Token. В проде обязателен:
+   * эндпоинт вебхука публичный, и без секрета кто угодно прислал бы
+   * поддельный апдейт от чужого имени.
+   */
+  @ValidateIf(
+    (env: EnvironmentVariables) => env.NODE_ENV === Environment.Production,
+  )
   @IsString()
+  @IsNotEmpty({ message: 'TELEGRAM_WEBHOOK_SECRET обязателен в production' })
   TELEGRAM_WEBHOOK_SECRET?: string;
 
   @IsOptional()

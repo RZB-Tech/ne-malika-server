@@ -10,6 +10,7 @@ import { CreateReportDto } from './dto/create-report.dto';
 import { FindReportsQueryDto } from './dto/find-reports-query.dto';
 import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
 import { NotificationsService } from '../notifications/notifications.service';
+import { escapeHtml, excerpt } from '../bot/telegram-html';
 
 @Injectable()
 export class ReportsService {
@@ -74,19 +75,10 @@ function newReportText(
   const target = productCardId
     ? `товар #${productCardId} (${escapeHtml(shopName)})`
     : `магазин «${escapeHtml(shopName)}»`;
-  const excerpt = context.length > 300 ? `${context.slice(0, 300)}…` : context;
 
   return (
     `🚩 <b>Новая жалоба</b> на ${target}\n\n` +
-    `${escapeHtml(excerpt)}\n\n` +
+    `${escapeHtml(excerpt(context))}\n\n` +
     `Разобрать: раздел «Жалобы» в админке.`
   );
-}
-
-/** parse_mode: HTML — в тексте жалобы может встретиться «<» или «&». */
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;');
 }

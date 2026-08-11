@@ -185,8 +185,6 @@ export class ImageGenService {
   ): Promise<ImageGenQuota> {
     await this.repository.setAccess(userId, {
       enabled: data.enabled,
-      // Пустое поле — это «безлимитно», а не «ноль»: ноль означал бы, что
-      // доступ выдан и тут же исчерпан.
       limit: data.limit ?? null,
     });
     return this.repository.quota(userId, false);
@@ -207,39 +205,47 @@ export class ImageGenService {
     }));
   }
 
-  /**
-   * Проверка доступа и остатка перед генерацией.
-   *
-   * Считаем по факту уже сгенерированного, а списываем после — модель может
-   * не ответить, и брать деньги за неполученную картинку нечестно. Из-за
-   * этого лимит может быть превышен на несколько штук при одновременных
-   * запросах; для квоты в десятки картинок это дешевле, чем блокировки.
-   */
-  private async assertQuota(
+  /** Есть ли у пользователя право генерировать. Без учёта остатка. */
+  private async assertAllowed(
     userId: number,
     isAdmin: boolean,
-    want: number,
-  ): Promise<void> {
+  ): Promise<ImageGenQuota> {
     const quota = await this.repository.quota(userId, isAdmin);
-
     if (!quota.allowed) {
       throw new ForbiddenException(
         'Генерация изображений не подключена. Обратитесь к администратору.',
       );
     }
-    if (quota.limit === null) return;
+    return quota;
+  }
 
-    const left = quota.limit - quota.used;
-    if (left <= 0) {
-      throw new ForbiddenException(
-        `Лимит генераций исчерпан: использовано ${quota.used} из ${quota.limit}.`,
-      );
-    }
-    if (want > left) {
-      throw new ForbiddenException(
-        `Осталось ${left} из ${quota.limit} — уменьшите количество вариантов.`,
-      );
-    }
+  /**
+   * Занимает квоту под `want` картинок.
+   *
+   * Резерв, а не просто проверка: между чтением остатка и записью результата
+   * проходит время генерации (десятки секунд), и без резерва десять
+   * параллельных запросов увидели бы один и тот же остаток и прошли бы все.
+   * Резерв снимается в `finally` — картинки, которые модель не отдала,
+   * квоту не съедают.
+   *
+   * Возвращает true, если резерв занят и его нужно освободить.
+   */
+  private async reserveQuota(
+    userId: number,
+    isAdmin: boolean,
+    want: number,
+  ): Promise<boolean> {
+    const quota = await this.assertAllowed(userId, isAdmin);
+    if (quota.limit === null) return false;
+
+    if (await this.repository.reserve(userId, want)) return true;
+
+    const left = Math.max(0, quota.limit - quota.used);
+    throw new ForbiddenException(
+      left === 0
+        ? `Лимит генераций исчерпан: использовано ${quota.used} из ${quota.limit}.`
+        : `Осталось ${left} из ${quota.limit} — уменьшите количество вариантов.`,
+    );
   }
 
   /**
@@ -248,12 +254,17 @@ export class ImageGenService {
    * приложил референс, тот уходит вторым изображением — иначе описание вёрстки
    * взять неоткуда и образец на результат не влияет.
    */
-  async describePrompt(dto: DescribePromptDto): Promise<{ prompt: string }> {
+  async describePrompt(
+    dto: DescribePromptDto,
+    author: { id: number; isAdmin: boolean },
+  ): Promise<{ prompt: string }> {
     if (!this.router) {
       throw new ServiceUnavailableException(
         'OPENROUTER_API_KEY не задан — промпт можно написать вручную',
       );
     }
+
+    await this.assertAllowed(author.id, author.isAdmin);
 
     const model = this.config.get<string>('openrouter.visionModel')!;
     const withReference = Boolean(dto.referenceKey);
@@ -335,7 +346,21 @@ export class ImageGenService {
     }
 
     const count = Math.min(dto.count ?? 2, MAX_GENERATED_IMAGES);
-    await this.assertQuota(author.id, author.isAdmin, count);
+    const reserved = await this.reserveQuota(author.id, author.isAdmin, count);
+
+    try {
+      return await this.run(dto, count, author);
+    } finally {
+      if (reserved) await this.repository.release(author.id, count);
+    }
+  }
+
+  /** Собственно генерация. Вынесена, чтобы резерв снимался в одном месте. */
+  private async run(
+    dto: GenerateImagesDto,
+    count: number,
+    author: { id: number; isAdmin: boolean },
+  ): Promise<GeneratedImageDto[]> {
     const model = this.config.get<string>('openrouter.imageModel')!;
 
     const keys = [
@@ -385,9 +410,6 @@ export class ImageGenService {
       throw new BadGatewayException(`Модель не отработала: ${details}`);
     }
 
-    // Запись в журнале — это и память диалога, и расход квоты. Падение
-    // записи не должно отнимать у человека уже нарисованные картинки:
-    // они лежат в S3 и возвращаются в любом случае.
     try {
       await this.repository.record(
         saved.map((image) => ({

@@ -7,6 +7,7 @@ import { SettingsService } from '../settings/settings.service';
 import { RedisService } from '../redis/redis.service';
 import { FilesService } from '../files/files.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { escapeHtml, excerpt } from '../bot/telegram-html';
 import { PRODUCT_CACHE_PREFIX } from '../product-cards/product-cards.cache';
 import type { ProductCard } from '../../db/schema';
 import {
@@ -167,8 +168,6 @@ export class AiChecksService implements OnModuleInit {
         error: message,
       });
       await this.publish(card.id, 'сервис проверки недоступен');
-      // Товар опубликован непроверенным — это ровно то, что попадает в
-      // админскую очередь «Проверка ИИ», и разобрать это должен человек.
       void this.notifications.notifyAdmins(
         aiFailureText(card, 'проверка не выполнена', message),
       );
@@ -346,18 +345,10 @@ function aiFailureText(
   details: string | null | undefined,
 ): string {
   const name = escapeHtml(card.name);
-  const tail = details ? `\n\n${escapeHtml(details)}` : '';
+  const tail = details ? `\n\n${escapeHtml(excerpt(details, 500))}` : '';
   return (
     `🤖 <b>ИИ-проверка</b>: ${reason}\n` +
     `Товар #${card.id} — ${name}${tail}\n\n` +
     `Разобрать: раздел «Проверка ИИ» в админке.`
   );
-}
-
-/** parse_mode: HTML — в названии товара может встретиться «<» или «&». */
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;');
 }

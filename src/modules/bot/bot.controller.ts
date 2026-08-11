@@ -26,7 +26,6 @@ export class BotController {
   ) {}
 
   @Public()
-  // Апдейты шлёт сам Telegram и защищён секретом заголовка — лимит здесь только мешал бы.
   @SkipThrottle()
   @Post('webhook')
   @HttpCode(HttpStatus.OK)
@@ -37,13 +36,16 @@ export class BotController {
     const expectedSecret = this.configService.get<string>(
       'telegram.webhookSecret',
     );
-    if (expectedSecret && secretHeader !== expectedSecret) {
+    if (!expectedSecret) {
+      this.logger.error(
+        'TELEGRAM_WEBHOOK_SECRET не задан — вебхук отклоняет запросы',
+      );
+      throw new UnauthorizedException('Вебхук не настроен');
+    }
+    if (secretHeader !== expectedSecret) {
       throw new UnauthorizedException('Неверный секрет вебхука');
     }
 
-    // Обрабатываем асинхронно, но отвечаем Telegram сразу 200 —
-    // иначе при медленной обработке Telegram посчитает вебхук недоступным
-    // и продолжит ретраить апдейт.
     this.botService.handleUpdate(update).catch((err: Error) => {
       this.logger.error('Ошибка обработки апдейта бота', err.stack);
     });

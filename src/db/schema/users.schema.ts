@@ -9,6 +9,7 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 import { pgTable } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { userRoleEnum } from './enums';
 
 export const users = pgTable(
@@ -43,15 +44,18 @@ export const users = pgTable(
     /** Сколько картинок разрешено всего. NULL — без ограничения. */
     imageGenLimit: integer('image_gen_limit'),
 
+    /**
+     * Картинки, за которые квота уже занята, но результата ещё нет: между
+     * проверкой остатка и записью результата проходит время генерации, и без
+     * резерва параллельные запросы пробивают лимит все разом.
+     */
+    imageGenReserved: integer('image_gen_reserved').notNull().default(0),
+
     phoneNumber: varchar('phone_number', { length: 20 }),
     fullname: varchar('fullname', { length: 200 }).notNull(),
 
-    // Регистрация даёт покупателя; продавцом пользователь становится сам,
-    // когда создаёт магазин (ShopsService.createForSeller).
     role: userRoleEnum('role').notNull().default('user'),
 
-    // Блокировка аккаунта. Отдельно от статуса магазина: упразднить
-    // магазин мало — без блокировки владелец заведёт новый.
     blockedAt: timestamp('blocked_at', { withTimezone: true }),
     blockReason: text('block_reason'),
 
@@ -64,6 +68,10 @@ export const users = pgTable(
   },
   (table) => ({
     telegramIdIdx: index('users_telegram_id_idx').on(table.telegramId),
+
+    telegramChatIdIdx: index('users_telegram_chat_id_idx')
+      .on(table.telegramChatId)
+      .where(sql`${table.telegramChatId} IS NOT NULL`),
   }),
 );
 

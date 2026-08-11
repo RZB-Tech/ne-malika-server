@@ -7,6 +7,7 @@ import {
 import type { BroadcastAudience } from './dto/create-broadcast.dto';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
+import { clampMessage } from '../bot/telegram-html';
 
 /**
  * Пауза между сообщениями массовой отправки. Telegram разрешает боту около 30
@@ -14,6 +15,9 @@ import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
  * что параллельно уходят одиночные уведомления, а 429 стоит дороже задержки.
  */
 const BULK_DELAY_MS = 70;
+
+/** Сколько подряд отказов «неверный запрос» считаем сломанным текстом. */
+const MAX_BAD_REQUESTS = 3;
 
 /** Сколько ждать, если Telegram всё же ответил 429 без указания времени. */
 const FALLBACK_RETRY_SEC = 3;
@@ -60,19 +64,6 @@ export class NotificationsService {
     }
   }
 
-  /** Уведомление одному пользователю. Тоже молча, по той же причине. */
-  async notifyUser(userId: number, text: string): Promise<void> {
-    try {
-      const recipient = await this.repository.one(userId);
-      if (!recipient) return;
-      await this.deliver([recipient], text);
-    } catch (err) {
-      this.logger.error(
-        `Не удалось уведомить пользователя ${userId}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  }
-
   /**
    * Рассылка из админки. Запись в журнале создаётся до отправки, а счётчики
    * дописываются после: если процесс упадёт на середине, в истории останется
@@ -82,7 +73,7 @@ export class NotificationsService {
     authorId: number,
     audience: BroadcastAudience,
     text: string,
-  ): Promise<DeliveryCounters & { id: number }> {
+  ): Promise<{ id: number; recipients: number }> {
     const recipients = await this.repository.audience(audience);
     const record = await this.repository.createBroadcast({
       authorId,
@@ -91,16 +82,50 @@ export class NotificationsService {
       recipients: recipients.length,
     });
 
-    const counters = await this.deliver(recipients, text);
-    await this.repository.finishBroadcast(record.id, {
-      delivered: counters.delivered,
-      failed: counters.failed,
-    });
+    // Доставка идёт в фоне, ответ уходит сразу. Синхронно это была бы минута
+    // ожидания на каждую тысячу адресатов (пауза 70 мс между сообщениями) —
+    // столько ни один прокси соединение не держит, а админ видел бы таймаут
+    // при фактически успешной рассылке.
+    void this.runBroadcast(record.id, recipients, text, audience);
+
+    return { id: record.id, recipients: recipients.length };
+  }
+
+  /** Фоновая часть рассылки: считает и дописывает результат в журнал. */
+  private async runBroadcast(
+    id: number,
+    recipients: Recipient[],
+    text: string,
+    audience: BroadcastAudience,
+  ): Promise<void> {
+    let counters: DeliveryCounters = {
+      recipients: recipients.length,
+      delivered: 0,
+      failed: 0,
+      deliveredIds: [],
+    };
+    try {
+      counters = await this.deliver(recipients, text);
+    } catch (err) {
+      this.logger.error(
+        `Рассылка ${id} прервана: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
+    try {
+      await this.repository.finishBroadcast(id, {
+        delivered: counters.delivered,
+        failed: counters.failed,
+      });
+    } catch (err) {
+      this.logger.error(
+        `Не удалось записать итог рассылки ${id}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
 
     this.logger.log(
-      `Рассылка ${record.id} (${audience}): доставлено ${counters.delivered} из ${counters.recipients}`,
+      `Рассылка ${id} (${audience}): доставлено ${counters.delivered} из ${counters.recipients}`,
     );
-    return { id: record.id, ...counters };
   }
 
   countAudience(audience: BroadcastAudience): Promise<number> {
@@ -111,10 +136,6 @@ export class NotificationsService {
     const { data, total, page, limit } =
       await this.repository.listBroadcasts(query);
     return buildPaginatedResult(data, total, page, limit);
-  }
-
-  isLinked(userId: number): Promise<boolean> {
-    return this.repository.isLinked(userId);
   }
 
   /**
@@ -133,11 +154,15 @@ export class NotificationsService {
     const textFor = typeof text === 'function' ? text : () => text;
     const deliveredIds: number[] = [];
     let failed = 0;
+    let badRequests = 0;
 
     for (const [index, recipient] of recipients.entries()) {
       if (index > 0) await sleep(BULK_DELAY_MS);
 
-      const body = textFor(recipient);
+      // Обрезка здесь, а не у каждого вызывающего: длину сообщения задаёт
+      // Telegram, и забыть про неё в одном месте достаточно, чтобы
+      // уведомление молча не дошло.
+      const body = clampMessage(textFor(recipient));
       let result = await this.telegram.sendMessage(recipient.chatId, body, {
         disablePreview: true,
       });
@@ -152,14 +177,36 @@ export class NotificationsService {
 
       if (result.ok) {
         deliveredIds.push(recipient.id);
+        badRequests = 0;
         continue;
       }
 
       failed += 1;
+
+      // 400 — почти всегда сломанная HTML-разметка в тексте: она одинакова для
+      // всех, и продолжать значит собрать тысячу одинаковых отказов и тысячу
+      // строк в журнале. Несколько подряд — обрываем.
+      if (result.errorCode === 400) {
+        badRequests += 1;
+        if (badRequests >= MAX_BAD_REQUESTS) {
+          this.logger.error(
+            `Отправка прервана: Telegram отклоняет текст (${result.description ?? 'без пояснения'})`,
+          );
+          break;
+        }
+      }
+
       // 403 — бот заблокирован или чат удалён. Такой адресат не «временно
       // недоступен», он не вернётся сам, поэтому снимаем подписку.
+      // Ошибка записи не должна ронять всю рассылку на середине.
       if (result.errorCode === 403) {
-        await this.repository.disableNotifications(recipient.id);
+        try {
+          await this.repository.disableNotifications(recipient.id);
+        } catch (err) {
+          this.logger.error(
+            `Не удалось снять подписку у ${recipient.id}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
       }
     }
 

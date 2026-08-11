@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { NotificationsRepository } from './notifications.repository';
 import { NotificationsService } from './notifications.service';
+import { escapeHtml } from '../bot/telegram-html';
 
 /** Сколько дней без нового товара считаем «магазин заглох». */
 const STALE_DAYS = 7;
@@ -108,9 +109,14 @@ export class SellerNudgeService {
   ): string {
     const shop = escapeHtml(seller.shopName);
 
+    // В сид входит номер окна напоминаний: без него у пустого магазина сид
+    // зависел только от длины названия, то есть был константой, и два других
+    // варианта текста не показывались никогда.
+    const window = Math.floor(now / (NUDGE_COOLDOWN_DAYS * DAY_MS));
+
     if (seller.productCount === 0) {
       return (
-        pick(EMPTY_SHOP_TEXTS, shop.length).replace('{shop}', shop) + FOOTER
+        insertShop(pick(EMPTY_SHOP_TEXTS, shop.length + window), shop) + FOOTER
       );
     }
 
@@ -122,26 +128,29 @@ export class SellerNudgeService {
       : STALE_DAYS;
 
     return (
-      pick(STALE_SHOP_TEXTS, shop.length + days)
-        .replace('{shop}', shop)
-        .replaceAll('{days}', String(days)) + FOOTER
+      insertShop(
+        pick(STALE_SHOP_TEXTS, shop.length + days + window),
+        shop,
+      ).replaceAll('{days}', String(days)) + FOOTER
     );
   }
 }
 
 /**
- * Вариант текста по признаку самого продавца, а не случайный: один и тот же
- * магазин получает разные тексты по мере роста числа дней, но повтор запуска
- * задачи в тот же день не выдаёт другую формулировку.
+ * Вариант текста по признакам продавца и текущего окна: повтор задачи в тот же
+ * день даёт ту же формулировку, а через две недели — другую.
  */
 function pick(texts: readonly string[], seed: number): string {
   return texts[Math.abs(seed) % texts.length];
 }
 
-/** parse_mode: HTML — название магазина может содержать «<» или «&». */
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;');
+/**
+ * Подстановка названия магазина.
+ *
+ * Через функцию, а не строкой: в String.replace строка замены трактует `$&`,
+ * `$\`` и `$'` как спецпоследовательности, и магазин с `$` в названии получил
+ * бы в тексте кусок собственного сообщения вместо своего имени.
+ */
+function insertShop(template: string, shop: string): string {
+  return template.replace('{shop}', () => shop);
 }

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -23,6 +24,8 @@ import { NotificationsService } from './notifications.service';
 import {
   BROADCAST_AUDIENCES,
   BroadcastAudienceCountDto,
+  BroadcastDto,
+  BroadcastStartedDto,
   type BroadcastAudience,
   CreateBroadcastDto,
 } from './dto/create-broadcast.dto';
@@ -36,6 +39,7 @@ export class AdminBroadcastsController {
 
   @Get()
   @ApiOperation({ summary: 'История рассылок' })
+  @ApiResponse({ status: 200, type: [BroadcastDto] })
   list(@Query() query: PaginationQueryDto) {
     return this.notifications.listBroadcasts(query);
   }
@@ -47,18 +51,26 @@ export class AdminBroadcastsController {
   async count(
     @Query('audience') audience: BroadcastAudience,
   ): Promise<BroadcastAudienceCountDto> {
-    const known = BROADCAST_AUDIENCES.includes(audience) ? audience : 'all';
-    return { count: await this.notifications.countAudience(known) };
+    if (!BROADCAST_AUDIENCES.includes(audience)) {
+      throw new BadRequestException(
+        `Неизвестная аудитория. Допустимо: ${BROADCAST_AUDIENCES.join(', ')}.`,
+      );
+    }
+    return { count: await this.notifications.countAudience(audience) };
   }
 
   /**
-   * Лимит жёсткий: каждый запрос — это сообщение всем пользователям сразу.
-   * Случайный двойной клик не должен превращаться в две рассылки подряд.
+   * Одна рассылка в минуту: каждый запрос — это сообщение всем пользователям
+   * сразу, и случайный двойной клик не должен превращаться во вторую.
+   * Прежний лимит 3 этого как раз не обеспечивал.
    */
   @Post()
   @HttpCode(HttpStatus.OK)
-  @Throttle({ default: { limit: 3, ttl: 60_000 } })
-  @ApiOperation({ summary: 'Отправить рассылку в Telegram' })
+  @Throttle({ default: { limit: 1, ttl: 60_000 } })
+  @ApiOperation({
+    summary: 'Запустить рассылку в Telegram (доставка идёт в фоне)',
+  })
+  @ApiResponse({ status: 200, type: BroadcastStartedDto })
   send(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateBroadcastDto,

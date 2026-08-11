@@ -1,5 +1,15 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
+import {
+  and,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  or,
+  sql,
+} from 'drizzle-orm';
 import { DRIZZLE, type DrizzleDb } from '../../db/db.provider';
 import {
   type Broadcast,
@@ -43,16 +53,12 @@ export class NotificationsRepository {
       .where(and(REACHABLE, eq(users.role, 'admin')));
   }
 
-  async one(userId: number): Promise<Recipient | undefined> {
-    const rows = await this.db
-      .select({ id: users.id, chatId: sql<number>`${users.telegramChatId}` })
-      .from(users)
-      .where(and(REACHABLE, eq(users.id, userId)))
-      .limit(1);
-    return rows[0];
-  }
-
-  audience(audience: BroadcastAudience): Promise<Recipient[]> {
+  /**
+   * Условие выборки для аудитории. Одно на всех: раньше тот же тернарник был
+   * скопирован в audience() и countAudience(), и правка в одной копии дала бы
+   * «показали N, отправили M» — а при потере роли рассылка ушла бы всей базе.
+   */
+  private audienceWhere(audience: BroadcastAudience) {
     const byRole =
       audience === 'sellers'
         ? eq(users.role, 'seller')
@@ -60,10 +66,14 @@ export class NotificationsRepository {
           ? eq(users.role, 'user')
           : undefined;
 
+    return byRole ? and(REACHABLE, byRole) : REACHABLE;
+  }
+
+  audience(audience: BroadcastAudience): Promise<Recipient[]> {
     return this.db
       .select({ id: users.id, chatId: sql<number>`${users.telegramChatId}` })
       .from(users)
-      .where(byRole ? and(REACHABLE, byRole) : REACHABLE);
+      .where(this.audienceWhere(audience));
   }
 
   /**
@@ -101,12 +111,19 @@ export class NotificationsRepository {
       );
   }
 
+  /**
+   * inArray, а не `= ANY(...)`: drizzle разворачивает JS-массив в sql-шаблоне
+   * не в массивный литерал, а в список через запятую — получался
+   * `id = ANY(($1, $2))`, что Postgres отвергает. UPDATE не проходил, отметка
+   * не писалась, и напоминание повторялось каждые сутки вместо раза в две
+   * недели.
+   */
   markNudged(userIds: number[]): Promise<unknown> {
     if (userIds.length === 0) return Promise.resolve(null);
     return this.db
       .update(users)
       .set({ lastNudgeAt: new Date(), updatedAt: new Date() })
-      .where(sql`${users.id} = ANY(${userIds})`);
+      .where(inArray(users.id, userIds));
   }
 
   /** Бот заблокирован пользователем — больше не пишем, пока не вернётся сам. */
@@ -115,13 +132,6 @@ export class NotificationsRepository {
       .update(users)
       .set({ telegramNotificationsEnabled: false, updatedAt: new Date() })
       .where(eq(users.id, userId));
-  }
-
-  setNotifications(telegramId: number, enabled: boolean): Promise<unknown> {
-    return this.db
-      .update(users)
-      .set({ telegramNotificationsEnabled: enabled, updatedAt: new Date() })
-      .where(eq(users.telegramId, telegramId));
   }
 
   createBroadcast(data: {
@@ -179,27 +189,10 @@ export class NotificationsRepository {
 
   /** Сколько адресатов получит рассылка — показываем до отправки. */
   countAudience(audience: BroadcastAudience): Promise<number> {
-    const byRole =
-      audience === 'sellers'
-        ? eq(users.role, 'seller')
-        : audience === 'buyers'
-          ? eq(users.role, 'user')
-          : undefined;
-
     return this.db
       .select({ count: sql<number>`count(*)::int` })
       .from(users)
-      .where(byRole ? and(REACHABLE, byRole) : REACHABLE)
+      .where(this.audienceWhere(audience))
       .then((rows) => rows[0]?.count ?? 0);
-  }
-
-  /** Есть ли у пользователя открытый чат с ботом — для подсказки на сайте. */
-  async isLinked(userId: number): Promise<boolean> {
-    const rows = await this.db
-      .select({ chatId: users.telegramChatId })
-      .from(users)
-      .where(and(eq(users.id, userId), isNotNull(users.telegramChatId)))
-      .limit(1);
-    return rows.length > 0;
   }
 }

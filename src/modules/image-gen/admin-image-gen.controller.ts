@@ -68,8 +68,14 @@ export class ImageGenController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @ApiOperation({ summary: 'Составить промпт по фотографии товара' })
-  describe(@Body() dto: DescribePromptDto) {
-    return this.imageGenService.describePrompt(dto);
+  describe(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: DescribePromptDto,
+  ) {
+    return this.imageGenService.describePrompt(dto, {
+      id: user.id,
+      isAdmin: user.role === 'admin',
+    });
   }
 
   /** Лимит жёстче обычного: каждый запрос — до четырёх платных картинок. */

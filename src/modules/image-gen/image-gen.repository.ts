@@ -40,10 +40,51 @@ export class ImageGenRepository {
 
     return {
       allowed: isAdmin || row.enabled,
-      // У администратора лимита нет: он и раздаёт квоты остальным.
       limit: isAdmin ? null : row.limit,
       used: row.used,
     };
+  }
+
+  /**
+   * Занимает квоту под `want` картинок одним UPDATE.
+   *
+   * Условие проверяется тем же оператором, который пишет счётчик, поэтому два
+   * одновременных запроса не могут оба увидеть свободный остаток: Postgres
+   * сериализует их на блокировке строки. Возвращает false, если места нет.
+   *
+   * Безлимитным (и администраторам) резерв не нужен — им всегда true.
+   */
+  async reserve(userId: number, want: number): Promise<boolean> {
+    const rows = await this.db
+      .update(users)
+      .set({ imageGenReserved: sql`${users.imageGenReserved} + ${want}` })
+      .where(
+        and(
+          eq(users.id, userId),
+          sql`(
+            ${users.imageGenLimit} IS NULL
+            OR (select count(*)::int from ${generatedImages}
+                where ${generatedImages.userId} = ${users.id})
+               + ${users.imageGenReserved} + ${want} <= ${users.imageGenLimit}
+          )`,
+        ),
+      )
+      .returning({ id: users.id });
+
+    return rows.length > 0;
+  }
+
+  /**
+   * Освобождает резерв. GREATEST на случай рассинхрона: уйти в минус счётчику
+   * нельзя, иначе он начнёт выдавать квоту сверх лимита.
+   */
+  async release(userId: number, want: number): Promise<void> {
+    await this.db
+      .update(users)
+      .set({
+        imageGenReserved: sql`greatest(0, ${users.imageGenReserved} - ${want})`,
+      })
+      .where(eq(users.id, userId));
   }
 
   record(

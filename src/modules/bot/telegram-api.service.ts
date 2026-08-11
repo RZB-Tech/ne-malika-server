@@ -49,8 +49,8 @@ export class TelegramApiService {
   }
 
   /** Отправляет сообщение с кнопкой запроса контакта (request_contact). */
-  async requestContact(chatId: number, text: string): Promise<void> {
-    await this.sendMessage(chatId, text, {
+  requestContact(chatId: number, text: string): Promise<TelegramSendResult> {
+    return this.sendMessage(chatId, text, {
       replyMarkup: {
         keyboard: [
           [{ text: '📱 Поделиться номером телефона', request_contact: true }],
@@ -62,14 +62,19 @@ export class TelegramApiService {
   }
 
   /** Убирает кастомную клавиатуру после успешного получения контакта. */
-  async removeKeyboard(chatId: number, text: string): Promise<void> {
-    await this.sendMessage(chatId, text, {
+  removeKeyboard(chatId: number, text: string): Promise<TelegramSendResult> {
+    return this.sendMessage(chatId, text, {
       replyMarkup: { remove_keyboard: true },
     });
   }
 
-  async setWebhook(url: string, secretToken?: string): Promise<void> {
-    await this.call('setWebhook', {
+  /**
+   * Результат возвращается наружу: раньше отказ Telegram здесь терялся, и
+   * приложение писало в журнал «вебхук зарегистрирован» даже когда токен был
+   * неверным, а бот не получал ни одного апдейта.
+   */
+  setWebhook(url: string, secretToken?: string): Promise<TelegramSendResult> {
+    return this.call('setWebhook', {
       url,
       secret_token: secretToken,
       allowed_updates: ['message'],
@@ -90,8 +95,6 @@ export class TelegramApiService {
 
       if (data.ok) return { ok: true };
 
-      // 403 — обычное дело при рассылке (бот заблокирован), логировать каждый
-      // такой ответ значит завалить журнал. Остальное — повод посмотреть.
       if (data.error_code !== 403) {
         this.logger.error(
           `Telegram API ${method} failed: ${JSON.stringify(data)}`,

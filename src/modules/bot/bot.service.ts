@@ -45,7 +45,14 @@ export class BotService implements OnModuleInit {
       return;
     }
 
-    await this.telegramApi.setWebhook(webhookUrl, webhookSecret);
+    const result = await this.telegramApi.setWebhook(webhookUrl, webhookSecret);
+    if (!result.ok) {
+      this.logger.error(
+        `Telegram отклонил регистрацию вебхука ${webhookUrl}: ` +
+          `${result.description ?? 'причина не указана'}. Бот не получит апдейты.`,
+      );
+      return;
+    }
     this.logger.log(`Telegram webhook зарегистрирован: ${webhookUrl}`);
   }
 
@@ -53,19 +60,22 @@ export class BotService implements OnModuleInit {
     const message = update.message;
     if (!message) return; // игнорируем не-message апдейты (MVP не обрабатывает остальное)
 
+    if (message.chat.type !== 'private') return;
+
     if (message.contact) {
       return this.handleContact(message);
     }
 
-    if (message.text?.startsWith('/start')) {
+    const command = parseCommand(message.text);
+
+    if (command === '/start') {
       return this.handleStart(message);
     }
 
-    if (message.text === '/stop') {
+    if (command === '/stop') {
       return this.handleStop(message);
     }
 
-    // Любой другой текст — мягкая заглушка, без сложной логики диалога в MVP
     await this.telegramApi.sendMessage(
       message.chat.id,
       'Не понимаю эту команду. Отправьте /start, чтобы начать.',
@@ -114,9 +124,6 @@ export class BotService implements OnModuleInit {
   private async handleContact(message: TelegramMessage): Promise<void> {
     const contact = message.contact!;
 
-    // Защита от передачи чужого контакта: Telegram-кнопка request_contact
-    // всегда шлёт контакт отправителя, но если контакт прислан вручную
-    // (например, форвардом карточки), user_id может отличаться от from.id.
     if (contact.user_id && contact.user_id !== message.from.id) {
       await this.telegramApi.sendMessage(
         message.chat.id,
@@ -153,4 +160,20 @@ export class BotService implements OnModuleInit {
 
     await this.telegramApi.removeKeyboard(message.chat.id, CONTACT_SAVED_TEXT);
   }
+}
+
+/**
+ * Команда из текста сообщения.
+ *
+ * Раньше проверка была `startsWith('/start')`, и под неё подходило всё подряд —
+ * от `/startup` до `/start_whatever`. Telegram к тому же дописывает к команде
+ * имя бота (`/start@nemalika_bot`), поэтому строгое сравнение без обрезки
+ * суффикса тоже не годится.
+ *
+ * Возвращает `null`, если это не команда.
+ */
+function parseCommand(text: string | undefined): string | null {
+  const first = text?.trim().split(/\s+/)[0];
+  if (!first?.startsWith('/')) return null;
+  return first.split('@')[0].toLowerCase();
 }
