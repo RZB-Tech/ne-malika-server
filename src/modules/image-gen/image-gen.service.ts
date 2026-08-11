@@ -46,7 +46,7 @@ Reply with the prompt itself only: plain English text, no JSON, no quotes around
 Build the prompt in this order:
 1. The product: type, brand and model if they are readable, colour, material, and the details that must survive — ports, buttons, cable, screen, logo placement.
 2. The hero shot: product large and angled, filling most of the frame, dramatic studio light with a rim highlight, realistic reflection and contact shadow.
-3. The background: a bold gradient or scene that suits the product — deep red and black for gaming gear, cool blue and white for office gear — with a glow behind the product. Never plain white.
+3. The background: describe only the mood and how the light falls — how the glow sits behind the product, whether the scene is dark and dramatic or bright and airy. Do not name any background colour: the palette is chosen separately for every variant. Never plain white.
 4. The Russian text, every string quoted verbatim in double quotes:
    - a heavy bold Cyrillic headline across the top, one or two words naming the main benefit;
    - a small brand or model line above the headline;
@@ -115,11 +115,35 @@ const REFERENCE_STYLE = [
  */
 const CARD_STYLE = [
   'Vertical marketplace listing card, Wildberries / Ozon style infographic.',
-  'Photoreal product composited on a designed background: bold gradient or scene, glow and rim light behind the product, realistic contact shadow.',
-  'Heavy bold Cyrillic headline across the top, short Russian feature callouts in rounded badges beside the parts they describe.',
+  'Photoreal product composited on a designed background: glow and rim light behind the product, realistic contact shadow.',
+  'Heavy bold Cyrillic headline, short Russian feature callouts in badges beside the parts they describe.',
   'Render every Russian word in correct, sharp Cyrillic — no invented letters, no misspellings, no Latin transliteration.',
   'Clean commercial layout, generous margins, high contrast, no watermark, no marketplace logo, no placeholder text.',
 ].join(' ');
+
+/**
+ * Художественные решения карточки — палитра, свет и раскладка текста.
+ *
+ * Без них всё приезжает в одной и той же сине-белой гамме: и составитель
+ * промпта, и рисующая модель по умолчанию тянутся к «технологичному синему»,
+ * а компьютерная техника только усиливает этот перекос. Поэтому цвет фона в
+ * промпте больше не называется вовсе — он приходит отсюда.
+ *
+ * Решение выбирается на каждый вариант отдельно, поэтому за один запрос
+ * приезжают разные карточки, а не четыре копии одной.
+ */
+const CARD_DIRECTIONS = [
+  'Art direction: charcoal-to-black gradient background with a warm amber glow behind the product; headline block in the top-left corner; callout badges outlined in amber.',
+  'Art direction: graphite background with a magenta-to-violet neon rim and a faint tech grid; headline in the top-right corner; callouts in dark rounded pills.',
+  'Art direction: bright studio background, soft grey-to-white gradient with a long soft shadow; near-black heavy headline across the top; callouts in flat saturated colour blocks.',
+  'Art direction: emerald-to-teal gradient background with a lime accent; a diagonal band running behind the headline; callouts as circular badges.',
+  'Art direction: warm sand and cream background with a soft peach glow; dark brown headline; callouts in white rounded cards with thin drop shadows.',
+  'Art direction: crimson-to-black background with a hot orange rim light and drifting smoke; condensed headline stacked at the top; callouts in black pills with orange edges.',
+  'Art direction: icy white-to-pale-blue background with crisp geometric shapes; navy headline; callouts as thin outlined tags.',
+  'Art direction: matte purple-to-indigo background with a hard spotlight from above; headline centred at the top; callouts in glassy translucent panels.',
+  'Art direction: concrete-grey textured background cut by one bright yellow diagonal stripe; black headline inside a yellow block; square tags for the callouts.',
+  'Art direction: near-monochrome scene with a single saturated accent colour taken from the product itself; oversized headline; minimal thin-line callouts with leader lines.',
+];
 
 /** Хвост для режима «фото на белом»: ни фона, ни надписей, только товар. */
 const PHOTO_STYLE = [
@@ -254,9 +278,10 @@ export class ImageGenService {
       );
     }
 
+    const directions = pickDirections(count);
     const attempts = await Promise.allSettled(
-      Array.from({ length: count }, () =>
-        this.requestOne(model, references, dto),
+      Array.from({ length: count }, (_, i) =>
+        this.requestOne(model, references, dto, directions[i]),
       ),
     );
 
@@ -291,11 +316,15 @@ export class ImageGenService {
    * /images — только там есть размер, качество и правка по образцу.
    * SDK такого эндпоинта не знает, поэтому дёргаем его через client.post:
    * так сохраняются базовый адрес, ключ, keep-alive и повторы.
+   *
+   * `direction` — художественное решение именно этого варианта. Без него все
+   * запросы уходят с одинаковым текстом и возвращают одинаковые картинки.
    */
   private async requestOne(
     model: string,
     references: ImageReference[],
     dto: GenerateImagesDto,
+    direction: string,
   ): Promise<GeneratedImageDto[]> {
     const result = await this.router!.post<unknown, OpenRouterImagesResponse>(
       '/images',
@@ -304,7 +333,7 @@ export class ImageGenService {
           model,
           prompt: [
             dto.prompt.trim(),
-            ...styleTail(references.length, dto),
+            ...styleTail(references.length, dto, direction),
           ].join('\n\n'),
           n: 1,
           size: dto.size ?? '960x1280',
@@ -331,12 +360,36 @@ export class ImageGenService {
 
 /**
  * Что дописать к промпту админа. С референсом подачу диктует образец, поэтому
- * свой стиль не добавляем: раньше хвост требовал белый фон и запрещал надписи —
- * и перебивал любую картинку-образец.
+ * ни своего стиля, ни художественного решения не добавляем: раньше хвост
+ * требовал белый фон и запрещал надписи — и перебивал любую картинку-образец.
+ *
+ * Оговорка «если фон уже описан выше» нужна для случая, когда админ написал
+ * промпт руками и указал фон сам: его слово должно быть последним.
  */
-function styleTail(referenceCount: number, dto: GenerateImagesDto): string[] {
+function styleTail(
+  referenceCount: number,
+  dto: GenerateImagesDto,
+  direction: string,
+): string[] {
   if (referenceCount > 1) return [REFERENCE_ROLES, REFERENCE_STYLE];
-  return [dto.style === 'photo' ? PHOTO_STYLE : CARD_STYLE];
+  if (dto.style === 'photo') return [PHOTO_STYLE];
+  return [
+    CARD_STYLE,
+    `${direction} Follow this art direction unless the description above already names a background or a colour scheme.`,
+  ];
+}
+
+/**
+ * Художественные решения для одной пачки вариантов: берём подряд со случайного
+ * места по кругу. Внутри запроса они не повторяются, а между запросами набор
+ * каждый раз другой — иначе первая карточка всегда выходила бы одинаковой.
+ */
+function pickDirections(count: number): string[] {
+  const start = Math.floor(Math.random() * CARD_DIRECTIONS.length);
+  return Array.from(
+    { length: count },
+    (_, i) => CARD_DIRECTIONS[(start + i) % CARD_DIRECTIONS.length],
+  );
 }
 
 /**
