@@ -1,6 +1,5 @@
 import {
   BadGatewayException,
-  ForbiddenException,
   Inject,
   Injectable,
   Logger,
@@ -10,7 +9,12 @@ import { ConfigService } from '@nestjs/config';
 import type OpenAI from 'openai';
 import { OPENROUTER_CLIENT } from '../openrouter/openrouter-client.provider';
 import { FilesService } from '../files/files.service';
-import { ImageGenRepository, type ImageGenQuota } from './image-gen.repository';
+import { ImageGenRepository } from './image-gen.repository';
+import { CreditsService, type CreditHold } from '../credits/credits.service';
+import {
+  estimateImageCredits,
+  PROMPT_ESTIMATE_CREDITS,
+} from '../credits/credits.constants';
 import {
   DescribePromptDto,
   GenerateImagesDto,
@@ -24,9 +28,22 @@ interface ImageReference {
   image_url: { url: string };
 }
 
-/** Ответ /images: картинки приходят байтами в base64, а не ссылками. */
+/**
+ * Ответ /images: картинки приходят байтами в base64, а не ссылками.
+ * `usage.cost` — фактическая стоимость в долларах, по ней и списываем.
+ */
 interface OpenRouterImagesResponse {
   data?: { b64_json?: string; media_type?: string }[];
+  usage?: { cost?: number };
+}
+
+/**
+ * Стоимость запроса у OpenRouter. В типах SDK этого поля нет — это их
+ * расширение, поэтому читаем через unknown, а не приводим весь usage.
+ */
+function usageCost(usage: unknown): number | undefined {
+  const cost = (usage as { cost?: unknown } | undefined)?.cost;
+  return typeof cost === 'number' && cost > 0 ? cost : undefined;
 }
 
 /** Сколько прошлых вариантов показывать в галерее диалога. */
@@ -168,26 +185,28 @@ export class ImageGenService {
     private readonly files: FilesService,
     private readonly config: ConfigService,
     private readonly repository: ImageGenRepository,
+    private readonly credits: CreditsService,
   ) {}
 
   /**
-   * Сколько картинок осталось. Отдаётся клиенту, чтобы продавец видел остаток
-   * до того, как нажмёт «Сгенерировать», а не после отказа.
+   * Остаток кредитов. Отдаётся клиенту, чтобы продавец видел его до нажатия
+   * кнопки, а не узнавал об отказе после.
    */
-  quota(userId: number, isAdmin: boolean): Promise<ImageGenQuota> {
-    return this.repository.quota(userId, isAdmin);
-  }
-
-  /** Выдача доступа и квоты администратором. Возвращает новое состояние. */
-  async setAccess(
+  async balance(
     userId: number,
-    data: { enabled: boolean; limit?: number | null },
-  ): Promise<ImageGenQuota> {
-    await this.repository.setAccess(userId, {
-      enabled: data.enabled,
-      limit: data.limit ?? null,
-    });
-    return this.repository.quota(userId, false);
+    isAdmin: boolean,
+  ): Promise<{ allowed: boolean; credits: number | null }> {
+    if (isAdmin) return { allowed: true, credits: null };
+
+    const shopId = await this.credits.shopIdOf(userId);
+    if (!shopId) return { allowed: false, credits: 0 };
+
+    const state = await this.credits.balance(shopId);
+    const available = Math.max(
+      0,
+      (state?.balance ?? 0) - (state?.reserved ?? 0),
+    );
+    return { allowed: available > 0, credits: available };
   }
 
   /** Ранее нарисованное по этому же фото — галерея в диалоге. */
@@ -203,49 +222,6 @@ export class ImageGenService {
       prompt: row.prompt,
       createdAt: row.createdAt,
     }));
-  }
-
-  /** Есть ли у пользователя право генерировать. Без учёта остатка. */
-  private async assertAllowed(
-    userId: number,
-    isAdmin: boolean,
-  ): Promise<ImageGenQuota> {
-    const quota = await this.repository.quota(userId, isAdmin);
-    if (!quota.allowed) {
-      throw new ForbiddenException(
-        'Генерация изображений не подключена. Обратитесь к администратору.',
-      );
-    }
-    return quota;
-  }
-
-  /**
-   * Занимает квоту под `want` картинок.
-   *
-   * Резерв, а не просто проверка: между чтением остатка и записью результата
-   * проходит время генерации (десятки секунд), и без резерва десять
-   * параллельных запросов увидели бы один и тот же остаток и прошли бы все.
-   * Резерв снимается в `finally` — картинки, которые модель не отдала,
-   * квоту не съедают.
-   *
-   * Возвращает true, если резерв занят и его нужно освободить.
-   */
-  private async reserveQuota(
-    userId: number,
-    isAdmin: boolean,
-    want: number,
-  ): Promise<boolean> {
-    const quota = await this.assertAllowed(userId, isAdmin);
-    if (quota.limit === null) return false;
-
-    if (await this.repository.reserve(userId, want)) return true;
-
-    const left = Math.max(0, quota.limit - quota.used);
-    throw new ForbiddenException(
-      left === 0
-        ? `Лимит генераций исчерпан: использовано ${quota.used} из ${quota.limit}.`
-        : `Осталось ${left} из ${quota.limit} — уменьшите количество вариантов.`,
-    );
   }
 
   /**
@@ -264,7 +240,11 @@ export class ImageGenService {
       );
     }
 
-    await this.assertAllowed(author.id, author.isAdmin);
+    const hold = await this.credits.hold(
+      author,
+      PROMPT_ESTIMATE_CREDITS,
+      'составление промпта',
+    );
 
     const model = this.config.get<string>('openrouter.visionModel')!;
     const withReference = Boolean(dto.referenceKey);
@@ -307,6 +287,11 @@ export class ImageGenService {
         { timeout: PROMPT_TIMEOUT_MS, maxRetries: 1 },
       );
 
+      await this.credits.settle(hold, usageCost(completion.usage), {
+        operation: 'prompt',
+        model,
+      });
+
       const choice = completion.choices[0];
       const prompt = cleanPrompt(choice?.message?.content);
       if (!prompt) {
@@ -317,6 +302,8 @@ export class ImageGenService {
       }
       return { prompt };
     } catch (err) {
+      await this.credits.cancel(hold);
+
       const details = describeError(err);
       this.logger.error(
         `Промпт по фото ${dto.photoKey} не составлен (модель ${model}): ${details}`,
@@ -346,12 +333,19 @@ export class ImageGenService {
     }
 
     const count = Math.min(dto.count ?? 2, MAX_GENERATED_IMAGES);
-    const reserved = await this.reserveQuota(author.id, author.isAdmin, count);
+    const size = dto.size ?? '960x1280';
+
+    const hold = await this.credits.hold(
+      author,
+      estimateImageCredits(size, count),
+      'генерацию',
+    );
 
     try {
-      return await this.run(dto, count, author);
-    } finally {
-      if (reserved) await this.repository.release(author.id, count);
+      return await this.run(dto, count, author, hold);
+    } catch (err) {
+      await this.credits.cancel(hold);
+      throw err;
     }
   }
 
@@ -360,6 +354,7 @@ export class ImageGenService {
     dto: GenerateImagesDto,
     count: number,
     author: { id: number; isAdmin: boolean },
+    hold: CreditHold | null,
   ): Promise<GeneratedImageDto[]> {
     const model = this.config.get<string>('openrouter.imageModel')!;
 
@@ -393,8 +388,23 @@ export class ImageGenService {
     );
 
     const saved: GeneratedImageDto[] = [];
+    let usd = 0;
+    let priced = false;
     for (const attempt of attempts) {
-      if (attempt.status === 'fulfilled') saved.push(...attempt.value);
+      if (attempt.status !== 'fulfilled') continue;
+      saved.push(...attempt.value.images);
+      if (attempt.value.usd !== undefined) {
+        usd += attempt.value.usd;
+        priced = true;
+      }
+    }
+
+    if (saved.length > 0) {
+      await this.credits.settle(hold, priced ? usd : undefined, {
+        operation: 'image',
+        model,
+        images: saved.length,
+      });
     }
 
     if (saved.length === 0) {
@@ -425,7 +435,7 @@ export class ImageGenService {
       );
     }
 
-    const failed = attempts.length - saved.length;
+    const failed = count - saved.length;
     this.logger.log(
       `Сгенерировано ${saved.length} из ${count} фото по ключу ${dto.photoKey}` +
         (failed > 0 ? ` (${failed} попыток не удалось)` : ''),
@@ -447,7 +457,7 @@ export class ImageGenService {
     references: ImageReference[],
     dto: GenerateImagesDto,
     direction: string,
-  ): Promise<GeneratedImageDto[]> {
+  ): Promise<{ images: GeneratedImageDto[]; usd?: number }> {
     const result = await this.router!.post<unknown, OpenRouterImagesResponse>(
       '/images',
       {
@@ -476,7 +486,7 @@ export class ImageGenService {
       );
       saved.push({ key, url: this.files.buildPublicUrl(key) });
     }
-    return saved;
+    return { images: saved, usd: usageCost(result.usage) };
   }
 }
 

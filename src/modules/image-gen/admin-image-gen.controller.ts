@@ -4,10 +4,6 @@ import {
   Get,
   HttpCode,
   HttpStatus,
-  Param,
-  ParseIntPipe,
-  ParseUUIDPipe,
-  Patch,
   Post,
   Query,
 } from '@nestjs/common';
@@ -18,10 +14,8 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import {
-  AdminOnly,
-  SellerOrAdmin,
-} from '../../common/decorators/roles.decorator';
+import { ParseUUIDPipe } from '@nestjs/common';
+import { SellerOrAdmin } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../common/types/auth.types';
 import { ImageGenService } from './image-gen.service';
@@ -29,14 +23,13 @@ import {
   DescribePromptDto,
   GenerateImagesDto,
   GeneratedImageDto,
-  ImageGenAccessDto,
-  ImageGenQuotaDto,
+  ImageGenBalanceDto,
   StoredImageDto,
 } from './dto/generate-images.dto';
 
 /**
  * Генерация карточек. Раздел админский по истории, но пользуются им и
- * продавцы — тем, кому администратор выдал доступ и квоту.
+ * продавцы — за счёт кредитов своего магазина.
  */
 @ApiTags('image-gen')
 @ApiBearerAuth('access-token')
@@ -45,11 +38,11 @@ import {
 export class ImageGenController {
   constructor(private readonly imageGenService: ImageGenService) {}
 
-  @Get('quota')
-  @ApiOperation({ summary: 'Доступ и остаток по генерации изображений' })
-  @ApiResponse({ status: 200, type: ImageGenQuotaDto })
-  quota(@CurrentUser() user: AuthenticatedUser): Promise<ImageGenQuotaDto> {
-    return this.imageGenService.quota(user.id, user.role === 'admin');
+  @Get('balance')
+  @ApiOperation({ summary: 'Остаток кредитов магазина на ИИ' })
+  @ApiResponse({ status: 200, type: ImageGenBalanceDto })
+  balance(@CurrentUser() user: AuthenticatedUser): Promise<ImageGenBalanceDto> {
+    return this.imageGenService.balance(user.id, user.role === 'admin');
   }
 
   @Get('history')
@@ -94,33 +87,5 @@ export class ImageGenController {
       id: user.id,
       isAdmin: user.role === 'admin',
     });
-  }
-}
-
-/** Выдача доступа и квоты — это уже только администратор. */
-@ApiTags('image-gen-admin')
-@ApiBearerAuth('access-token')
-@AdminOnly()
-@Controller('admin/image-gen')
-export class AdminImageGenController {
-  constructor(private readonly imageGenService: ImageGenService) {}
-
-  @Get('access/:userId')
-  @ApiOperation({ summary: 'Текущий доступ и расход пользователя' })
-  @ApiResponse({ status: 200, type: ImageGenQuotaDto })
-  access(
-    @Param('userId', ParseIntPipe) userId: number,
-  ): Promise<ImageGenQuotaDto> {
-    return this.imageGenService.quota(userId, false);
-  }
-
-  @Patch('access/:userId')
-  @ApiOperation({ summary: 'Выдать или снять доступ к генерации' })
-  @ApiResponse({ status: 200, type: ImageGenQuotaDto })
-  setAccess(
-    @Param('userId', ParseIntPipe) userId: number,
-    @Body() dto: ImageGenAccessDto,
-  ): Promise<ImageGenQuotaDto> {
-    return this.imageGenService.setAccess(userId, dto);
   }
 }

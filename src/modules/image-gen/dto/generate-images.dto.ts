@@ -1,7 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
-  IsBoolean,
   IsIn,
   IsInt,
   IsOptional,
@@ -136,41 +135,17 @@ export class GeneratedImageDto {
   url: string;
 }
 
-export class ImageGenQuotaDto {
-  @ApiProperty({ description: 'Разрешена ли генерация этому пользователю' })
+export class ImageGenBalanceDto {
+  @ApiProperty({ description: 'Разрешена ли генерация: у админа — всегда' })
   allowed: boolean;
 
   @ApiProperty({
-    // Тип обязателен явно: без него Swagger выводит `object`, и в клиенте
-    // limit становится `{ [key: string]: unknown } | null` вместо числа.
     type: Number,
     nullable: true,
-    description: 'Сколько картинок всего разрешено. null — без ограничения',
-    example: 50,
+    description: 'Остаток кредитов. null — без ограничения (администратор)',
+    example: 8400,
   })
-  limit: number | null;
-
-  @ApiProperty({ description: 'Сколько уже сгенерировано' })
-  used: number;
-}
-
-export class ImageGenAccessDto {
-  @ApiProperty({ description: 'Включить или выключить генерацию' })
-  @IsBoolean()
-  enabled: boolean;
-
-  @ApiPropertyOptional({
-    type: Number,
-    nullable: true,
-    minimum: 0,
-    description: 'Потолок числа картинок. Пусто — безлимитно',
-    example: 50,
-  })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(0)
-  limit?: number | null;
+  credits: number | null;
 }
 
 export class StoredImageDto {

@@ -37,13 +37,25 @@ export const shops = pgTable(
     telegramLink: varchar('telegram_link', { length: 255 }).notNull(),
     contact: varchar('contact', { length: 20 }).notNull(),
 
-    // Новые поля
+    /**
+     * Кредиты на ИИ-генерацию. 1000 кредитов = $1 фактического расхода у
+     * OpenRouter; целое число, потому что доли цента при тысячах операций
+     * копят ошибку округления.
+     */
+    creditsBalance: bigint('credits_balance', { mode: 'number' })
+      .notNull()
+      .default(0),
+
+    /** Занято под выполняющиеся запросы — освобождается после списания. */
+    creditsReserved: bigint('credits_reserved', { mode: 'number' })
+      .notNull()
+      .default(0),
+
     address: varchar('address', { length: 500 }),
     workSchedule: jsonb('work_schedule').$type<WorkScheduleEntry[]>(),
     /** [latitude, longitude] */
     location: doublePrecision('location').array(),
 
-    // Упразднение (раздел 3.5)
     status: entityStatusEnum('status').notNull().default('active'),
     abolishReason: text('abolish_reason'),
     abolishedAt: timestamp('abolished_at', { withTimezone: true }),

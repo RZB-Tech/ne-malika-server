@@ -28,3 +28,15 @@ export const broadcastAudienceEnum = pgEnum('broadcast_audience', [
   'sellers',
   'buyers',
 ]);
+
+/**
+ * Движение кредитов: `grant` — выдача администратором, `spend` — списание за
+ * запрос к модели, `refund` — возврат неиспользованного резерва,
+ * `adjust` — ручная правка баланса.
+ */
+export const creditTxnKindEnum = pgEnum('credit_txn_kind', [
+  'grant',
+  'spend',
+  'refund',
+  'adjust',
+]);

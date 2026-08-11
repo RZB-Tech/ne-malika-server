@@ -3,8 +3,14 @@ import { SettingsRepository } from './settings.repository';
 import { RedisService } from '../redis/redis.service';
 import { AppSettingsDto } from './dto/app-settings.dto';
 
+import {
+  CREDIT_MARKUP_KEY,
+  DEFAULT_CREDIT_MARKUP,
+} from '../credits/credits.constants';
+
 const AI_CHECKS_KEY = 'ai_checks_enabled';
 const CACHE_KEY = 'settings:ai_checks_enabled';
+const MARKUP_CACHE_KEY = 'settings:credit_markup';
 const CACHE_TTL_SEC = 300;
 
 @Injectable()
@@ -28,13 +34,42 @@ export class SettingsService {
     return value;
   }
 
+  /**
+   * Множитель наценки на кредиты. Читается на каждую выдачу и на предпросмотр
+   * суммы, меняется редко — кэшируется так же, как флаг ИИ-проверки.
+   *
+   * Меньше единицы не бывает: множитель 0.5 означал бы, что площадка дарит
+   * вдвое больше, чем получила, а ноль — деление на ноль при начислении.
+   */
+  async getCreditMarkup(): Promise<number> {
+    const cached = await this.redis.get<number>(MARKUP_CACHE_KEY);
+    if (cached !== null) return cached;
+
+    const stored = await this.repository.get<number>(CREDIT_MARKUP_KEY);
+    const value =
+      typeof stored === 'number' && stored >= 1
+        ? stored
+        : DEFAULT_CREDIT_MARKUP;
+    await this.redis.set(MARKUP_CACHE_KEY, value, CACHE_TTL_SEC);
+    return value;
+  }
+
   async getAll(): Promise<AppSettingsDto> {
-    return { aiChecksEnabled: await this.isAiChecksEnabled() };
+    return {
+      aiChecksEnabled: await this.isAiChecksEnabled(),
+      creditMarkup: await this.getCreditMarkup(),
+    };
   }
 
   async update(dto: AppSettingsDto): Promise<AppSettingsDto> {
     await this.repository.set(AI_CHECKS_KEY, dto.aiChecksEnabled);
     await this.redis.del(CACHE_KEY);
-    return { aiChecksEnabled: dto.aiChecksEnabled };
+
+    if (dto.creditMarkup !== undefined) {
+      await this.repository.set(CREDIT_MARKUP_KEY, dto.creditMarkup);
+      await this.redis.del(MARKUP_CACHE_KEY);
+    }
+
+    return this.getAll();
   }
 }
