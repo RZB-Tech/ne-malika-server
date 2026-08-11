@@ -9,6 +9,7 @@ import { ProductCardsRepository } from '../product-cards/product-cards.repositor
 import { CreateReportDto } from './dto/create-report.dto';
 import { FindReportsQueryDto } from './dto/find-reports-query.dto';
 import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class ReportsService {
@@ -16,6 +17,7 @@ export class ReportsService {
     private readonly reportsRepository: ReportsRepository,
     private readonly shopsRepository: ShopsRepository,
     private readonly productCardsRepository: ProductCardsRepository,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async create(dto: CreateReportDto) {
@@ -38,11 +40,19 @@ export class ReportsService {
       }
     }
 
-    return this.reportsRepository.create({
+    const report = await this.reportsRepository.create({
       context: dto.context,
       shopId: dto.shop_id,
       productCardId: dto.product_card_id,
     });
+
+    // Без await: жалоба уже создана, и покупателю незачем ждать, пока
+    // Telegram примет сообщение. Ошибки сервис гасит внутри себя.
+    void this.notifications.notifyAdmins(
+      newReportText(shop.name, dto.product_card_id, dto.context),
+    );
+
+    return report;
   }
 
   async findAllForAdmin(query: FindReportsQueryDto) {
@@ -50,4 +60,33 @@ export class ReportsService {
       await this.reportsRepository.findAll(query);
     return buildPaginatedResult(data, total, page, limit);
   }
+}
+
+/**
+ * Текст жалобы для админского чата. Контекст обрезаем: покупатель может
+ * прислать простыню, а уведомление должно читаться с экрана телефона.
+ */
+function newReportText(
+  shopName: string,
+  productCardId: number | undefined,
+  context: string,
+): string {
+  const target = productCardId
+    ? `товар #${productCardId} (${escapeHtml(shopName)})`
+    : `магазин «${escapeHtml(shopName)}»`;
+  const excerpt = context.length > 300 ? `${context.slice(0, 300)}…` : context;
+
+  return (
+    `🚩 <b>Новая жалоба</b> на ${target}\n\n` +
+    `${escapeHtml(excerpt)}\n\n` +
+    `Разобрать: раздел «Жалобы» в админке.`
+  );
+}
+
+/** parse_mode: HTML — в тексте жалобы может встретиться «<» или «&». */
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
 }

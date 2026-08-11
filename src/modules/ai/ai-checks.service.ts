@@ -6,6 +6,7 @@ import { AiChecksRepository } from './ai-checks.repository';
 import { SettingsService } from '../settings/settings.service';
 import { RedisService } from '../redis/redis.service';
 import { FilesService } from '../files/files.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PRODUCT_CACHE_PREFIX } from '../product-cards/product-cards.cache';
 import type { ProductCard } from '../../db/schema';
 import {
@@ -68,6 +69,7 @@ export class AiChecksService implements OnModuleInit {
     private readonly redis: RedisService,
     private readonly files: FilesService,
     private readonly config: ConfigService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /**
@@ -165,6 +167,11 @@ export class AiChecksService implements OnModuleInit {
         error: message,
       });
       await this.publish(card.id, 'сервис проверки недоступен');
+      // Товар опубликован непроверенным — это ровно то, что попадает в
+      // админскую очередь «Проверка ИИ», и разобрать это должен человек.
+      void this.notifications.notifyAdmins(
+        aiFailureText(card, 'проверка не выполнена', message),
+      );
       return;
     }
 
@@ -183,6 +190,9 @@ export class AiChecksService implements OnModuleInit {
         await this.redis.delByPrefix(PRODUCT_CACHE_PREFIX);
         this.logger.warn(`Товар ${card.id} скрыт по вердикту ИИ-проверки`);
       }
+      void this.notifications.notifyAdmins(
+        aiFailureText(card, 'модель забраковала товар', result.summary),
+      );
       return;
     }
 
@@ -324,4 +334,30 @@ const IMAGE_FETCH_ERROR =
 function isImageFetchError(err: unknown): boolean {
   const message = err instanceof Error ? err.message : String(err);
   return IMAGE_FETCH_ERROR.test(message);
+}
+
+/**
+ * Текст для админского чата о товаре, который требует ручного разбора.
+ * Ссылку на раздел, а не на карточку: очередь всё равно открывается целиком.
+ */
+function aiFailureText(
+  card: ProductCard,
+  reason: string,
+  details: string | null | undefined,
+): string {
+  const name = escapeHtml(card.name);
+  const tail = details ? `\n\n${escapeHtml(details)}` : '';
+  return (
+    `🤖 <b>ИИ-проверка</b>: ${reason}\n` +
+    `Товар #${card.id} — ${name}${tail}\n\n` +
+    `Разобрать: раздел «Проверка ИИ» в админке.`
+  );
+}
+
+/** parse_mode: HTML — в названии товара может встретиться «<» или «&». */
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
 }

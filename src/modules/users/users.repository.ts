@@ -125,6 +125,38 @@ export class UsersRepository {
       .then((rows) => rows[0]);
   }
 
+  /**
+   * Привязывает чат к уже существующему аккаунту. Вызывается на /start: до
+   * этого момента чата с ботом нет и Telegram не даёт написать первым, а
+   * телефон для этого спрашивать необязательно.
+   *
+   * Возвращает false, если аккаунта с таким telegramId ещё нет — человек
+   * пришёл в бота раньше, чем зарегистрировался на сайте.
+   */
+  async bindChat(telegramId: number, chatId: number): Promise<boolean> {
+    const rows = await this.db
+      .update(users)
+      .set({
+        telegramChatId: chatId,
+        telegramNotificationsEnabled: true,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.telegramId, telegramId))
+      .returning({ id: users.id });
+    return rows.length > 0;
+  }
+
+  /** Отписка по команде /stop из самого чата. */
+  async setNotificationsByTelegramId(
+    telegramId: number,
+    enabled: boolean,
+  ): Promise<void> {
+    await this.db
+      .update(users)
+      .set({ telegramNotificationsEnabled: enabled, updatedAt: new Date() })
+      .where(eq(users.telegramId, telegramId));
+  }
+
   /** Вызывается BotModule после получения контакта через request_contact. */
   async upsertFromBotContact(data: {
     telegramId: number;

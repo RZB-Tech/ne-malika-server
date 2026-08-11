@@ -1,6 +1,27 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
+/**
+ * Чем закончилась отправка. Раньше метод возвращал void и глотал ошибку — для
+ * одиночного сообщения это терпимо, но рассылке нужно знать судьбу каждого:
+ * 403 означает «бот заблокирован, больше не пишем», 429 — «подожди столько-то».
+ */
+export interface TelegramSendResult {
+  ok: boolean;
+  /** Код ошибки Telegram: 403 — бот заблокирован или чат не начат, 429 — лимит. */
+  errorCode?: number;
+  description?: string;
+  /** Сколько секунд просит подождать Telegram при 429. */
+  retryAfter?: number;
+}
+
+interface TelegramApiResponse {
+  ok?: boolean;
+  error_code?: number;
+  description?: string;
+  parameters?: { retry_after?: number };
+}
+
 @Injectable()
 export class TelegramApiService {
   private readonly logger = new Logger(TelegramApiService.name);
@@ -14,13 +35,16 @@ export class TelegramApiService {
   async sendMessage(
     chatId: number,
     text: string,
-    options?: { replyMarkup?: unknown },
-  ): Promise<void> {
-    await this.call('sendMessage', {
+    options?: { replyMarkup?: unknown; disablePreview?: boolean },
+  ): Promise<TelegramSendResult> {
+    return this.call('sendMessage', {
       chat_id: chatId,
       text,
       parse_mode: 'HTML',
       reply_markup: options?.replyMarkup,
+      link_preview_options: options?.disablePreview
+        ? { is_disabled: true }
+        : undefined,
     });
   }
 
@@ -55,21 +79,37 @@ export class TelegramApiService {
   private async call(
     method: string,
     body: Record<string, unknown>,
-  ): Promise<void> {
+  ): Promise<TelegramSendResult> {
     try {
       const res = await fetch(`${this.apiBase}/${method}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      const data = (await res.json()) as { ok?: boolean };
-      if (!data.ok) {
+      const data = (await res.json()) as TelegramApiResponse;
+
+      if (data.ok) return { ok: true };
+
+      // 403 — обычное дело при рассылке (бот заблокирован), логировать каждый
+      // такой ответ значит завалить журнал. Остальное — повод посмотреть.
+      if (data.error_code !== 403) {
         this.logger.error(
           `Telegram API ${method} failed: ${JSON.stringify(data)}`,
         );
       }
+
+      return {
+        ok: false,
+        errorCode: data.error_code,
+        description: data.description,
+        retryAfter: data.parameters?.retry_after,
+      };
     } catch (err) {
       this.logger.error(`Telegram API ${method} request error`, err as Error);
+      return {
+        ok: false,
+        description: err instanceof Error ? err.message : String(err),
+      };
     }
   }
 }

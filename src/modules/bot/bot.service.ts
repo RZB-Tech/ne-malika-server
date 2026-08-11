@@ -16,6 +16,12 @@ const CONTACT_SAVED_TEXT =
 const CONTACT_MISMATCH_TEXT =
   'Пожалуйста, поделитесь <b>своим собственным</b> номером телефона через кнопку ниже.';
 
+const NOTIFICATIONS_ON_TEXT =
+  'Уведомления включены ✅\nБудем присылать важное по вашему магазину. Отключить — /stop';
+
+const NOTIFICATIONS_OFF_TEXT =
+  'Уведомления отключены. Включить обратно — /start';
+
 @Injectable()
 export class BotService implements OnModuleInit {
   private readonly logger = new Logger(BotService.name);
@@ -51,8 +57,12 @@ export class BotService implements OnModuleInit {
       return this.handleContact(message);
     }
 
-    if (message.text === '/start') {
+    if (message.text?.startsWith('/start')) {
       return this.handleStart(message);
+    }
+
+    if (message.text === '/stop') {
+      return this.handleStop(message);
     }
 
     // Любой другой текст — мягкая заглушка, без сложной логики диалога в MVP
@@ -62,8 +72,43 @@ export class BotService implements OnModuleInit {
     );
   }
 
+  /**
+   * Главное здесь — привязать чат. Раньше это происходило только после того,
+   * как человек поделится номером, и до тех пор бот не мог написать ему ни
+   * строчки: чата попросту не существовало.
+   *
+   * Тем, кто уже зарегистрирован на сайте, номер повторно не нужен — им сразу
+   * подтверждаем, что уведомления включены.
+   */
   private async handleStart(message: TelegramMessage): Promise<void> {
+    const bound = await this.usersRepository
+      .bindChat(message.from.id, message.chat.id)
+      .catch((err: unknown) => {
+        this.logger.error('Не удалось привязать чат', err as Error);
+        return false;
+      });
+
+    if (bound) {
+      await this.telegramApi.sendMessage(
+        message.chat.id,
+        NOTIFICATIONS_ON_TEXT,
+      );
+      return;
+    }
+
     await this.telegramApi.requestContact(message.chat.id, WELCOME_TEXT);
+  }
+
+  /**
+   * Отписка. Telegram требует, чтобы отключить рассылку можно было из самого
+   * чата, а не только в личном кабинете.
+   */
+  private async handleStop(message: TelegramMessage): Promise<void> {
+    await this.usersRepository.setNotificationsByTelegramId(
+      message.from.id,
+      false,
+    );
+    await this.telegramApi.sendMessage(message.chat.id, NOTIFICATIONS_OFF_TEXT);
   }
 
   private async handleContact(message: TelegramMessage): Promise<void> {

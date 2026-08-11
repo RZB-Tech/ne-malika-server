@@ -21,3 +21,10 @@ export const entityStatusEnum = pgEnum('entity_status', [
 ]);
 
 export const aiVerdictEnum = pgEnum('ai_verdict', ['pass', 'warn', 'fail']);
+
+/** Кому уходит рассылка из админки: всем, только продавцам или только покупателям. */
+export const broadcastAudienceEnum = pgEnum('broadcast_audience', [
+  'all',
+  'sellers',
+  'buyers',
+]);

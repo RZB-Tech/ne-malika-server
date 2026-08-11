@@ -8,4 +8,5 @@ export * from './favorites.schema';
 export * from './reports.schema';
 export * from './app-settings.schema';
 export * from './ai-products-checks.schema';
+export * from './broadcasts.schema';
 export * from './relations';
