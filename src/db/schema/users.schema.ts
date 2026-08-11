@@ -3,6 +3,7 @@ import {
   bigserial,
   boolean,
   index,
+  integer,
   text,
   timestamp,
   varchar,
@@ -31,6 +32,16 @@ export const users = pgTable(
 
     /** Когда продавцу последний раз напоминали добавить товар. */
     lastNudgeAt: timestamp('last_nudge_at', { withTimezone: true }),
+
+    /**
+     * Доступ к генерации карточек через ИИ. По умолчанию выключен: каждая
+     * картинка стоит денег, и раздавать это всем подряд нельзя.
+     * Администратору флаг не нужен — у него доступ по роли.
+     */
+    imageGenEnabled: boolean('image_gen_enabled').notNull().default(false),
+
+    /** Сколько картинок разрешено всего. NULL — без ограничения. */
+    imageGenLimit: integer('image_gen_limit'),
 
     phoneNumber: varchar('phone_number', { length: 20 }),
     fullname: varchar('fullname', { length: 200 }).notNull(),

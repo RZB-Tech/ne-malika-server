@@ -120,6 +120,13 @@
       "when": 1786345184649,
       "tag": "0016_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1786345184650,
+      "tag": "0017_image_gen_access",
+      "breakpoints": true
     }
   ]
 }

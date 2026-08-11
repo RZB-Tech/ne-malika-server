@@ -1,5 +1,6 @@
 import {
   BadGatewayException,
+  ForbiddenException,
   Inject,
   Injectable,
   Logger,
@@ -9,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import type OpenAI from 'openai';
 import { OPENROUTER_CLIENT } from '../openrouter/openrouter-client.provider';
 import { FilesService } from '../files/files.service';
+import { ImageGenRepository, type ImageGenQuota } from './image-gen.repository';
 import {
   DescribePromptDto,
   GenerateImagesDto,
@@ -26,6 +28,9 @@ interface ImageReference {
 interface OpenRouterImagesResponse {
   data?: { b64_json?: string; media_type?: string }[];
 }
+
+/** Сколько прошлых вариантов показывать в галерее диалога. */
+const HISTORY_LIMIT = 24;
 
 /** Картинки идут дольше текста, а их может быть до четырёх за запрос. */
 const IMAGE_TIMEOUT_MS = 180_000;
@@ -162,7 +167,80 @@ export class ImageGenService {
     @Inject(OPENROUTER_CLIENT) private readonly router: OpenAI | null,
     private readonly files: FilesService,
     private readonly config: ConfigService,
+    private readonly repository: ImageGenRepository,
   ) {}
+
+  /**
+   * Сколько картинок осталось. Отдаётся клиенту, чтобы продавец видел остаток
+   * до того, как нажмёт «Сгенерировать», а не после отказа.
+   */
+  quota(userId: number, isAdmin: boolean): Promise<ImageGenQuota> {
+    return this.repository.quota(userId, isAdmin);
+  }
+
+  /** Выдача доступа и квоты администратором. Возвращает новое состояние. */
+  async setAccess(
+    userId: number,
+    data: { enabled: boolean; limit?: number | null },
+  ): Promise<ImageGenQuota> {
+    await this.repository.setAccess(userId, {
+      enabled: data.enabled,
+      // Пустое поле — это «безлимитно», а не «ноль»: ноль означал бы, что
+      // доступ выдан и тут же исчерпан.
+      limit: data.limit ?? null,
+    });
+    return this.repository.quota(userId, false);
+  }
+
+  /** Ранее нарисованное по этому же фото — галерея в диалоге. */
+  async history(userId: number, sourceKey: string) {
+    const rows = await this.repository.history(
+      userId,
+      sourceKey,
+      HISTORY_LIMIT,
+    );
+    return rows.map((row) => ({
+      key: row.key,
+      url: this.files.buildPublicUrl(row.key),
+      prompt: row.prompt,
+      createdAt: row.createdAt,
+    }));
+  }
+
+  /**
+   * Проверка доступа и остатка перед генерацией.
+   *
+   * Считаем по факту уже сгенерированного, а списываем после — модель может
+   * не ответить, и брать деньги за неполученную картинку нечестно. Из-за
+   * этого лимит может быть превышен на несколько штук при одновременных
+   * запросах; для квоты в десятки картинок это дешевле, чем блокировки.
+   */
+  private async assertQuota(
+    userId: number,
+    isAdmin: boolean,
+    want: number,
+  ): Promise<void> {
+    const quota = await this.repository.quota(userId, isAdmin);
+
+    if (!quota.allowed) {
+      throw new ForbiddenException(
+        'Генерация изображений не подключена. Обратитесь к администратору.',
+      );
+    }
+    if (quota.limit === null) return;
+
+    const left = quota.limit - quota.used;
+    if (left <= 0) {
+      throw new ForbiddenException(
+        `Лимит генераций исчерпан: использовано ${quota.used} из ${quota.limit}.`,
+      );
+    }
+    if (want > left) {
+      throw new ForbiddenException(
+        `Осталось ${left} из ${quota.limit} — уменьшите количество вариантов.`,
+      );
+    }
+  }
 
   /**
    * Промпт по фотографии — кнопка «составить промпт» в админке. Смотрит фото
@@ -246,7 +324,10 @@ export class ImageGenService {
    * Перерисовывает фотографию товара. Исходник уходит модели как образец,
    * поэтому на выходе тот же товар, а не похожий: для карточки это принципиально.
    */
-  async generate(dto: GenerateImagesDto): Promise<GeneratedImageDto[]> {
+  async generate(
+    dto: GenerateImagesDto,
+    author: { id: number; isAdmin: boolean },
+  ): Promise<GeneratedImageDto[]> {
     if (!this.router) {
       throw new ServiceUnavailableException(
         'OPENROUTER_API_KEY не задан — генерация фотографий отключена',
@@ -254,6 +335,7 @@ export class ImageGenService {
     }
 
     const count = Math.min(dto.count ?? 2, MAX_GENERATED_IMAGES);
+    await this.assertQuota(author.id, author.isAdmin, count);
     const model = this.config.get<string>('openrouter.imageModel')!;
 
     const keys = [
@@ -301,6 +383,24 @@ export class ImageGenService {
         `Генерация по фото ${dto.photoKey} упала (модель ${model}): ${details}`,
       );
       throw new BadGatewayException(`Модель не отработала: ${details}`);
+    }
+
+    // Запись в журнале — это и память диалога, и расход квоты. Падение
+    // записи не должно отнимать у человека уже нарисованные картинки:
+    // они лежат в S3 и возвращаются в любом случае.
+    try {
+      await this.repository.record(
+        saved.map((image) => ({
+          userId: author.id,
+          sourceKey: dto.photoKey,
+          key: image.key,
+          prompt: dto.prompt.trim(),
+        })),
+      );
+    } catch (err) {
+      this.logger.error(
+        `Не удалось записать сгенерированные картинки: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
 
     const failed = attempts.length - saved.length;
