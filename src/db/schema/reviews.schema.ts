@@ -13,7 +13,7 @@ import { sql } from 'drizzle-orm';
 import { users } from './users.schema';
 import { shops } from './shops.schema';
 import { productCards } from './product-cards.schema';
-import { reviewStatusEnum } from './enums';
+import { aiVerdictEnum, reviewStatusEnum } from './enums';
 
 /**
  * Отзывы о товарах и магазинах.
@@ -54,6 +54,16 @@ export const reviews = pgTable(
 
     /** Причина отклонения — её видит автор, поэтому пишется человеческим языком. */
     moderationNote: text('moderation_note'),
+
+    /**
+     * Решение ИИ-модератора. `pass` — опубликован сразу, `fail` — отклонён,
+     * `warn` — оставлен человеку. Пусто — проверка ещё не отработала или
+     * сервис был недоступен: такой отзыв тоже ждёт человека, публиковать
+     * непроверенное нельзя.
+     */
+    aiVerdict: aiVerdictEnum('ai_verdict'),
+    aiNote: text('ai_note'),
+    aiCheckedAt: timestamp('ai_checked_at', { withTimezone: true }),
 
     /** Кто решил. `set null`: увольнение администратора не должно стирать отзыв. */
     moderatedBy: bigint('moderated_by', { mode: 'number' }).references(

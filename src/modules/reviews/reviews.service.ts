@@ -3,9 +3,15 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ReviewsRepository } from './reviews.repository';
+import {
+  ReviewsAiService,
+  type ReviewAiResult,
+  type ReviewForCheck,
+} from './reviews-ai.service';
 import { ShopsRepository } from '../shops/shops.repository';
 import { ProductCardsRepository } from '../product-cards/product-cards.repository';
 import { ProductCardsService } from '../product-cards/product-cards.service';
@@ -20,14 +26,20 @@ import { FindAdminReviewsQueryDto } from './dto/find-admin-reviews-query.dto';
 /** Ошибка Postgres «нарушено уникальное ограничение». */
 const UNIQUE_VIOLATION = '23505';
 
+/** Если модель забраковала отзыв, но объяснить не смогла. */
+const AI_REJECT_FALLBACK = 'Отзыв нарушает правила площадки';
+
 @Injectable()
 export class ReviewsService {
+  private readonly logger = new Logger(ReviewsService.name);
+
   constructor(
     private readonly repository: ReviewsRepository,
     private readonly shopsRepository: ShopsRepository,
     private readonly productCardsRepository: ProductCardsRepository,
     private readonly productCardsService: ProductCardsService,
     private readonly notifications: NotificationsService,
+    private readonly reviewsAi: ReviewsAiService,
   ) {}
 
   // --- покупатель -----------------------------------------------------------
@@ -44,10 +56,10 @@ export class ReviewsService {
         text: dto.text?.trim() || null,
       });
 
-      // Без await: отзыв уже сохранён, и покупателю незачем ждать Telegram.
-      void this.notifications.notifyAdmins(
-        newReviewText(target.title, dto.rating, dto.text),
-      );
+      // Без await: покупателю незачем ждать модель. Отзыв пока не виден —
+      // проверка либо опубликует его через несколько секунд, либо оставит
+      // человеку.
+      this.checkInBackground(review.id);
 
       return review;
     } catch (err) {
@@ -74,13 +86,14 @@ export class ReviewsService {
       moderationNote: null,
       moderatedBy: null,
       moderatedAt: null,
+      // Прежний вердикт снимаем: он относился к другому тексту.
+      aiVerdict: null,
+      aiNote: null,
+      aiCheckedAt: null,
     });
 
     await this.productCardsService.invalidateCache();
-    void this.notifications.notifyAdmins(
-      '✏️ <b>Отзыв изменён и ждёт проверки заново</b>\n\n' +
-        'Разобрать: раздел «Отзывы» в админке.',
-    );
+    this.checkInBackground(review.id);
 
     return updated;
   }
@@ -123,12 +136,90 @@ export class ReviewsService {
     return this.repository.statusCounts();
   }
 
-  async approve(adminId: number, id: number) {
+  approve(adminId: number, id: number) {
+    return this.publish(id, adminId);
+  }
+
+  reject(adminId: number, id: number, reason: string) {
+    return this.decline(id, adminId, reason);
+  }
+
+  /** Ручной повтор проверки — например, когда модель была недоступна. */
+  async recheck(id: number) {
+    await this.getOrThrow(id);
+    await this.runAiCheck(id);
+    return { checked: true };
+  }
+
+  async adminRemove(id: number) {
+    await this.getOrThrow(id);
+    await this.repository.delete(id);
+    await this.productCardsService.invalidateCache();
+  }
+
+  // --- ИИ-модерация ---------------------------------------------------------
+
+  /**
+   * Проверка не ожидается вызывающим: покупатель не должен ждать модель, чтобы
+   * увидеть, что отзыв принят.
+   */
+  private checkInBackground(id: number): void {
+    void this.runAiCheck(id).catch((err: Error) =>
+      this.logger.error(
+        `ИИ-проверка отзыва ${id} упала: ${err.message}`,
+        err.stack,
+      ),
+    );
+  }
+
+  /**
+   * Решение по отзыву.
+   *
+   * `pass` — публикуем сразу, `fail` — отклоняем с объяснением модели, которое
+   * увидит автор. Всё остальное — сомнения модели, недоступный сервис, любая
+   * неожиданность — оставляет отзыв человеку. Публиковать непроверенное нельзя,
+   * а отклонять от имени модели, которая не ответила, — тем более.
+   */
+  private async runAiCheck(id: number): Promise<void> {
+    const review = await this.repository.findForCheck(id);
+    // Отзыв успели удалить или разобрать руками, пока модель думала.
+    if (!review || review.status !== 'pending') return;
+
+    const result = await this.reviewsAi.check(review);
+
+    if (!result) {
+      void this.notifications.notifyAdmins(
+        needsHumanText(review, 'проверка не выполнена — сервис недоступен'),
+      );
+      return;
+    }
+
+    if (result.verdict === 'pass') {
+      await this.publish(id, null, result);
+      return;
+    }
+
+    if (result.verdict === 'fail') {
+      await this.decline(id, null, result.note || AI_REJECT_FALLBACK, result);
+      return;
+    }
+
+    await this.repository.saveAiVerdict(id, result);
+    void this.notifications.notifyAdmins(needsHumanText(review, result.note));
+  }
+
+  /** `moderatedBy: null` — решение приняла модель, а не человек. */
+  private async publish(
+    id: number,
+    moderatedBy: number | null,
+    ai?: ReviewAiResult,
+  ) {
     const review = await this.getOrThrow(id);
     const updated = await this.repository.setStatus(id, {
       status: 'approved',
       moderationNote: null,
-      moderatedBy: adminId,
+      moderatedBy,
+      ai,
     });
 
     await this.productCardsService.invalidateCache();
@@ -146,12 +237,18 @@ export class ReviewsService {
     return updated;
   }
 
-  async reject(adminId: number, id: number, reason: string) {
+  private async decline(
+    id: number,
+    moderatedBy: number | null,
+    reason: string,
+    ai?: ReviewAiResult,
+  ) {
     const review = await this.getOrThrow(id);
     const updated = await this.repository.setStatus(id, {
       status: 'rejected',
       moderationNote: reason,
-      moderatedBy: adminId,
+      moderatedBy,
+      ai,
     });
 
     // Отзыв мог быть опубликован до отказа — тогда оценка изменилась.
@@ -163,12 +260,6 @@ export class ReviewsService {
     );
 
     return updated;
-  }
-
-  async adminRemove(id: number) {
-    await this.getOrThrow(id);
-    await this.repository.delete(id);
-    await this.productCardsService.invalidateCache();
   }
 
   // --- продавец -------------------------------------------------------------
@@ -284,16 +375,22 @@ function isUniqueViolation(err: unknown): boolean {
   );
 }
 
-function newReviewText(
-  title: string,
-  rating: number,
-  text: string | undefined,
-): string {
+/**
+ * Уведомление администраторам — только когда решение действительно за
+ * человеком. Слать его на каждый отзыв значило бы вернуть ручную модерацию,
+ * от которой и уходили.
+ */
+function needsHumanText(review: ReviewForCheck, reason: string): string {
+  const target = review.productName
+    ? `товар «${escapeHtml(review.productName)}»`
+    : `магазин «${escapeHtml(review.shopName)}»`;
+
   return (
-    `⭐ <b>Новый отзыв</b> на ${escapeHtml(title)}\n\n` +
-    `Оценка: ${'★'.repeat(rating)}${'☆'.repeat(5 - rating)}\n` +
-    (text ? `${escapeHtml(excerpt(text))}\n\n` : '\n') +
-    `Проверить: раздел «Отзывы» в админке.`
+    `⭐ <b>Отзыв ждёт решения</b> на ${target}\n\n` +
+    `Оценка: ${'★'.repeat(review.rating)}${'☆'.repeat(5 - review.rating)}\n` +
+    (review.text ? `${escapeHtml(excerpt(review.text))}\n\n` : '\n') +
+    `ИИ: ${escapeHtml(excerpt(reason))}\n\n` +
+    `Разобрать: раздел «Отзывы» в админке.`
   );
 }
 

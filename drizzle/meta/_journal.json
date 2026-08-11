@@ -190,6 +190,13 @@
       "when": 1786447159664,
       "tag": "0027_categories_cases_to_pc_parts",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1786449680527,
+      "tag": "0028_reviews_ai_verdict",
+      "breakpoints": true
     }
   ]
 }

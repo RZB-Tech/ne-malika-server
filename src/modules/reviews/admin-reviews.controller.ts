@@ -50,6 +50,15 @@ export class AdminReviewsController {
     return this.reviewsService.approve(user.id, id);
   }
 
+  @Post(':id/recheck')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Прогнать отзыв через ИИ-проверку заново',
+  })
+  recheck(@Param('id', ParseIntPipe) id: number) {
+    return this.reviewsService.recheck(id);
+  }
+
   @Post(':id/reject')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

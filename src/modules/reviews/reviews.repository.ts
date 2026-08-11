@@ -15,6 +15,7 @@ import {
   recomputeShopRating,
   type Tx,
 } from '../../db/rating';
+import type { AiVerdict } from '../ai/ai-check.types';
 import { FindReviewsQueryDto } from './dto/find-reviews-query.dto';
 import { FindAdminReviewsQueryDto } from './dto/find-admin-reviews-query.dto';
 
@@ -160,6 +161,10 @@ export class ReviewsRepository {
           authorName: users.fullname,
           authorPhoto: users.telegramPhoto,
           moderatedAt: reviews.moderatedAt,
+          /** Кто решил: null у решений ИИ — живого модератора там не было. */
+          moderatedBy: reviews.moderatedBy,
+          aiVerdict: reviews.aiVerdict,
+          aiNote: reviews.aiNote,
         })
         .from(reviews)
         .innerJoin(users, eq(users.id, reviews.authorId))
@@ -220,17 +225,66 @@ export class ReviewsRepository {
     });
   }
 
-  /** Решение модератора и пересчёт рейтинга — одной транзакцией. */
+  /**
+   * Решение модератора и пересчёт рейтинга — одной транзакцией.
+   * `moderatedBy: null` — решил ИИ, живого модератора у этого решения нет.
+   */
   setStatus(
     id: number,
     patch: {
       status: 'approved' | 'rejected';
       moderationNote: string | null;
-      moderatedBy: number;
+      moderatedBy: number | null;
+      ai?: { verdict: AiVerdict; note: string };
     },
   ): Promise<Review | undefined> {
-    return this.update(id, { ...patch, moderatedAt: new Date() });
+    const { ai, ...decision } = patch;
+    return this.update(id, {
+      ...decision,
+      moderatedAt: new Date(),
+      ...aiColumns(ai),
+    });
   }
+
+  /** Вердикт без смены статуса — модель засомневалась, решать человеку. */
+  saveAiVerdict(
+    id: number,
+    ai: { verdict: AiVerdict; note: string },
+  ): Promise<Review | undefined> {
+    return this.update(id, aiColumns(ai));
+  }
+
+  /** Данные для ИИ-проверки: сам отзыв и то, о чём он. */
+  async findForCheck(id: number) {
+    const rows = await this.db
+      .select({
+        id: reviews.id,
+        rating: reviews.rating,
+        text: reviews.text,
+        status: reviews.status,
+        authorId: reviews.authorId,
+        shopId: reviews.shopId,
+        shopName: shops.name,
+        productName: productCards.name,
+      })
+      .from(reviews)
+      .innerJoin(shops, eq(shops.id, reviews.shopId))
+      .leftJoin(productCards, eq(productCards.id, reviews.productCardId))
+      .where(eq(reviews.id, id))
+      .limit(1);
+    return rows[0];
+  }
+}
+
+/** Пустая заметка модели в столбец не едет: пусто — значит замечаний нет. */
+function aiColumns(ai?: { verdict: AiVerdict; note: string }) {
+  return ai
+    ? {
+        aiVerdict: ai.verdict,
+        aiNote: ai.note || null,
+        aiCheckedAt: new Date(),
+      }
+    : {};
 }
 
 /** Фильтр «о чём отзыв». Пустой — обо всём сразу, так собирают общую статистику. */
