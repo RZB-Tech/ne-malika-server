@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import cookieParser from 'cookie-parser';
 import { SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { I18nExceptionFilter } from './common/filters/i18n-exception.filter';
 import { swaggerConfig } from './swagger.config';
 
 async function bootstrap() {
@@ -30,6 +31,9 @@ async function bootstrap() {
       transform: true,
     }),
   );
+  // Текст ошибки собирается здесь, а не в сервисах: язык известен только из
+  // заголовка запроса, до которого гвардам и сервисам не дотянуться.
+  app.useGlobalFilters(new I18nExceptionFilter());
 
   // Документация описывает и приватные эндпоинты, поэтому в проде не публикуется.
   if (!isProd) {
