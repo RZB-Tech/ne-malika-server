@@ -32,6 +32,17 @@ export default () => ({
     imageModel: process.env.OPENROUTER_IMAGE_MODEL ?? 'openai/gpt-image-2',
   },
 
+  /**
+   * Ключи VAPID для web push. Без них канал просто выключается: подписка не
+   * оформляется, а рассылка уходит только в Telegram.
+   */
+  webPush: {
+    publicKey: process.env.VAPID_PUBLIC_KEY,
+    privateKey: process.env.VAPID_PRIVATE_KEY,
+    /** Контакт для push-сервиса: mailto: или https-адрес. */
+    subject: process.env.VAPID_SUBJECT ?? 'mailto:admin@nemalika.uz',
+  },
+
   jwt: {
     accessSecret: process.env.JWT_ACCESS_SECRET,
     accessTtl: process.env.JWT_ACCESS_TTL,

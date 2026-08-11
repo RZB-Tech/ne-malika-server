@@ -102,6 +102,19 @@ class EnvironmentVariables {
   @IsNotEmpty({ message: 'TELEGRAM_WEBHOOK_SECRET обязателен в production' })
   TELEGRAM_WEBHOOK_SECRET?: string;
 
+  /** Ключи web push. Без них канал выключен — рассылка уходит только в Telegram. */
+  @IsOptional()
+  @IsString()
+  VAPID_PUBLIC_KEY?: string;
+
+  @IsOptional()
+  @IsString()
+  VAPID_PRIVATE_KEY?: string;
+
+  @IsOptional()
+  @IsString()
+  VAPID_SUBJECT?: string;
+
   @IsOptional()
   @IsString()
   S3_ENDPOINT?: string;

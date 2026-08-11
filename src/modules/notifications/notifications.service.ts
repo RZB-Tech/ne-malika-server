@@ -8,6 +8,7 @@ import type { BroadcastAudience } from './dto/create-broadcast.dto';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
 import { clampMessage } from '../bot/telegram-html';
+import { PushService } from './push.service';
 
 /**
  * Пауза между сообщениями массовой отправки. Telegram разрешает боту около 30
@@ -15,6 +16,9 @@ import { clampMessage } from '../bot/telegram-html';
  * что параллельно уходят одиночные уведомления, а 429 стоит дороже задержки.
  */
 const BULK_DELAY_MS = 70;
+
+/** Заголовок уведомления в браузере: у него нет отправителя, как в Telegram. */
+const PUSH_TITLE = 'НеМалика';
 
 /** Сколько подряд отказов «неверный запрос» считаем сломанным текстом. */
 const MAX_BAD_REQUESTS = 3;
@@ -46,6 +50,7 @@ export class NotificationsService {
   constructor(
     private readonly telegram: TelegramApiService,
     private readonly repository: NotificationsRepository,
+    private readonly push: PushService,
   ) {}
 
   /**
@@ -112,10 +117,23 @@ export class NotificationsService {
       );
     }
 
+    // Второй канал — браузер. Отдельно от Telegram: адресаты разные, и сбой
+    // одного канала не должен отменять доставку по другому.
+    let pushCounters = { delivered: 0, failed: 0 };
+    try {
+      pushCounters = await this.push.broadcast(audience, text, PUSH_TITLE);
+    } catch (err) {
+      this.logger.error(
+        `Push-рассылка ${id} не удалась: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
     try {
       await this.repository.finishBroadcast(id, {
         delivered: counters.delivered,
         failed: counters.failed,
+        pushDelivered: pushCounters.delivered,
+        pushFailed: pushCounters.failed,
       });
     } catch (err) {
       this.logger.error(
@@ -124,7 +142,8 @@ export class NotificationsService {
     }
 
     this.logger.log(
-      `Рассылка ${id} (${audience}): доставлено ${counters.delivered} из ${counters.recipients}`,
+      `Рассылка ${id} (${audience}): Telegram ${counters.delivered} из ${counters.recipients}, ` +
+        `браузер ${pushCounters.delivered}`,
     );
   }
 

@@ -40,6 +40,13 @@ export const broadcasts = pgTable(
     delivered: integer('delivered').notNull().default(0),
     failed: integer('failed').notNull().default(0),
 
+    /**
+     * Второй канал считается отдельно: у браузера и Telegram разные адресаты,
+     * и одна цифра на двоих врала бы про оба.
+     */
+    pushDelivered: integer('push_delivered').notNull().default(0),
+    pushFailed: integer('push_failed').notNull().default(0),
+
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),

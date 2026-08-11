@@ -118,8 +118,11 @@ export class CreateBroadcastDto {
 }
 
 export class BroadcastAudienceCountDto {
-  @ApiProperty({ description: 'Сколько адресатов получат рассылку сейчас' })
+  @ApiProperty({ description: 'Сколько чатов в Telegram получат рассылку' })
   count: number;
+
+  @ApiProperty({ description: 'Сколько браузеров подписано на уведомления' })
+  push: number;
 }
 
 export class BroadcastDto {
@@ -140,6 +143,12 @@ export class BroadcastDto {
 
   @ApiProperty()
   failed: number;
+
+  @ApiProperty({ description: 'Доставлено в браузеры' })
+  pushDelivered: number;
+
+  @ApiProperty()
+  pushFailed: number;
 
   @ApiProperty()
   createdAt: string;

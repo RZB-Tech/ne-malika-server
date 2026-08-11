@@ -141,6 +141,13 @@
       "when": 1786345184652,
       "tag": "0019_credits",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1786345184653,
+      "tag": "0020_push_subscriptions",
+      "breakpoints": true
     }
   ]
 }

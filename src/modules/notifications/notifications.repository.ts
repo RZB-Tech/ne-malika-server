@@ -149,7 +149,12 @@ export class NotificationsRepository {
 
   finishBroadcast(
     id: number,
-    counters: { delivered: number; failed: number },
+    counters: {
+      delivered: number;
+      failed: number;
+      pushDelivered: number;
+      pushFailed: number;
+    },
   ): Promise<Broadcast> {
     return this.db
       .update(broadcasts)
@@ -170,6 +175,8 @@ export class NotificationsRepository {
         recipients: broadcasts.recipients,
         delivered: broadcasts.delivered,
         failed: broadcasts.failed,
+        pushDelivered: broadcasts.pushDelivered,
+        pushFailed: broadcasts.pushFailed,
         createdAt: broadcasts.createdAt,
         authorName: users.fullname,
       })

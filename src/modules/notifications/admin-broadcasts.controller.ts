@@ -21,6 +21,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../common/types/auth.types';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { NotificationsService } from './notifications.service';
+import { PushService } from './push.service';
 import {
   BROADCAST_AUDIENCES,
   BroadcastAudienceCountDto,
@@ -35,7 +36,10 @@ import {
 @AdminOnly()
 @Controller('admin/broadcasts')
 export class AdminBroadcastsController {
-  constructor(private readonly notifications: NotificationsService) {}
+  constructor(
+    private readonly notifications: NotificationsService,
+    private readonly push: PushService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'История рассылок' })
@@ -56,7 +60,11 @@ export class AdminBroadcastsController {
         `Неизвестная аудитория. Допустимо: ${BROADCAST_AUDIENCES.join(', ')}.`,
       );
     }
-    return { count: await this.notifications.countAudience(audience) };
+    const [count, push] = await Promise.all([
+      this.notifications.countAudience(audience),
+      this.push.countAudience(audience),
+    ]);
+    return { count, push };
   }
 
   /**
