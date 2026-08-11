@@ -24,6 +24,8 @@ export interface DeliveryCounters {
   recipients: number;
   delivered: number;
   failed: number;
+  /** Кому реально дошло — нужно тем, кто отмечает факт отправки в БД. */
+  deliveredIds: number[];
 }
 
 /**
@@ -119,31 +121,37 @@ export class NotificationsService {
    * Последовательная отправка с паузой. Именно последовательная: параллельные
    * запросы к Telegram упираются в лимит и возвращаются пачкой 429, после чего
    * ждать приходится дольше, чем заняла бы аккуратная очередь.
+   *
+   * Текст можно задать функцией — тогда каждому уходит своё сообщение, но
+   * пауза остаётся общей. Это важно для напоминаний: там текст у всех разный,
+   * и вызывать deliver по одному адресату означало бы слать без задержки.
    */
   async deliver(
     recipients: Recipient[],
-    text: string,
+    text: string | ((recipient: Recipient) => string),
   ): Promise<DeliveryCounters> {
-    let delivered = 0;
+    const textFor = typeof text === 'function' ? text : () => text;
+    const deliveredIds: number[] = [];
     let failed = 0;
 
     for (const [index, recipient] of recipients.entries()) {
       if (index > 0) await sleep(BULK_DELAY_MS);
 
-      let result = await this.telegram.sendMessage(recipient.chatId, text, {
+      const body = textFor(recipient);
+      let result = await this.telegram.sendMessage(recipient.chatId, body, {
         disablePreview: true,
       });
 
       // Одна повторная попытка после 429: Telegram сам говорит, сколько ждать.
       if (!result.ok && result.errorCode === 429) {
         await sleep((result.retryAfter ?? FALLBACK_RETRY_SEC) * 1000);
-        result = await this.telegram.sendMessage(recipient.chatId, text, {
+        result = await this.telegram.sendMessage(recipient.chatId, body, {
           disablePreview: true,
         });
       }
 
       if (result.ok) {
-        delivered += 1;
+        deliveredIds.push(recipient.id);
         continue;
       }
 
@@ -155,6 +163,11 @@ export class NotificationsService {
       }
     }
 
-    return { recipients: recipients.length, delivered, failed };
+    return {
+      recipients: recipients.length,
+      delivered: deliveredIds.length,
+      failed,
+      deliveredIds,
+    };
   }
 }

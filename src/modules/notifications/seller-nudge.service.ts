@@ -78,25 +78,23 @@ export class SellerNudgeService {
       return;
     }
 
-    let delivered = 0;
-    const nudged: number[] = [];
+    // Одним вызовом, а не по одному продавцу: пауза между сообщениями живёт
+    // внутри deliver и на пачке из одного адресата не срабатывает — цикл
+    // снаружи слал бы всё подряд и упёрся в лимит Telegram.
+    const textById = new Map(
+      sellers.map((seller) => [seller.id, this.buildText(seller, now)]),
+    );
+    const result = await this.notifications.deliver(
+      sellers.map((seller) => ({ id: seller.id, chatId: seller.chatId })),
+      (recipient) => textById.get(recipient.id) ?? '',
+    );
 
-    for (const seller of sellers) {
-      const text = this.buildText(seller, now);
-      const result = await this.notifications.deliver(
-        [{ id: seller.id, chatId: seller.chatId }],
-        text,
-      );
-      delivered += result.delivered;
-      // Отмечаем только доставленные: если бот заблокирован, отметка сдвинула
-      // бы окно на две недели и человек не получил бы напоминание даже после
-      // того, как разблокирует бота.
-      if (result.delivered > 0) nudged.push(seller.id);
-    }
-
-    await this.repository.markNudged(nudged);
+    // Отмечаем только доставленные: если бот заблокирован, отметка сдвинула бы
+    // окно на две недели и человек не получил бы напоминание даже после того,
+    // как разблокирует бота.
+    await this.repository.markNudged(result.deliveredIds);
     this.logger.log(
-      `Напоминания продавцам: доставлено ${delivered} из ${sellers.length}`,
+      `Напоминания продавцам: доставлено ${result.delivered} из ${sellers.length}`,
     );
   }
 
