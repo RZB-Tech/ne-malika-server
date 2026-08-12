@@ -51,3 +51,14 @@ export const reviewStatusEnum = pgEnum('review_status', [
   'approved',
   'rejected',
 ]);
+
+/**
+ * Чей голос в переписке. `ai` — ответ, составленный за продавца моделью:
+ * отдельный вид, а не догадка по отправителю, потому что покупатель вправе
+ * знать, что отвечал ему не человек.
+ */
+export const chatMessageKindEnum = pgEnum('chat_message_kind', [
+  'buyer',
+  'seller',
+  'ai',
+]);

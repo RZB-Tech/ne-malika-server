@@ -22,6 +22,7 @@ import { FilesModule } from './modules/files/files.module';
 import { ImageGenModule } from './modules/image-gen/image-gen.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
+import { ChatsModule } from './modules/chats/chats.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { CreditsModule } from './modules/credits/credits.module';
@@ -48,6 +49,7 @@ import { AppService } from './app.service';
     ImageGenModule,
     ReportsModule,
     ReviewsModule,
+    ChatsModule,
     SettingsModule,
     NotificationsModule,
     CreditsModule,

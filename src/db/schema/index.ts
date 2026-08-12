@@ -7,6 +7,7 @@ export * from './product-views.schema';
 export * from './favorites.schema';
 export * from './reports.schema';
 export * from './reviews.schema';
+export * from './chats.schema';
 export * from './app-settings.schema';
 export * from './ai-products-checks.schema';
 export * from './broadcasts.schema';
