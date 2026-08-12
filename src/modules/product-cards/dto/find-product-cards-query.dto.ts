@@ -8,6 +8,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  MaxLength,
   Min,
 } from 'class-validator';
 import { PaginationQueryDto } from '../../../common/dto/pagination-query.dto';
@@ -37,6 +38,7 @@ export class FindProductCardsQueryDto extends PaginationQueryDto {
   })
   @IsOptional()
   @IsString()
+  @MaxLength(200)
   q?: string;
 
   @ApiPropertyOptional({ minimum: 0, example: 100 })
@@ -84,6 +86,7 @@ export class FindProductCardsQueryDto extends PaginationQueryDto {
   })
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   category?: string;
 
   @ApiPropertyOptional({

@@ -24,6 +24,14 @@ export class UsersRepository {
     });
   }
 
+  async hasShop(ownerId: number): Promise<boolean> {
+    const shop = await this.db.query.shops.findFirst({
+      columns: { id: true },
+      where: eq(shops.owner, ownerId),
+    });
+    return shop !== undefined;
+  }
+
   /**
    * Список для админки: пользователь, его магазин и число товаров.
    * Магазин присоединяем слева — админы и продавцы без магазина тоже нужны.

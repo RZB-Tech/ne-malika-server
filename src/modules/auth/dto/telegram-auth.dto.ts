@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, MinLength } from 'class-validator';
+import { IsString, MaxLength, MinLength } from 'class-validator';
 
 export class TelegramAuthDto {
   @ApiProperty({
@@ -9,5 +9,6 @@ export class TelegramAuthDto {
   })
   @IsString()
   @MinLength(1)
+  @MaxLength(16_384)
   initData: string;
 }

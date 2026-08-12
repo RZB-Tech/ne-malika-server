@@ -4,7 +4,6 @@ import { DRIZZLE, type DrizzleDb } from '../../db/db.provider';
 import {
   aiProductChecks,
   AiProductCheck,
-  NewAiProductCheck,
   ProductCard,
   productCards,
 } from '../../db/schema';
@@ -31,12 +30,46 @@ export interface AiReviewRow extends Record<string, unknown> {
 export class AiChecksRepository {
   constructor(@Inject(DRIZZLE) private readonly db: DrizzleDb) {}
 
-  create(data: NewAiProductCheck): Promise<AiProductCheck> {
-    return this.db
-      .insert(aiProductChecks)
-      .values(data)
-      .returning()
-      .then((r) => r[0]);
+  /**
+   * Records a verdict and changes visibility as one optimistic transaction.
+   * A model response may arrive after the seller has edited the card. In that
+   * case the timestamp no longer matches and the stale verdict is discarded.
+   * PostgreSQL keeps microseconds while JavaScript Date keeps milliseconds, so
+   * the comparison deliberately uses the original one-millisecond interval.
+   */
+  async recordDecision(
+    card: ProductCard,
+    data: Omit<typeof aiProductChecks.$inferInsert, 'productCardId'>,
+    status?: 'active' | 'hidden',
+  ): Promise<boolean> {
+    const versionEnd = new Date(card.updatedAt.getTime() + 1);
+
+    return this.db.transaction(async (tx) => {
+      const rows = await tx
+        .update(productCards)
+        .set(
+          status
+            ? { status, updatedAt: new Date() }
+            : { updatedAt: new Date() },
+        )
+        .where(
+          and(
+            eq(productCards.id, card.id),
+            inArray(productCards.status, ['active', 'pending', 'hidden']),
+            sql`${productCards.updatedAt} >= ${card.updatedAt}`,
+            sql`${productCards.updatedAt} < ${versionEnd}`,
+          ),
+        )
+        .returning({ id: productCards.id });
+
+      if (rows.length === 0) return false;
+
+      await tx.insert(aiProductChecks).values({
+        ...data,
+        productCardId: card.id,
+      });
+      return true;
+    });
   }
 
   findLatestByProductId(
@@ -110,44 +143,6 @@ export class AiChecksRepository {
           isNull(aiProductChecks.reviewedAt),
         ),
       );
-  }
-
-  /**
-   * Скрытие по вердикту fail. Прямой запрос, а не через ProductCardsService —
-   * иначе модули ссылались бы друг на друга по кругу.
-   * Упразднённые администратором не трогаем: решение человека выше решения модели.
-   */
-  async hideProduct(id: number): Promise<boolean> {
-    const rows = await this.db
-      .update(productCards)
-      .set({ status: 'hidden', updatedAt: new Date() })
-      .where(
-        and(
-          eq(productCards.id, id),
-          inArray(productCards.status, ['active', 'pending']),
-        ),
-      )
-      .returning({ id: productCards.id });
-    return rows.length > 0;
-  }
-
-  /**
-   * Публикация после успешной проверки: товар выходит из `pending`, а скрытый
-   * прошлым вердиктом возвращается в выдачу, если продавец исправил карточку.
-   * Упразднённые администратором так же неприкосновенны, как и при скрытии.
-   */
-  async publishProduct(id: number): Promise<boolean> {
-    const rows = await this.db
-      .update(productCards)
-      .set({ status: 'active', updatedAt: new Date() })
-      .where(
-        and(
-          eq(productCards.id, id),
-          inArray(productCards.status, ['pending', 'hidden']),
-        ),
-      )
-      .returning({ id: productCards.id });
-    return rows.length > 0;
   }
 
   /**

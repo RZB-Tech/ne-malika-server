@@ -29,6 +29,9 @@ desktop.ini
 /coverage
 /.nyc_output
 
+# Local architecture reports
+/graphify-out/
+
 # IDEs and editors
 /.idea
 .project

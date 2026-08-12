@@ -9,12 +9,18 @@ import { FindAdminShopsQueryDto } from './dto/find-admin-shops-query.dto';
 export class ShopsRepository {
   constructor(@Inject(DRIZZLE) private readonly db: DrizzleDb) {}
 
-  create(data: NewShop): Promise<Shop> {
-    return this.db
-      .insert(shops)
-      .values(data)
-      .returning()
-      .then((r) => r[0]);
+  /** Магазин и роль владельца должны меняться как одна операция. */
+  createAndPromoteOwner(data: NewShop): Promise<Shop> {
+    return this.db.transaction(async (tx) => {
+      const [shop] = await tx.insert(shops).values(data).returning();
+
+      await tx
+        .update(users)
+        .set({ role: 'seller', updatedAt: new Date() })
+        .where(and(eq(users.id, data.owner), eq(users.role, 'user')));
+
+      return shop;
+    });
   }
 
   findByOwner(ownerId: number): Promise<Shop[]> {
@@ -65,11 +71,23 @@ export class ShopsRepository {
       .then((r) => r[0]);
   }
 
-  delete(id: number): Promise<void> {
-    return this.db
-      .delete(shops)
-      .where(eq(shops.id, id))
-      .then(() => undefined);
+  /** Удаляет магазин и снимает роль продавца атомарно, не меняя роль admin. */
+  deleteAndDemoteOwner(id: number, ownerId: number): Promise<boolean> {
+    return this.db.transaction(async (tx) => {
+      const deleted = await tx
+        .delete(shops)
+        .where(and(eq(shops.id, id), eq(shops.owner, ownerId)))
+        .returning({ id: shops.id });
+
+      if (deleted.length === 0) return false;
+
+      await tx
+        .update(users)
+        .set({ role: 'user', updatedAt: new Date() })
+        .where(and(eq(users.id, ownerId), eq(users.role, 'seller')));
+
+      return true;
+    });
   }
 
   /** Все магазины для админки — сразу с числом товаров, чтобы не делать запрос на строку. */

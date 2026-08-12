@@ -25,9 +25,13 @@ export class CreateProductCardDto {
   @MaxLength(200)
   name: string;
 
-  @ApiPropertyOptional({ example: 'Состояние отличное, гарантия до 2027 года' })
+  @ApiPropertyOptional({
+    maxLength: 10_000,
+    example: 'Состояние отличное, гарантия до 2027 года',
+  })
   @IsOptional()
   @IsString()
+  @MaxLength(10_000)
   description?: string;
 
   /**

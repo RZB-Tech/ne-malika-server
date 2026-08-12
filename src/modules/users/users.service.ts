@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
 import { UsersRepository } from './users.repository';
@@ -30,32 +34,24 @@ export class UsersService {
   }
 
   async setRole(id: number, role: UserRole) {
-    await this.getForAdmin(id);
+    const user = await this.usersRepository.findById(id);
+    if (!user) {
+      throw new NotFoundException('Пользователь не найден');
+    }
+
+    const hasShop = await this.usersRepository.hasShop(id);
+    if (role === 'seller' && !hasShop) {
+      throw new BadRequestException(
+        'Нельзя выдать роль продавца пользователю без магазина',
+      );
+    }
+    if (role === 'user' && hasShop) {
+      throw new BadRequestException(
+        'Нельзя снять роль продавца, пока у пользователя есть магазин',
+      );
+    }
+
     return this.usersRepository.setRole(id, role);
-  }
-
-  /**
-   * Покупатель становится продавцом в момент создания магазина — отдельной
-   * заявки и одобрения администратором в этой схеме нет.
-   *
-   * Роль зашита в выданный access-токен, поэтому клиенту после создания
-   * магазина нужно дёрнуть POST /auth/refresh: там токены перевыпускаются по
-   * свежей записи пользователя.
-   */
-  async promoteToSeller(id: number) {
-    const user = await this.usersRepository.findById(id);
-    if (!user || user.role !== 'user') return user;
-    return this.usersRepository.setRole(id, 'seller');
-  }
-
-  /**
-   * Обратная сторона promoteToSeller: магазина не стало — не стало и продавца.
-   * Администратора не трогаем: его роль выдана вручную и к магазину не привязана.
-   */
-  async demoteToUser(id: number) {
-    const user = await this.usersRepository.findById(id);
-    if (!user || user.role !== 'seller') return user;
-    return this.usersRepository.setRole(id, 'user');
   }
 
   /** reason === null снимает блокировку. */

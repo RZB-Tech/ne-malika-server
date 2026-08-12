@@ -95,6 +95,11 @@ export class FilesService {
     body: Buffer,
     contentType: AllowedMimeType,
   ): Promise<string> {
+    if (body.byteLength > MAX_FILE_SIZE_BYTES) {
+      throw new BadGatewayException(
+        'Сгенерированное изображение слишком большое',
+      );
+    }
     const bucket = this.configService.get<string>('s3.bucket')!;
     const key = randomUUID();
 
@@ -158,9 +163,27 @@ export class FilesService {
    */
   async toDataUrl(key: string): Promise<string> {
     const file = await this.getFile(key);
+    if (
+      file.contentLength !== undefined &&
+      file.contentLength > MAX_FILE_SIZE_BYTES
+    ) {
+      file.body.destroy();
+      throw new BadGatewayException(
+        'Изображение слишком большое для обработки',
+      );
+    }
     const chunks: Buffer[] = [];
+    let total = 0;
     for await (const chunk of file.body) {
-      chunks.push(Buffer.from(chunk as Uint8Array));
+      const buffer = Buffer.from(chunk as Uint8Array);
+      total += buffer.byteLength;
+      if (total > MAX_FILE_SIZE_BYTES) {
+        file.body.destroy();
+        throw new BadGatewayException(
+          'Изображение слишком большое для обработки',
+        );
+      }
+      chunks.push(buffer);
     }
     const type = file.contentType ?? 'image/jpeg';
     return `data:${type};base64,${Buffer.concat(chunks).toString('base64')}`;

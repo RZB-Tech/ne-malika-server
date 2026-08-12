@@ -5,6 +5,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  Matches,
   Min,
   ValidateIf,
   validateSync,
@@ -76,12 +77,18 @@ class EnvironmentVariables {
   JWT_ACCESS_SECRET: string;
 
   @IsString()
+  @Matches(/^\d+(?:ms|s|m|h|d|w|y)$/, {
+    message: 'JWT_ACCESS_TTL must be a duration such as 900s or 15m',
+  })
   JWT_ACCESS_TTL: string;
 
   @IsString()
   JWT_REFRESH_SECRET: string;
 
   @IsString()
+  @Matches(/^\d+(?:ms|s|m|h|d|w|y)$/, {
+    message: 'JWT_REFRESH_TTL must be a duration such as 30d',
+  })
   JWT_REFRESH_TTL: string;
 
   @IsOptional()
@@ -130,17 +137,29 @@ class EnvironmentVariables {
   @IsString()
   S3_BUCKET: string;
 
-  @IsOptional()
+  @ValidateIf(
+    (env: EnvironmentVariables) =>
+      hasText(env.S3_ACCESS_KEY) || hasText(env.S3_SECRET_KEY),
+  )
   @IsString()
+  @IsNotEmpty({ message: 'S3_ACCESS_KEY is required with S3_SECRET_KEY' })
   S3_ACCESS_KEY?: string;
 
-  @IsOptional()
+  @ValidateIf(
+    (env: EnvironmentVariables) =>
+      hasText(env.S3_ACCESS_KEY) || hasText(env.S3_SECRET_KEY),
+  )
   @IsString()
+  @IsNotEmpty({ message: 'S3_SECRET_KEY is required with S3_ACCESS_KEY' })
   S3_SECRET_KEY?: string;
 
   @IsOptional()
   @IsString()
   S3_PUBLIC_BASE?: string;
+}
+
+function hasText(value: string | undefined): boolean {
+  return typeof value === 'string' && value.trim().length > 0;
 }
 
 export function validate(config: Record<string, unknown>) {

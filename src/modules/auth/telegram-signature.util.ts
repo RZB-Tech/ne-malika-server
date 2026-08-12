@@ -14,6 +14,9 @@ export interface TelegramWidgetPayload extends TelegramUserPayload {
   hash: string;
 }
 
+/** Telegram and the application server may disagree by a few seconds. */
+const MAX_FUTURE_CLOCK_SKEW_SEC = 30;
+
 /**
  * Mini App и Login Widget подписываются одним алгоритмом, но разными ключами:
  *   Mini App: secret = HMAC_SHA256(key="WebAppData", data=bot_token)
@@ -27,6 +30,10 @@ function assertSignature(
   hash: string,
   secret: Buffer,
 ): void {
+  if (!/^[a-f\d]{64}$/i.test(hash)) {
+    throw new Error('Telegram: неверный формат подписи');
+  }
+
   const expected = crypto
     .createHmac('sha256', secret)
     .update(dataCheckString)
@@ -44,10 +51,14 @@ function assertSignature(
 }
 
 function assertFresh(authDate: number, ttlSec: number): void {
-  if (!authDate) {
+  if (!Number.isSafeInteger(authDate) || authDate <= 0) {
     throw new Error('Telegram: отсутствует auth_date');
   }
-  if (Math.floor(Date.now() / 1000) - authDate > ttlSec) {
+  const ageSec = Math.floor(Date.now() / 1000) - authDate;
+  if (ageSec < -MAX_FUTURE_CLOCK_SKEW_SEC) {
+    throw new Error('Telegram: auth_date находится в будущем');
+  }
+  if (ageSec > ttlSec) {
     throw new Error('Telegram: срок действия данных истёк');
   }
 }

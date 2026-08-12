@@ -49,7 +49,7 @@ export class ShopsService {
     }
 
     try {
-      const shop = await this.shopsRepository.create({
+      return await this.shopsRepository.createAndPromoteOwner({
         owner: ownerId,
         name: dto.name,
         description: dto.description,
@@ -60,10 +60,6 @@ export class ShopsService {
         workSchedule: dto.workSchedule,
         location: dto.location,
       });
-
-      await this.usersService.promoteToSeller(ownerId);
-
-      return shop;
     } catch (error) {
       if (isUniqueViolation(error, 'shops_owner_unique_idx')) {
         throw new ConflictException('У пользователя уже есть магазин');
@@ -94,8 +90,13 @@ export class ShopsService {
 
   async removeOwn(ownerId: number, shopId: number) {
     await this.getOwnOrThrow(ownerId, shopId);
-    await this.shopsRepository.delete(shopId);
-    await this.usersService.demoteToUser(ownerId);
+    const deleted = await this.shopsRepository.deleteAndDemoteOwner(
+      shopId,
+      ownerId,
+    );
+    if (!deleted) {
+      throw new NotFoundException('Магазин не найден');
+    }
     await this.redis.delByPrefix(PRODUCT_CACHE_PREFIX);
   }
 
@@ -133,8 +134,13 @@ export class ShopsService {
    */
   async adminRemove(shopId: number) {
     const shop = await this.getOrThrow(shopId);
-    await this.shopsRepository.delete(shopId);
-    await this.usersService.demoteToUser(shop.owner);
+    const deleted = await this.shopsRepository.deleteAndDemoteOwner(
+      shopId,
+      shop.owner,
+    );
+    if (!deleted) {
+      throw new NotFoundException('Магазин не найден');
+    }
     await this.redis.delByPrefix(PRODUCT_CACHE_PREFIX);
   }
 

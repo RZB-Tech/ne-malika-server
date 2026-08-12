@@ -5,5 +5,13 @@
 allowBuilds:
   # postinstall печатает баннер с просьбой о донате — выполнять незачем.
   '@nestjs/core': false
+  # Телеметрия swagger-ui; приложению она не нужна.
+  '@scarf/scarf': false
   # ставит платформенный бинарник; нужен tsx и drizzle-kit (миграции).
   esbuild: true
+
+# Nest and Swagger currently allow vulnerable patch versions transitively.
+# Pin patched drop-in releases until their next upstream releases catch up.
+overrides:
+  '@nestjs/swagger>js-yaml': 5.2.3
+  'express>qs': 6.15.3

@@ -106,22 +106,4 @@ export class AdminProductCardsController {
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.productCardsService.adminRemove(id);
   }
-
-  @Post('activate-all')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Обслуживание: снять скрытие со всех товаров разом',
-  })
-  activateAll() {
-    return this.productCardsService.activateAll();
-  }
-
-  @Post('ai-checks/pass-all')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: 'Обслуживание: пометить все ИИ-проверки как пройденные',
-  })
-  passAllAiChecks() {
-    return this.productCardsService.passAllAiChecks();
-  }
 }

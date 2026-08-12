@@ -115,10 +115,7 @@ export class PushRepository {
           ? eq(users.role, 'user')
           : undefined;
 
-    const base = and(
-      isNull(users.blockedAt),
-      eq(users.telegramNotificationsEnabled, true),
-    );
+    const base = isNull(users.blockedAt);
 
     return this.db
       .select({ count: sql<number>`count(*)::int` })

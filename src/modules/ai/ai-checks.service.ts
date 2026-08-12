@@ -193,28 +193,37 @@ export class AiChecksService implements OnModuleInit {
       return;
     }
 
-    await this.repository.create({
-      productCardId: card.id,
+    const decision = {
       verdict: result.verdict,
       checks: result.checks,
       summary: result.summary,
       model,
       tokensUsed,
-    });
+    } as const;
 
     if (result.verdict === 'fail') {
-      const hidden = await this.repository.hideProduct(card.id);
-      if (hidden) {
-        await this.redis.delByPrefix(PRODUCT_CACHE_PREFIX);
-        this.logger.warn(`Товар ${card.id} скрыт по вердикту ИИ-проверки`);
-      }
+      const applied = await this.repository.recordDecision(
+        card,
+        decision,
+        'hidden',
+      );
+      if (!applied) return this.logStale(card);
+      await this.redis.delByPrefix(PRODUCT_CACHE_PREFIX);
+      this.logger.warn(`Товар ${card.id} скрыт по вердикту ИИ-проверки`);
       void this.notifications.notifyAdmins(
         aiFailureText(card, 'модель забраковала товар', result.summary),
       );
       return;
     }
 
-    await this.publish(card.id, `вердикт ${result.verdict}`);
+    const applied = await this.repository.recordDecision(
+      card,
+      decision,
+      'active',
+    );
+    if (!applied) return this.logStale(card);
+    await this.redis.delByPrefix(PRODUCT_CACHE_PREFIX);
+    this.logger.log(`Товар ${card.id} опубликован — вердикт ${result.verdict}`);
   }
 
   /**
@@ -250,30 +259,20 @@ export class AiChecksService implements OnModuleInit {
     });
   }
 
-  /**
-   * Выпускает товар в выдачу и сбрасывает кэш. Молчит, если публиковать было
-   * нечего: карточка уже активна либо упразднена администратором.
-   */
-  private async publish(cardId: number, reason: string): Promise<void> {
-    if (!(await this.repository.publishProduct(cardId))) return;
-    await this.redis.delByPrefix(PRODUCT_CACHE_PREFIX);
-    this.logger.log(`Товар ${cardId} опубликован — ${reason}`);
-  }
-
   private async deferToManualReview(
     card: ProductCard,
     model: string,
     summary: string,
     error: string,
   ): Promise<void> {
-    await this.repository.create({
-      productCardId: card.id,
+    const applied = await this.repository.recordDecision(card, {
       verdict: 'warn',
       checks: {},
       summary,
       model,
       error,
     });
+    if (!applied) return this.logStale(card);
     this.logger.warn(`Товар ${card.id} не опубликован: ${summary}`);
     void this.notifications.notifyAdmins(
       aiFailureText(card, 'требуется ручная проверка', `${summary}: ${error}`),
@@ -285,20 +284,29 @@ export class AiChecksService implements OnModuleInit {
     model: string,
     reason: string,
   ): Promise<void> {
-    await this.repository.create({
-      productCardId: card.id,
-      verdict: 'fail',
-      checks: {
-        description: { verdict: 'fail', notes: reason },
+    const applied = await this.repository.recordDecision(
+      card,
+      {
+        verdict: 'fail',
+        checks: {
+          description: { verdict: 'fail', notes: reason },
+        },
+        summary: reason,
+        model,
       },
-      summary: reason,
-      model,
-    });
-    const hidden = await this.repository.hideProduct(card.id);
-    if (hidden) await this.redis.delByPrefix(PRODUCT_CACHE_PREFIX);
+      'hidden',
+    );
+    if (!applied) return this.logStale(card);
+    await this.redis.delByPrefix(PRODUCT_CACHE_PREFIX);
     this.logger.warn(`Товар ${card.id} отклонён до ИИ-проверки: ${reason}`);
     void this.notifications.notifyAdmins(
       aiFailureText(card, 'карточка забракована', reason),
+    );
+  }
+
+  private logStale(card: ProductCard): void {
+    this.logger.log(
+      `Результат проверки товара ${card.id} отброшен: карточка уже изменилась`,
     );
   }
 

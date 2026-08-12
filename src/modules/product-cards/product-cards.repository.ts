@@ -15,7 +15,6 @@ import {
 import { DRIZZLE, type DrizzleDb } from '../../db/db.provider';
 import { resolvePage } from '../../common/dto/pagination-query.dto';
 import {
-  aiProductChecks,
   categories,
   NewProductCard,
   ProductCard,
@@ -292,24 +291,6 @@ export class ProductCardsRepository {
       .where(eq(productCards.id, id))
       .returning()
       .then((r) => r[0]);
-  }
-
-  /** Массовое обслуживание: снять скрытие со всех товаров. Только администратор. */
-  activateAll(): Promise<number> {
-    return this.db
-      .update(productCards)
-      .set({ status: 'active', updatedAt: new Date() })
-      .returning({ id: productCards.id })
-      .then((r) => r.length);
-  }
-
-  /** Массовое обслуживание: пометить все ИИ-проверки как пройденные. Только администратор. */
-  passAllAiChecks(): Promise<number> {
-    return this.db
-      .update(aiProductChecks)
-      .set({ verdict: 'pass' })
-      .returning({ id: aiProductChecks.id })
-      .then((r) => r.length);
   }
 }
 

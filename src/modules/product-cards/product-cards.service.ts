@@ -202,16 +202,6 @@ export class ProductCardsService {
     await this.invalidateCache();
   }
 
-  async activateAll() {
-    const updated = await this.productCardsRepository.activateAll();
-    await this.invalidateCache();
-    return { updated };
-  }
-
-  async passAllAiChecks() {
-    return { updated: await this.productCardsRepository.passAllAiChecks() };
-  }
-
   async getPublicById(id: number) {
     const key = productItemKey(id);
     const cached = await this.redis.get<PublicItem>(key);

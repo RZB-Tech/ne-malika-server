@@ -4,7 +4,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
+import { JwtService, type JwtSignOptions } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
 import {
   TelegramUserPayload,
@@ -108,6 +108,14 @@ export class AuthService {
   }
 
   private issueTokens(user: User) {
+    type TokenTtl = NonNullable<JwtSignOptions['expiresIn']>;
+    const accessSecret =
+      this.configService.getOrThrow<string>('jwt.accessSecret');
+    const refreshSecret =
+      this.configService.getOrThrow<string>('jwt.refreshSecret');
+    const accessTtl = this.configService.getOrThrow<TokenTtl>('jwt.accessTtl');
+    const refreshTtl =
+      this.configService.getOrThrow<TokenTtl>('jwt.refreshTtl');
     const accessPayload: JwtAccessPayload = {
       sub: user.id,
       role: user.role,
@@ -121,12 +129,12 @@ export class AuthService {
 
     return {
       accessToken: this.jwtService.sign(accessPayload, {
-        secret: this.configService.get<string>('jwt.accessSecret'),
-        expiresIn: this.configService.get<string>('jwt.accessTtl'),
+        secret: accessSecret,
+        expiresIn: accessTtl,
       }),
       refreshToken: this.jwtService.sign(refreshPayload, {
-        secret: this.configService.get<string>('jwt.refreshSecret'),
-        expiresIn: this.configService.get<string>('jwt.refreshTtl'),
+        secret: refreshSecret,
+        expiresIn: refreshTtl,
       }),
       user: {
         id: user.id,

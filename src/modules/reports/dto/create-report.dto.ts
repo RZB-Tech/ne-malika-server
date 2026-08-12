@@ -1,14 +1,22 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, MinLength } from 'class-validator';
+import {
+  IsInt,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 export class CreateReportDto {
   @ApiProperty({
     minLength: 5,
+    maxLength: 2000,
     example: 'Продавец не отвечает, товар не соответствует фото',
   })
   @IsString()
   @MinLength(5)
+  @MaxLength(2000)
   context: string;
 
   @ApiProperty({ example: 1 })

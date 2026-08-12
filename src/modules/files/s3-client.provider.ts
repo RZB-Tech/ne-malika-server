@@ -18,14 +18,17 @@ export const s3ClientProvider: Provider = {
   provide: S3_CLIENT,
   inject: [ConfigService],
   useFactory: (config: ConfigService) => {
+    const accessKeyId = config.get<string>('s3.accessKey');
+    const secretAccessKey = config.get<string>('s3.secretKey');
+
     return new S3Client({
       region: config.get<string>('s3.region'),
       endpoint: normalizeS3Endpoint(config.get<string>('s3.endpoint')),
       forcePathStyle: true,
-      credentials: {
-        accessKeyId: config.get<string>('s3.accessKey')!,
-        secretAccessKey: config.get<string>('s3.secretKey')!,
-      },
+      credentials:
+        accessKeyId && secretAccessKey
+          ? { accessKeyId, secretAccessKey }
+          : undefined,
     });
   },
 };
