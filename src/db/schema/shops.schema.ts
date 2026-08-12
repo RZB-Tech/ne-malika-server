@@ -17,8 +17,8 @@ import { entityStatusEnum } from './enums';
 
 export interface WorkScheduleEntry {
   day: 'Mo' | 'Tu' | 'We' | 'Th' | 'Fr' | 'Sa' | 'Su';
-  start: string; // "09:00"
-  end: string; // "18:00"
+  start: string;
+  end: string;
   isHoliday: boolean;
 }
 

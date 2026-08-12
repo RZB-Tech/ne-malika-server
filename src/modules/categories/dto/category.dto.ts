@@ -25,8 +25,6 @@ export class CategoryDto {
   @ApiProperty({ type: CategoryNameDto })
   name: CategoryNameDto;
 
-  // type указан явно: по `string | null` Swagger выводит объект, и в клиенте
-  // вместо строки появляется Record<string, unknown>.
   @ApiPropertyOptional({
     type: String,
     nullable: true,

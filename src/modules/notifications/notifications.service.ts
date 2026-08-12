@@ -123,10 +123,6 @@ export class NotificationsService {
       recipients: recipients.length,
     });
 
-    // Доставка идёт в фоне, ответ уходит сразу. Синхронно это была бы минута
-    // ожидания на каждую тысячу адресатов (пауза 70 мс между сообщениями) —
-    // столько ни один прокси соединение не держит, а админ видел бы таймаут
-    // при фактически успешной рассылке.
     void this.runBroadcast(record.id, recipients, text, audience);
 
     return { id: record.id, recipients: recipients.length };
@@ -153,8 +149,6 @@ export class NotificationsService {
       );
     }
 
-    // Второй канал — браузер. Отдельно от Telegram: адресаты разные, и сбой
-    // одного канала не должен отменять доставку по другому.
     let pushCounters = { delivered: 0, failed: 0 };
     try {
       pushCounters = await this.push.broadcast(audience, text, PUSH_TITLE);
@@ -214,15 +208,11 @@ export class NotificationsService {
     for (const [index, recipient] of recipients.entries()) {
       if (index > 0) await sleep(BULK_DELAY_MS);
 
-      // Обрезка здесь, а не у каждого вызывающего: длину сообщения задаёт
-      // Telegram, и забыть про неё в одном месте достаточно, чтобы
-      // уведомление молча не дошло.
       const body = clampMessage(textFor(recipient));
       let result = await this.telegram.sendMessage(recipient.chatId, body, {
         disablePreview: true,
       });
 
-      // Одна повторная попытка после 429: Telegram сам говорит, сколько ждать.
       if (!result.ok && result.errorCode === 429) {
         await sleep((result.retryAfter ?? FALLBACK_RETRY_SEC) * 1000);
         result = await this.telegram.sendMessage(recipient.chatId, body, {
@@ -238,9 +228,6 @@ export class NotificationsService {
 
       failed += 1;
 
-      // 400 — почти всегда сломанная HTML-разметка в тексте: она одинакова для
-      // всех, и продолжать значит собрать тысячу одинаковых отказов и тысячу
-      // строк в журнале. Несколько подряд — обрываем.
       if (result.errorCode === 400) {
         badRequests += 1;
         if (badRequests >= MAX_BAD_REQUESTS) {
@@ -251,9 +238,6 @@ export class NotificationsService {
         }
       }
 
-      // 403 — бот заблокирован или чат удалён. Такой адресат не «временно
-      // недоступен», он не вернётся сам, поэтому снимаем подписку.
-      // Ошибка записи не должна ронять всю рассылку на середине.
       if (result.errorCode === 403) {
         try {
           await this.repository.disableNotifications(recipient.id);

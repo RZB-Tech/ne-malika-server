@@ -116,8 +116,6 @@ export class ShopsRepository {
       .limit(limit)
       .offset(offset);
 
-    // Счёт идёт по тому же join'у: поиск бьёт и по владельцу, без users
-    // условие не собрать.
     const totalRows = await this.db
       .select({ count: sql<number>`count(*)::int` })
       .from(shops)

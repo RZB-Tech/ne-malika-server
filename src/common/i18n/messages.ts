@@ -177,9 +177,6 @@ export function translateMessage(message: string, locale: ApiLocale): string {
   const direct = TRANSLATIONS[message]?.[locale];
   if (direct) return direct;
 
-  // Сообщения вложенной валидации приходят с путём: без этого шага строка
-  // «workSchedule.0.start должен быть в формате HH:mm» не нашлась бы в словаре
-  // и осталась бы по-русски при любом языке интерфейса.
   const match = NESTED_PREFIX.exec(message);
   if (!match) return message;
 

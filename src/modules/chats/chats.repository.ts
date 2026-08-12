@@ -146,8 +146,6 @@ export class ChatsRepository {
         .select(MESSAGE_FIELDS)
         .from(chatMessages)
         .where(where)
-        // Свежие первыми: открывают переписку с конца, и подгружать надо
-        // старое, а не новое. Порядок для показа разворачивает клиент.
         .orderBy(desc(chatMessages.createdAt), desc(chatMessages.id))
         .limit(limit)
         .offset(offset),
@@ -171,8 +169,6 @@ export class ChatsRepository {
     return this.db.transaction(async (tx) => {
       const [message] = await tx.insert(chatMessages).values(data).returning();
 
-      // Непрочитанное растёт у противоположной стороны: автоответ ИИ идёт от
-      // магазина, поэтому для покупателя он такое же входящее сообщение.
       const forBuyer = data.kind !== 'buyer';
 
       await tx
@@ -211,7 +207,6 @@ export class ChatsRepository {
           and(
             eq(chatMessages.chatId, chatId),
             isNull(chatMessages.readAt),
-            // Свои же сообщения не помечаем: «прочитано» — это про собеседника.
             side === 'buyer'
               ? sql`${chatMessages.kind} <> 'buyer'`
               : sql`${chatMessages.kind} = 'buyer'`,

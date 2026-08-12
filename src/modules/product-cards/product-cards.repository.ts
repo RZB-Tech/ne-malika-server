@@ -43,8 +43,6 @@ const PUBLIC_FIELDS = {
   ratingCount: productCards.ratingCount,
   characteristics: productCards.characteristics,
   categoryId: productCards.categoryId,
-  // Slug листа: иконку и путь до корня клиент достраивает по своему дереву,
-  // которое всё равно загружено для меню каталога.
   categorySlug: categories.slug,
   categoryNameRu: categories.nameRu,
   categoryNameUzLatn: categories.nameUzLatn,
@@ -88,9 +86,6 @@ const SEARCH_VECTOR = sql`(to_tsvector('russian', ${SEARCH_DOCUMENT}) || to_tsve
  * упомянут в описании вскользь.
  */
 function resolveSort(query: FindProductCardsQueryDto): SQL[] {
-  // NULLS LAST в обе стороны: у товаров с договорной ценой её нет, и по
-  // умолчанию Postgres поднял бы их наверх при сортировке «сначала дорогие» —
-  // список открывался бы товарами вообще без цены.
   if (query.sort === 'price_asc') {
     return [sql`${productCards.price} asc nulls last`];
   }
@@ -101,9 +96,6 @@ function resolveSort(query: FindProductCardsQueryDto): SQL[] {
   const search = query.q ? buildProductSearch(query.q) : null;
   if (!search) return [desc(productCards.createdAt)];
 
-  // Ранг считается по названию, а не по всему тексту: совпадение в названии
-  // весомее упоминания в описании. Нормализация 1 делит вес на логарифм длины,
-  // и товар «Клавиатура» оказывается выше «Клавиатуры AULA F75 … 80 клавиш».
   return [
     desc(
       sql`ts_rank(to_tsvector('russian', coalesce(${productCards.name}, '')), to_tsquery('russian', ${search.queries[0]}), 1)`,
@@ -214,10 +206,6 @@ export class ProductCardsRepository {
         )!,
       );
     }
-    // Товары без категории. Такие остаются после удаления раздела каталога
-    // (product_cards.category_id → SET NULL) и не попадают ни в один фильтр по
-    // категории: inArray по списку id не совпадает с NULL. Без этого условия
-    // администратору нечем их найти, кроме перебора всего каталога.
     if (query.uncategorized) {
       conditions.push(isNull(productCards.categoryId));
     }
@@ -339,8 +327,6 @@ function publicConditions(
   ];
 
   if (categoryIds) {
-    // Пустая ветка возможна только у несуществующей категории — тогда честнее
-    // вернуть ноль товаров, чем молча показать весь каталог.
     conditions.push(
       categoryIds.length > 0
         ? inArray(productCards.categoryId, categoryIds)
@@ -355,8 +341,6 @@ function publicConditions(
   }
   if (query.q) {
     const search = buildProductSearch(query.q);
-    // Слов не осталось — искали одни знаки препинания. Отдать в таком случае
-    // весь каталог нельзя: человек решит, что нашлось всё это.
     conditions.push(search ? searchCondition(search) : sql`false`);
   }
   if (query.price_min !== undefined) {

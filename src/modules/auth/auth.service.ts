@@ -128,8 +128,6 @@ export class AuthService {
         secret: this.configService.get<string>('jwt.refreshSecret'),
         expiresIn: this.configService.get<string>('jwt.refreshTtl'),
       }),
-      // Один и тот же профиль во всех ответах auth — иначе после silent refresh
-      // клиент терял бы фото и hasContact.
       user: {
         id: user.id,
         fullname: user.fullname,
@@ -138,8 +136,6 @@ export class AuthService {
         telegramPhoto: user.telegramPhoto,
         phoneNumber: user.phoneNumber,
         hasContact: Boolean(user.phoneNumber),
-        // Открыт ли чат с ботом. Пока нет — уведомления физически не дойдут,
-        // и сайт показывает подсказку «нажмите Старт в боте».
         telegramLinked: Boolean(user.telegramChatId),
       },
     };

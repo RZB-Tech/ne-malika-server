@@ -32,7 +32,6 @@ function assertSignature(
     .update(dataCheckString)
     .digest('hex');
 
-  // Длины сверяем до timingSafeEqual: на разной длине он бросает RangeError.
   if (
     expected.length !== hash.length ||
     !crypto.timingSafeEqual(

@@ -58,7 +58,7 @@ export class BotService implements OnModuleInit {
 
   async handleUpdate(update: TelegramUpdate): Promise<void> {
     const message = update.message;
-    if (!message) return; // игнорируем не-message апдейты (MVP не обрабатывает остальное)
+    if (!message) return;
 
     if (message.chat.type !== 'private') return;
 

@@ -29,7 +29,7 @@ export class SettingsService {
     if (cached !== null) return cached;
 
     const stored = await this.repository.get<boolean>(AI_CHECKS_KEY);
-    const value = stored ?? true; // по умолчанию проверка включена
+    const value = stored ?? true;
     await this.redis.set(CACHE_KEY, value, CACHE_TTL_SEC);
     return value;
   }

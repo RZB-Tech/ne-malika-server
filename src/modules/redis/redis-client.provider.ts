@@ -22,7 +22,6 @@ export const redisClientProvider: Provider = {
 
     const client = new Redis(url, {
       maxRetriesPerRequest: 2,
-      // Ошибки соединения не должны валить старт приложения.
       enableOfflineQueue: false,
     });
     client.on('error', (err) => logger.error(`Redis error: ${err.message}`));

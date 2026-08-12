@@ -46,9 +46,6 @@ export const categories = pgTable(
   (table) => ({
     parentIdIdx: index('categories_parent_id_idx').on(table.parentId),
 
-    // Slug уникален только внутри родителя: «gaming» встречается и у ноутбуков,
-    // и у мышей. Для корней NULL в parent_id не даёт обычному UNIQUE сработать,
-    // поэтому им нужен отдельный частичный индекс.
     childSlugIdx: uniqueIndex('categories_parent_slug_idx').on(
       table.parentId,
       table.slug,

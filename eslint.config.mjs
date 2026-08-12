@@ -6,9 +6,6 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    // Тестовый раннер (jest/supertest) в проекте пока не установлен, поэтому
-    // типы describe/it/request в спеках не резолвятся и eslint сыпет
-    // no-unsafe-* на каждой строке. Вернуть в проверку вместе с раннером.
     ignores: ['eslint.config.mjs', '**/*.spec.ts', 'test/**'],
   },
   eslint.configs.recommended,

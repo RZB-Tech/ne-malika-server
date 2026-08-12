@@ -47,8 +47,6 @@ export class ReportsService {
       productCardId: dto.product_card_id,
     });
 
-    // Без await: жалоба уже создана, и покупателю незачем ждать, пока
-    // Telegram примет сообщение. Ошибки сервис гасит внутри себя.
     void this.notifications.notifyAdmins(
       newReportText(shop.name, dto.product_card_id, dto.context),
     );

@@ -32,8 +32,6 @@ export const openrouterClientProvider: Provider = {
       apiKey,
       baseURL: config.get<string>('openrouter.baseUrl'),
       httpAgent: keepAliveAgent,
-      // OpenRouter просит представиться: по этим заголовкам он показывает
-      // источник трафика в статистике аккаунта.
       defaultHeaders: {
         'HTTP-Referer': 'https://nemalika.uz',
         'X-Title': 'neMalika',

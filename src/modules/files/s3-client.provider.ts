@@ -21,8 +21,6 @@ export const s3ClientProvider: Provider = {
     return new S3Client({
       region: config.get<string>('s3.region'),
       endpoint: normalizeS3Endpoint(config.get<string>('s3.endpoint')),
-      // forcePathStyle нужен для S3-совместимых хранилищ (MinIO, DigitalOcean Spaces
-      // и т.п.), где бакет — часть пути, а не поддомена. Для настоящего AWS S3 не мешает.
       forcePathStyle: true,
       credentials: {
         accessKeyId: config.get<string>('s3.accessKey')!,

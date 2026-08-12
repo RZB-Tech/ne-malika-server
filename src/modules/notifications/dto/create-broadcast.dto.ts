@@ -84,7 +84,6 @@ export class TelegramHtmlConstraint implements ValidatorConstraintInterface {
       return false;
     }
 
-    // Осталась голая угловая скобка — Telegram сочтёт её началом тега.
     const withoutTags = value.replace(TAG_RE, '');
     if (withoutTags.includes('<') || withoutTags.includes('>')) {
       this.problem =

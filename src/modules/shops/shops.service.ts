@@ -61,9 +61,6 @@ export class ShopsService {
         location: dto.location,
       });
 
-      // Магазин появился — покупатель стал продавцом. Порядок именно такой:
-      // повысить роль раньше значило бы оставить «продавца» без магазина,
-      // если создание упадёт.
       await this.usersService.promoteToSeller(ownerId);
 
       return shop;
@@ -84,7 +81,6 @@ export class ShopsService {
       shopId,
       ownerId,
     );
-    // Не различаем «не найдено» и «чужое» — не даём enumerate чужие ресурсы.
     if (!shop) {
       throw new NotFoundException('Магазин не найден');
     }
@@ -99,8 +95,6 @@ export class ShopsService {
   async removeOwn(ownerId: number, shopId: number) {
     await this.getOwnOrThrow(ownerId, shopId);
     await this.shopsRepository.delete(shopId);
-    // Магазина больше нет — продавцом человек быть перестал. Товары ушли
-    // каскадом, поэтому и публичная выдача устарела.
     await this.usersService.demoteToUser(ownerId);
     await this.redis.delByPrefix(PRODUCT_CACHE_PREFIX);
   }
@@ -122,7 +116,6 @@ export class ShopsService {
   async adminAbolish(shopId: number, reason: string) {
     await this.getOrThrow(shopId);
     const shop = await this.shopsRepository.abolish(shopId, reason);
-    // Товары упразднённого магазина исчезают из публичной выдачи — кэш устарел.
     await this.redis.delByPrefix(PRODUCT_CACHE_PREFIX);
     return shop;
   }

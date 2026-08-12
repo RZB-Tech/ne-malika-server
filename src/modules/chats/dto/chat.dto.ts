@@ -37,8 +37,6 @@ export class StartChatDto {
     description: 'Магазин. Обязателен, если товар не указан',
     example: 3,
   })
-  // Магазин выводится из товара, поэтому требуем его только без товара:
-  // иначе покупателю пришлось бы знать id магазина, которого он не видел.
   @ValidateIf((dto: StartChatDto) => dto.productCardId === undefined)
   @Type(() => Number)
   @IsInt()

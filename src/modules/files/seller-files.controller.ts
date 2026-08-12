@@ -12,7 +12,6 @@ import { UploadUrlResponseDto } from './dto/upload-url-response.dto';
 
 @ApiTags('files')
 @ApiBearerAuth('access-token')
-// Администратор тоже создаёт товары — значит и фото ему грузить.
 @SellerOrAdmin()
 @Controller('seller/uploads')
 export class SellerFilesController {

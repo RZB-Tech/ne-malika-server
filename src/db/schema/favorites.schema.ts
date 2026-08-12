@@ -38,8 +38,6 @@ export const favorites = pgTable(
       .defaultNow(),
   },
   (table) => ({
-    // Цель та же, что у product_views: onConflict требует уникального
-    // ограничения именно по этой паре.
     userCardKey: uniqueIndex('favorites_user_card_key').on(
       table.userId,
       table.productCardId,

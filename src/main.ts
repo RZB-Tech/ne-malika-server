@@ -18,8 +18,6 @@ async function bootstrap() {
 
   app.setGlobalPrefix(apiPrefix);
   app.use(cookieParser());
-  // Вне прода список может быть пуст — тогда отражаем любой origin, чтобы не
-  // мешать локальной разработке и туннелям. В проде список обязателен (env.validation).
   app.enableCors({
     origin: corsOrigins.length > 0 ? corsOrigins : !isProd,
     credentials: true,
@@ -31,11 +29,8 @@ async function bootstrap() {
       transform: true,
     }),
   );
-  // Текст ошибки собирается здесь, а не в сервисах: язык известен только из
-  // заголовка запроса, до которого гвардам и сервисам не дотянуться.
   app.useGlobalFilters(new I18nExceptionFilter());
 
-  // Документация описывает и приватные эндпоинты, поэтому в проде не публикуется.
   if (!isProd) {
     const document = SwaggerModule.createDocument(app, swaggerConfig);
     SwaggerModule.setup(`${apiPrefix}/docs`, app, document, {

@@ -186,8 +186,6 @@ export class UsersRepository {
       telegramUsername: data.telegramUsername,
       phoneNumber: data.phoneNumber,
       fullname: data.fullname,
-      // Контакт из бота — ещё не заявка на магазин: роль как при обычной
-      // регистрации, продавцом сделает создание магазина.
       role: 'user',
     });
   }

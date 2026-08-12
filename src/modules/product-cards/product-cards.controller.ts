@@ -16,7 +16,6 @@ export class ProductCardsController {
     return this.productCardsService.findPublicList(query);
   }
 
-  // Объявлен до ':id' — иначе путь съел бы ParseIntPipe и ответил 400.
   @Get('sitemap')
   @ApiOperation({
     summary: 'id и дата изменения всех активных товаров (для sitemap)',

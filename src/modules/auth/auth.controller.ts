@@ -24,8 +24,6 @@ type Tokens = Awaited<ReturnType<AuthService['refresh']>>;
 
 @ApiTags('auth')
 @Public()
-// Точки входа — самые привлекательные для перебора, поэтому лимит здесь
-// заметно жёстче глобального.
 @Throttle({ default: { ttl: 60_000, limit: 10 } })
 @Controller('auth')
 export class AuthController {

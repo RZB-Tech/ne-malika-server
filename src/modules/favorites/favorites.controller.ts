@@ -63,7 +63,6 @@ export class FavoritesController {
     return this.favoritesService.sync(user.id, dto);
   }
 
-  // Объявлен до ':productCardId' — иначе пустой путь не совпал бы первым.
   @Delete()
   @ApiOperation({ summary: 'Очистить избранное целиком' })
   clear(@CurrentUser() user: AuthenticatedUser) {

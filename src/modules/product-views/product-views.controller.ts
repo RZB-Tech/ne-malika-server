@@ -71,7 +71,6 @@ export class ProductViewsController {
     return this.productViewsService.sync(user.id, dto);
   }
 
-  // Объявлен до ':productCardId' — иначе пустой путь не совпал бы первым.
   @Delete()
   @ApiOperation({ summary: 'Очистить историю целиком' })
   clear(@CurrentUser() user: AuthenticatedUser) {

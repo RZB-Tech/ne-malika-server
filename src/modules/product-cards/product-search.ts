@@ -145,8 +145,6 @@ export function buildProductSearch(raw: string): ProductSearch | null {
   const terms = tokenize(raw);
   if (terms.length === 0) return null;
 
-  // Дубликаты убираем: для запроса без кириллицы обратная транслитерация
-  // вернёт его же, и незачем гонять по индексу одно и то же дважды.
   const queries = unique([
     toTsQuery(terms),
     toTsQuery(terms.map(transliterate(TO_CYRILLIC))),
@@ -193,8 +191,6 @@ function transliterate(table: [string, string][]) {
           continue outer;
         }
       }
-      // Символ не из таблицы (цифра, латиница внутри кириллического слова) —
-      // оставляем как есть: артикулы пишут вперемешку.
       out += rest[0];
       rest = rest.slice(1);
     }

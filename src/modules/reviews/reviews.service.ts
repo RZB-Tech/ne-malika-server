@@ -42,8 +42,6 @@ export class ReviewsService {
     private readonly reviewsAi: ReviewsAiService,
   ) {}
 
-  // --- покупатель -----------------------------------------------------------
-
   async create(userId: number, dto: CreateReviewDto) {
     const target = await this.resolveTarget(userId, dto);
 
@@ -56,15 +54,10 @@ export class ReviewsService {
         text: dto.text?.trim() || null,
       });
 
-      // Без await: покупателю незачем ждать модель. Отзыв пока не виден —
-      // проверка либо опубликует его через несколько секунд, либо оставит
-      // человеку.
       this.checkInBackground(review.id);
 
       return review;
     } catch (err) {
-      // Уникальный индекс — последняя защита от двойного отзыва: между
-      // проверкой и вставкой человек успевает нажать кнопку дважды.
       if (isUniqueViolation(err)) {
         throw new ConflictException('Вы уже оставляли отзыв здесь');
       }
@@ -86,7 +79,6 @@ export class ReviewsService {
       moderationNote: null,
       moderatedBy: null,
       moderatedAt: null,
-      // Прежний вердикт снимаем: он относился к другому тексту.
       aiVerdict: null,
       aiNote: null,
       aiCheckedAt: null,
@@ -108,8 +100,6 @@ export class ReviewsService {
     return this.paginate(this.repository.listOwn(userId, query));
   }
 
-  // --- витрина --------------------------------------------------------------
-
   listPublic(query: FindReviewsQueryDto) {
     return this.paginate(
       this.repository.listPublic(query).then((result) => ({
@@ -125,8 +115,6 @@ export class ReviewsService {
   summary(query: FindReviewsQueryDto) {
     return this.repository.summary(query);
   }
-
-  // --- модерация ------------------------------------------------------------
 
   listForAdmin(query: FindAdminReviewsQueryDto) {
     return this.paginate(this.repository.listForAdmin(query));
@@ -157,8 +145,6 @@ export class ReviewsService {
     await this.productCardsService.invalidateCache();
   }
 
-  // --- ИИ-модерация ---------------------------------------------------------
-
   /**
    * Проверка не ожидается вызывающим: покупатель не должен ждать модель, чтобы
    * увидеть, что отзыв принят.
@@ -182,7 +168,6 @@ export class ReviewsService {
    */
   private async runAiCheck(id: number): Promise<void> {
     const review = await this.repository.findForCheck(id);
-    // Отзыв успели удалить или разобрать руками, пока модель думала.
     if (!review || review.status !== 'pending') return;
 
     const result = await this.reviewsAi.check(review);
@@ -224,8 +209,6 @@ export class ReviewsService {
 
     await this.productCardsService.invalidateCache();
 
-    // Продавцу — о новом отзыве: он появился на его витрине, и реагировать на
-    // него ему. Автору сообщать не о чем: он и так видит свой отзыв.
     const shop = await this.shopsRepository.findById(review.shopId);
     if (shop) {
       void this.notifications.notifyUser(
@@ -251,7 +234,6 @@ export class ReviewsService {
       ai,
     });
 
-    // Отзыв мог быть опубликован до отказа — тогда оценка изменилась.
     await this.productCardsService.invalidateCache();
 
     void this.notifications.notifyUser(
@@ -261,8 +243,6 @@ export class ReviewsService {
 
     return updated;
   }
-
-  // --- продавец -------------------------------------------------------------
 
   /** Отзывы о магазине продавца — ровно те, что видит покупатель. */
   async listForOwner(userId: number, query: FindReviewsQueryDto) {
@@ -278,8 +258,6 @@ export class ReviewsService {
     const shop = await this.ownShopOrThrow(userId);
     return this.repository.summary({ shop_id: shop.id });
   }
-
-  // --- внутреннее -----------------------------------------------------------
 
   /**
    * Куда относится отзыв и вправе ли человек его оставлять.
@@ -340,8 +318,6 @@ export class ReviewsService {
 
   private async getOwnOrThrow(userId: number, id: number) {
     const review = await this.repository.findById(id);
-    // Один и тот же ответ на «нет отзыва» и «отзыв чужой»: иначе перебором id
-    // можно узнать, какие отзывы вообще существуют.
     if (!review || review.authorId !== userId) {
       throw new NotFoundException('Отзыв не найден');
     }

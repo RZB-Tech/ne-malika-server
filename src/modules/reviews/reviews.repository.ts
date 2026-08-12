@@ -113,8 +113,6 @@ export class ReviewsRepository {
 
     return {
       count: total,
-      // Два знака — как и в сохранённой оценке: цифра в шапке и цифра над
-      // гистограммой обязаны совпадать до последнего знака.
       average: total > 0 ? Math.round((sum / total) * 100) / 100 : 0,
       breakdown,
     };
@@ -293,9 +291,6 @@ function target(query: FindReviewsQueryDto): SQL[] {
     return [eq(reviews.productCardId, query.product_id)];
   }
   if (query.shop_id !== undefined) {
-    // Всё, что привязано к магазину, включая отзывы о его товарах: ровно из
-    // этого же набора считается оценка продавца. Разойдись список с оценкой —
-    // на странице висело бы «4,7» над тремя отзывами, дающими совсем другое.
     return [eq(reviews.shopId, query.shop_id)];
   }
   return [];

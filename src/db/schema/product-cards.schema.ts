@@ -53,7 +53,6 @@ export const productCards = pgTable(
     price: numeric('price', { precision: 14, scale: 2 }),
     state: productStateEnum('state').notNull(),
 
-    // Новое поле — произвольные пользовательские характеристики
     characteristics: jsonb('characteristics').$type<ProductCharacteristic[]>(),
 
     embedding: vector('embedding', { dimensions: 1536 }),

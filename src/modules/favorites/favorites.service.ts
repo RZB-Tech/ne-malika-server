@@ -28,9 +28,6 @@ export class FavoritesService {
     for (const item of dto.items) {
       const addedAt = item.added_at ? new Date(item.added_at) : new Date();
       const known = earliest.get(item.product_card_id);
-      // Дубликаты схлопываем по самой ранней дате — она и есть момент, когда
-      // товар впервые положили в избранное. Заодно Postgres не увидит одну и
-      // ту же строку дважды в INSERT ... ON CONFLICT.
       if (!known || known > addedAt) {
         earliest.set(item.product_card_id, addedAt);
       }
@@ -42,7 +39,6 @@ export class FavoritesService {
       .map(([productCardId, addedAt]) => ({ productCardId, addedAt }));
 
     const merged = await this.repository.merge(userId, items);
-    // merged < items.length — часть уже была в избранном с прошлого устройства.
     return { merged, skipped: earliest.size - merged };
   }
 

@@ -24,8 +24,6 @@ export class SubscribePushDto {
   })
   @IsString()
   @MinLength(10)
-  // Потолок щедрый: endpoint у разных браузеров сильно разной длины, а колонка
-  // в базе text — ограничение здесь только от заведомого мусора.
   @MaxLength(2000)
   endpoint: string;
 

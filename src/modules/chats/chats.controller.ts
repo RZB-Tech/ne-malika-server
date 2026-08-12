@@ -65,8 +65,6 @@ export class ChatsController {
     @CurrentUser() user: AuthenticatedUser,
     @Res({ passthrough: true }) response: Response,
   ) {
-    // Nginx по умолчанию копит ответ в буфере и отдаёт его целиком — для
-    // потока это означает, что не придёт ничего до самого конца.
     response.setHeader('X-Accel-Buffering', 'no');
     response.setHeader('Cache-Control', 'no-cache, no-transform');
 
@@ -128,8 +126,6 @@ export class ChatsController {
   }
 
   @Post(':id/messages')
-  // Лимит выше, чем у создания переписки: живой разговор — это несколько
-  // коротких реплик подряд, и упереться в него человек не должен.
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
   @ApiOperation({ summary: 'Отправить сообщение' })
   @ApiOkResponse({ type: ChatMessageDto })

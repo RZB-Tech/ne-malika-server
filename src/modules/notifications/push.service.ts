@@ -130,7 +130,6 @@ export class PushService implements OnModuleInit {
           return;
         }
         failed += 1;
-        // 404/410 — подписка отозвана браузером и больше не оживёт.
         const status = (result.reason as { statusCode?: number })?.statusCode;
         if (status === 404 || status === 410) dead.push(batch[index].id);
       });

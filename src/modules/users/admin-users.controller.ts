@@ -45,8 +45,6 @@ export class AdminUsersController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: SetRoleDto,
   ) {
-    // Иначе последний администратор может случайно разжаловать сам себя
-    // и запереть панель для всех.
     this.assertNotSelf(admin, id, 'Нельзя менять роль самому себе');
     return this.usersService.setRole(id, dto.role);
   }

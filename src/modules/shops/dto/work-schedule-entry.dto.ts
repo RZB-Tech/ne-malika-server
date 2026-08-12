@@ -2,7 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsBoolean, IsIn, IsString, Matches } from 'class-validator';
 
 const WEEK_DAYS = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'] as const;
-const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/; // "09:00", "18:30"
+const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 export class WorkScheduleEntryDto {
   @ApiProperty({ enum: WEEK_DAYS, example: 'Mo' })

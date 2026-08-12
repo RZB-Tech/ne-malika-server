@@ -93,9 +93,6 @@ export class ChatsService {
     const unread = side === 'buyer' ? chat.buyerUnread : chat.sellerUnread;
     await this.repository.markRead(chat.id, side);
 
-    // Собеседнику — «вас прочитали», чтобы галочки у него позеленели сразу, а
-    // не через круг опроса. Шлём только когда было что читать: иначе каждое
-    // обновление ленты дёргало бы вторую сторону впустую.
     if (unread > 0) {
       this.events.emit(side === 'buyer' ? chat.ownerId : chat.buyerId, {
         chatId: chat.id,
@@ -166,9 +163,6 @@ export class ChatsService {
 
     const recipient = side === 'buyer' ? chat.ownerId : chat.buyerId;
 
-    // Открытой вкладке — сразу; уведомление в телефон — если её нет или человек
-    // просто не смотрит. Одно другого не отменяет: канал живой, но недолгий,
-    // а уведомление догонит и через час.
     this.events.emit(recipient, { chatId: chat.id, kind: 'message' });
     void this.notify(chat, side, text);
 
@@ -215,7 +209,6 @@ export class ChatsService {
     const card = await this.productCards.findPublicById(dto.productCardId);
     if (!card) throw new NotFoundException('Товар не найден или недоступен');
 
-    // Название сохраняем сразу: карточку могут снять, а переписка останется.
     return {
       shopId: card.shopId,
       productCardId: card.id,
@@ -229,8 +222,6 @@ export class ChatsService {
   ) {
     const shops = await this.shops.listOwn(user.id);
     const shop = shops[0];
-    // Магазина нет — и переписок магазина тоже. Пустая страница честнее
-    // отказа: раздел «Сообщения» открывается и до создания магазина.
     if (!shop) {
       return {
         data: [],

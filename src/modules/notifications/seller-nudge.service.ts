@@ -79,9 +79,6 @@ export class SellerNudgeService {
       return;
     }
 
-    // Одним вызовом, а не по одному продавцу: пауза между сообщениями живёт
-    // внутри deliver и на пачке из одного адресата не срабатывает — цикл
-    // снаружи слал бы всё подряд и упёрся в лимит Telegram.
     const textById = new Map(
       sellers.map((seller) => [seller.id, this.buildText(seller, now)]),
     );
@@ -90,9 +87,6 @@ export class SellerNudgeService {
       (recipient) => textById.get(recipient.id) ?? '',
     );
 
-    // Отмечаем только доставленные: если бот заблокирован, отметка сдвинула бы
-    // окно на две недели и человек не получил бы напоминание даже после того,
-    // как разблокирует бота.
     await this.repository.markNudged(result.deliveredIds);
     this.logger.log(
       `Напоминания продавцам: доставлено ${result.delivered} из ${sellers.length}`,
@@ -109,9 +103,6 @@ export class SellerNudgeService {
   ): string {
     const shop = escapeHtml(seller.shopName);
 
-    // В сид входит номер окна напоминаний: без него у пустого магазина сид
-    // зависел только от длины названия, то есть был константой, и два других
-    // варианта текста не показывались никогда.
     const window = Math.floor(now / (NUDGE_COOLDOWN_DAYS * DAY_MS));
 
     if (seller.productCount === 0) {

@@ -20,8 +20,6 @@ export class GrantCreditsDto {
   })
   @Type(() => Number)
   @IsNumber()
-  // Не меньше доллара: копеечные выдачи после деления на множитель дают ноль
-  // кредитов, и админ решит, что кнопка не работает.
   @Min(1)
   @Max(10000)
   amountUsd: number;
