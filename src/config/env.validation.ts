@@ -63,6 +63,11 @@ class EnvironmentVariables {
   @IsString()
   OPENROUTER_IMAGE_MODEL?: string;
 
+  /** ИИ-сравнение товаров: бесплатное для покупателей, поэтому самое дешёвое. */
+  @IsOptional()
+  @IsString()
+  OPENROUTER_COMPARE_MODEL?: string;
+
   @IsOptional()
   @IsString()
   OPENROUTER_BASE_URL?: string;

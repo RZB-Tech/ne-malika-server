@@ -28,6 +28,13 @@ export default () => ({
     model: process.env.OPENROUTER_MODEL ?? 'openai/gpt-4.1-mini',
     /** Промпт по фотографии — работа простая, берём модель подешевле. */
     visionModel: process.env.OPENROUTER_VISION_MODEL ?? 'openai/gpt-4o-mini',
+    /**
+     * ИИ-сравнение товаров. Оно бесплатно для покупателей, а значит платим за
+     * него мы — поэтому здесь самая дешёвая модель из тех, что держат json_object
+     * и понимают русский. Работа несложная: характеристики уже собраны, модель
+     * их раскладывает по составляющим и сравнивает.
+     */
+    compareModel: process.env.OPENROUTER_COMPARE_MODEL ?? 'openai/gpt-4.1-nano',
     /** Рисование. Идёт не в чат, а в отдельный Images API OpenRouter. */
     imageModel: process.env.OPENROUTER_IMAGE_MODEL ?? 'openai/gpt-image-2',
   },

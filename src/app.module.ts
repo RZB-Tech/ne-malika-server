@@ -15,6 +15,7 @@ import { BotModule } from './modules/bot/bot.module';
 import { ShopsModule } from './modules/shops/shops.module';
 import { CategoriesModule } from './modules/categories/categories.module';
 import { ProductCardsModule } from './modules/product-cards/product-cards.module';
+import { AiCompareModule } from './modules/ai-compare/ai-compare.module';
 import { ProductViewsModule } from './modules/product-views/product-views.module';
 import { FavoritesModule } from './modules/favorites/favorites.module';
 import { FilesModule } from './modules/files/files.module';
@@ -31,8 +32,6 @@ import { AppService } from './app.service';
   imports: [
     ConfigModule.forRoot({ isGlobal: true, load: [configuration], validate }),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 300 }]),
-    // Планировщик нужен напоминаниям продавцам — больше по расписанию ничего
-    // не работает, поэтому регистрируется один раз здесь.
     ScheduleModule.forRoot(),
     DbModule,
     RedisModule,
@@ -42,6 +41,7 @@ import { AppService } from './app.service';
     ShopsModule,
     CategoriesModule,
     ProductCardsModule,
+    AiCompareModule,
     ProductViewsModule,
     FavoritesModule,
     FilesModule,
@@ -55,7 +55,6 @@ import { AppService } from './app.service';
   controllers: [AppController],
   providers: [
     AppService,
-    // Порядок важен: сначала лимит запросов, потом аутентификация, потом роли.
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },

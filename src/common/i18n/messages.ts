@@ -134,6 +134,24 @@ const TRANSLATIONS: Record<string, Record<Exclude<ApiLocale, 'ru'>, string>> = {
     'uz-Latn': 'Rasm generatsiyasi ulanmagan. Administratorga murojaat qiling.',
     'uz-Cyrl': 'Расм генерацияси уланмаган. Администраторга мурожаат қилинг.',
   },
+  'ИИ-сравнение сейчас недоступно': {
+    'uz-Latn': 'Sun’iy intellekt bilan taqqoslash hozir ishlamayapti',
+    'uz-Cyrl': 'Сунъий интеллект билан таққослаш ҳозир ишламаяпти',
+  },
+  'Нужно хотя бы два доступных товара: часть выбранного уже не продаётся': {
+    'uz-Latn':
+      'Kamida ikkita mavjud mahsulot kerak: tanlanganlarning bir qismi endi sotuvda yo‘q',
+    'uz-Cyrl':
+      'Камида иккита мавжуд маҳсулот керак: танланганларнинг бир қисми энди сотувда йўқ',
+  },
+  'Модель не ответила — попробуйте позже': {
+    'uz-Latn': 'Model javob bermadi — keyinroq urinib ko‘ring',
+    'uz-Cyrl': 'Модел жавоб бермади — кейинроқ уриниб кўринг',
+  },
+  'Модель ответила невнятно — попробуйте ещё раз': {
+    'uz-Latn': 'Model tushunarsiz javob qaytardi — yana urinib ko‘ring',
+    'uz-Cyrl': 'Модел тушунарсиз жавоб қайтарди — яна уриниб кўринг',
+  },
   'start должен быть в формате HH:mm': {
     'uz-Latn': 'start HH:mm formatida bo‘lishi kerak',
     'uz-Cyrl': 'start HH:mm форматида бўлиши керак',
