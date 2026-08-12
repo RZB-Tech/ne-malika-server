@@ -153,6 +153,48 @@ export class PushService implements OnModuleInit {
     return { delivered, failed };
   }
 
+  /**
+   * Уведомление одному человеку во все его браузеры — новое сообщение в
+   * переписке, решение модератора. В отличие от рассылки текст приходит уже
+   * готовым, без разметки Telegram, и адрес ведёт туда, где на него ответят.
+   *
+   * Отозванные подписки вычищаем на ходу: браузер удаляет их при переустановке
+   * или чистке данных, и без этого мёртвые записи копились бы навсегда.
+   */
+  async sendToUser(userId: number, payload: PushPayload): Promise<number> {
+    if (!this.enabled) return 0;
+
+    const targets = await this.repository.byUser(userId);
+    if (targets.length === 0) return 0;
+
+    const results = await Promise.allSettled(
+      targets.map((target) => this.sendOne(target, payload)),
+    );
+
+    const dead: number[] = [];
+    let delivered = 0;
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        delivered += 1;
+        return;
+      }
+      const status = (result.reason as { statusCode?: number })?.statusCode;
+      if (status === 404 || status === 410) dead.push(targets[index].id);
+    });
+
+    if (dead.length > 0) {
+      await this.repository
+        .removeMany(dead)
+        .catch((err: unknown) =>
+          this.logger.warn(
+            `Не удалось удалить отозванные подписки: ${err instanceof Error ? err.message : String(err)}`,
+          ),
+        );
+    }
+
+    return delivered;
+  }
+
   private sendOne(target: PushTarget, payload: PushPayload): Promise<unknown> {
     return webpush.sendNotification(
       {

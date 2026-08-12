@@ -88,6 +88,27 @@ export class PushRepository {
       .where(byRole ? and(base, byRole) : base);
   }
 
+  /**
+   * Браузеры одного человека. В отличие от рассылки, здесь не смотрим на
+   * `telegram_notifications_enabled`: команда /stop относится к боту, а
+   * уведомления в браузере человек включал отдельным нажатием и отключает их
+   * там же, в настройках сайта.
+   */
+  byUser(userId: number): Promise<PushTarget[]> {
+    return this.db
+      .select({
+        id: pushSubscriptions.id,
+        endpoint: pushSubscriptions.endpoint,
+        p256dh: pushSubscriptions.p256dh,
+        auth: pushSubscriptions.auth,
+      })
+      .from(pushSubscriptions)
+      .innerJoin(users, eq(users.id, pushSubscriptions.userId))
+      .where(
+        and(eq(pushSubscriptions.userId, userId), isNull(users.blockedAt)),
+      );
+  }
+
   /** Сколько браузеров получат рассылку — показывается рядом с числом чатов. */
   countAudience(audience: BroadcastAudience): Promise<number> {
     const byRole =

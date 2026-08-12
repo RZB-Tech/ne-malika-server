@@ -23,10 +23,17 @@ function toVerdict(value: unknown): AiVerdict | null {
   return AI_VERDICTS.includes(value as AiVerdict) ? (value as AiVerdict) : null;
 }
 
+const VERDICT_WEIGHT: Record<AiVerdict, number> = {
+  pass: 0,
+  warn: 1,
+  fail: 2,
+};
+
 /**
- * Разбор ответа модели. Модель отвечает свободным JSON, поэтому доверять форме
- * нельзя: что не распозналось — отбрасываем, вердикт по умолчанию 'warn'
- * (мягче — значит товар не скрывается из-за нашей же ошибки разбора).
+ * Разбор ответа модели. Неполный или повреждённый ответ нельзя считать
+ * успешной модерацией: исключение отправит карточку на ручную проверку.
+ * Итоговый вердикт дополнительно поднимается до худшего из аспектов — модель
+ * не сможет вернуть общий pass при fail в проверке фотографии или текста.
  */
 export function parseAiCheckResult(
   raw: string | null | undefined,
@@ -35,27 +42,37 @@ export function parseAiCheckResult(
   try {
     parsed = JSON.parse(raw ?? '{}') as Record<string, unknown>;
   } catch {
-    return {
-      verdict: 'warn',
-      summary: 'Не удалось разобрать ответ модели',
-      checks: {},
-    };
+    throw new Error('Не удалось разобрать JSON-ответ модели');
   }
 
   const checks: AiCheckResult['checks'] = {};
-  const rawChecks = (parsed.checks ?? {}) as Record<string, unknown>;
+  if (!parsed.checks || typeof parsed.checks !== 'object') {
+    throw new Error('Модель не вернула обязательный объект checks');
+  }
+  const rawChecks = parsed.checks as Record<string, unknown>;
   for (const aspect of AI_ASPECTS) {
     const detail = rawChecks[aspect] as
       { verdict?: unknown; notes?: unknown } | undefined;
     const verdict = toVerdict(detail?.verdict);
-    if (verdict) {
-      const notes = typeof detail?.notes === 'string' ? detail.notes : '';
-      checks[aspect] = { verdict, notes };
+    if (!verdict) {
+      throw new Error(`Модель не вернула корректный verdict для ${aspect}`);
     }
+    const notes = typeof detail?.notes === 'string' ? detail.notes : '';
+    checks[aspect] = { verdict, notes };
   }
 
+  const declaredVerdict = toVerdict(parsed.verdict);
+  if (!declaredVerdict) throw new Error('Модель не вернула итоговый verdict');
+  const verdict = Object.values(checks).reduce<AiVerdict>(
+    (worst, detail) =>
+      detail && VERDICT_WEIGHT[detail.verdict] > VERDICT_WEIGHT[worst]
+        ? detail.verdict
+        : worst,
+    declaredVerdict,
+  );
+
   return {
-    verdict: toVerdict(parsed.verdict) ?? 'warn',
+    verdict,
     summary: typeof parsed.summary === 'string' ? parsed.summary : '',
     checks,
   };

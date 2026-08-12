@@ -94,6 +94,7 @@ export class ProductCardsService {
     const updated = await this.productCardsRepository.update(id, {
       ...dto,
       price: priceColumn(dto.price),
+      status: 'pending',
     });
 
     await this.invalidateCache();
@@ -179,6 +180,7 @@ export class ProductCardsService {
     const updated = await this.productCardsRepository.update(id, {
       ...dto,
       price: priceColumn(dto.price),
+      status: 'pending',
     });
     await this.invalidateCache();
     this.aiChecksService.runInBackground(updated);

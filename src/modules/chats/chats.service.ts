@@ -4,9 +4,11 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ChatsRepository, type ChatWithOwner } from './chats.repository';
+import { ChatEventsService } from './chat-events.service';
 import { ProductCardsRepository } from '../product-cards/product-cards.repository';
 import { ShopsService } from '../shops/shops.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { RedisService } from '../redis/redis.service';
 import { escapeHtml, excerpt } from '../bot/telegram-html';
 import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
 import type { AuthenticatedUser } from '../../common/types/auth.types';
@@ -23,6 +25,17 @@ import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 const NOTIFY_EXCERPT = 200;
 
 /**
+ * Пауза между уведомлениями об одной переписке.
+ *
+ * Без неё живой диалог из десяти реплик — это десять звонков телефона подряд.
+ * С ней приходит первое сообщение очереди, а остальные человек видит, когда
+ * откроет чат. Две минуты — примерно столько длится пауза, после которой
+ * разговор считают возобновившимся.
+ */
+const NOTIFY_COOLDOWN_SEC = 120;
+const NOTIFY_PREFIX = 'chatnotify:';
+
+/**
  * Внутренняя переписка покупателя с магазином.
  *
  * Зачем она при живом телеграме: разговор о товаре остаётся на площадке. Его
@@ -35,9 +48,11 @@ const NOTIFY_EXCERPT = 200;
 export class ChatsService {
   constructor(
     private readonly repository: ChatsRepository,
+    private readonly events: ChatEventsService,
     private readonly productCards: ProductCardsRepository,
     private readonly shops: ShopsService,
     private readonly notifications: NotificationsService,
+    private readonly redis: RedisService,
   ) {}
 
   /** Список переписок с той стороны, с которой смотрят. */
@@ -75,7 +90,18 @@ export class ChatsService {
     const { chat, side } = await this.access(user, chatId);
 
     const page = await this.repository.listMessages(chat.id, query);
+    const unread = side === 'buyer' ? chat.buyerUnread : chat.sellerUnread;
     await this.repository.markRead(chat.id, side);
+
+    // Собеседнику — «вас прочитали», чтобы галочки у него позеленели сразу, а
+    // не через круг опроса. Шлём только когда было что читать: иначе каждое
+    // обновление ленты дёргало бы вторую сторону впустую.
+    if (unread > 0) {
+      this.events.emit(side === 'buyer' ? chat.ownerId : chat.buyerId, {
+        chatId: chat.id,
+        kind: 'read',
+      });
+    }
 
     return buildPaginatedResult(
       page.data.map((row) => ({
@@ -131,11 +157,6 @@ export class ChatsService {
     const text = dto.text.trim();
     if (!text) throw new BadRequestException('Сообщение пустое');
 
-    // Собеседник узнаёт о сообщении, только если ещё не разобрал прежние: иначе
-    // диалог из десяти реплик превращается в десять уведомлений подряд.
-    const wasQuiet =
-      side === 'buyer' ? chat.sellerUnread === 0 : chat.buyerUnread === 0;
-
     const message = await this.repository.addMessage({
       chatId: chat.id,
       senderId: user.id,
@@ -143,9 +164,13 @@ export class ChatsService {
       text,
     });
 
-    if (wasQuiet) {
-      void this.notify(chat, side, text);
-    }
+    const recipient = side === 'buyer' ? chat.ownerId : chat.buyerId;
+
+    // Открытой вкладке — сразу; уведомление в телефон — если её нет или человек
+    // просто не смотрит. Одно другого не отменяет: канал живой, но недолгий,
+    // а уведомление догонит и через час.
+    this.events.emit(recipient, { chatId: chat.id, kind: 'message' });
+    void this.notify(chat, side, text);
 
     return {
       id: message.id,
@@ -218,8 +243,10 @@ export class ChatsService {
   }
 
   /**
-   * Уведомление второй стороне. Побочный эффект: падение телеграма не должно
-   * ронять отправку сообщения, поэтому вызывается без ожидания и с ловушкой.
+   * Уведомление второй стороне — в Telegram и в браузер.
+   *
+   * Побочный эффект: падение любого из каналов не должно ронять отправку
+   * сообщения, поэтому вызывается без ожидания и с ловушкой.
    */
   private async notify(
     chat: ChatWithOwner,
@@ -227,19 +254,45 @@ export class ChatsService {
     text: string,
   ): Promise<void> {
     const recipient = side === 'buyer' ? chat.ownerId : chat.buyerId;
+    if (!(await this.shouldNotify(chat.id, recipient))) return;
+
     const from =
       side === 'buyer'
         ? 'покупателя'
         : `магазина «${escapeHtml(chat.shopName)}»`;
+    const excerptText = escapeHtml(excerpt(text, NOTIFY_EXCERPT));
 
-    await this.notifications
-      .notifyUser(
+    await Promise.allSettled([
+      this.notifications.notifyUser(
         recipient,
-        `💬 <b>Новое сообщение</b> от ${from}\n\n` +
-          `${escapeHtml(excerpt(text, NOTIFY_EXCERPT))}\n\n` +
+        `💬 <b>Новое сообщение</b> от ${from}\n\n${excerptText}\n\n` +
           'Ответить: раздел «Сообщения» на сайте.',
-      )
-      .catch(() => undefined);
+      ),
+      this.notifications.pushToUser(recipient, {
+        title: side === 'buyer' ? 'Новое сообщение' : chat.shopName,
+        body: excerpt(text, NOTIFY_EXCERPT),
+        url: side === 'buyer' ? '/seller/messages' : '/messages',
+      }),
+    ]);
+  }
+
+  /**
+   * Не частим. Отметку ставим до отправки: два сообщения подряд не должны
+   * разойтись в две одинаковые тревоги, пока первое ещё уходит.
+   *
+   * Без Redis ограничитель молча выключается — уведомление важнее тишины.
+   */
+  private async shouldNotify(
+    chatId: number,
+    recipientId: number,
+  ): Promise<boolean> {
+    if (!this.redis.enabled) return true;
+
+    const key = `${NOTIFY_PREFIX}${chatId}:${recipientId}`;
+    if (await this.redis.get(key)) return false;
+
+    await this.redis.set(key, 1, NOTIFY_COOLDOWN_SEC);
+    return true;
   }
 }
 

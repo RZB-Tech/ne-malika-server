@@ -6,7 +6,10 @@ import {
   ParseIntPipe,
   Post,
   Query,
+  Res,
+  Sse,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
@@ -20,6 +23,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../common/types/auth.types';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { ChatsService } from './chats.service';
+import { ChatEventsService } from './chat-events.service';
 import {
   ChatMessageDto,
   ChatStartedDto,
@@ -36,7 +40,38 @@ import {
 @AnyRole()
 @Controller('chats')
 export class ChatsController {
-  constructor(private readonly chatsService: ChatsService) {}
+  constructor(
+    private readonly chatsService: ChatsService,
+    private readonly chatEvents: ChatEventsService,
+  ) {}
+
+  /**
+   * Живой канал: сервер сам говорит вкладке, что в переписке что-то
+   * изменилось, и та обновляет ленту. Без него сообщение появлялось бы у
+   * собеседника только с очередным опросом — то есть с задержкой в секунды,
+   * которую в переписке видно сразу.
+   *
+   * Односторонний SSE, а не веб-сокет: отвечать по этому каналу нечего,
+   * отправка сообщений идёт обычным POST, а SSE переживает прокси и
+   * переподключается сам.
+   */
+  @Sse('stream')
+  @ApiOperation({
+    summary: 'Поток событий переписки (SSE)',
+    description:
+      'Отдаёт события {chatId, kind} по мере их появления и «ping» раз в 25 секунд.',
+  })
+  stream(
+    @CurrentUser() user: AuthenticatedUser,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    // Nginx по умолчанию копит ответ в буфере и отдаёт его целиком — для
+    // потока это означает, что не придёт ничего до самого конца.
+    response.setHeader('X-Accel-Buffering', 'no');
+    response.setHeader('Cache-Control', 'no-cache, no-transform');
+
+    return this.chatEvents.stream(user.id);
+  }
 
   @Get()
   @ApiOperation({

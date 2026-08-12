@@ -43,10 +43,20 @@ const SYSTEM_PROMPT = `Ты модератор карточек товаров �
            "photoMatch":{"verdict":"...","notes":"..."}}}
 
 Что проверяешь:
-- description — понятность и полнота описания, отсутствие спама и чужих контактов;
+- description — осмысленность названия и описания, понятность, отсутствие спама,
+  тестовых заглушек, случайного набора символов и чужих контактов;
 - dataConsistency — согласованность названия, состояния и характеристик между собой;
-- photos — пригодность фотографий (есть ли они, не мусор ли);
-- photoMatch — соответствуют ли фотографии описанию (если фото не переданы — verdict "warn", notes "фото недоступны для проверки").
+- photos — на фото должен быть реально продаваемый товар. Скриншоты кода, терминала,
+  переписки или сайта, мемы, заставки, реклама, чёрные/пустые изображения и иной
+  визуальный мусор получают fail;
+- photoMatch — фотография должна соответствовать названию и описанию. Если на фото
+  нельзя уверенно увидеть заявленный товар либо изображён другой товар — fail.
+
+Случайные названия вроде "sdf", "sdfsdf", "asdf", "test"/"тест", бессмысленный
+текст и карточки, по которым нельзя понять, что продаётся, всегда получают fail.
+Товар не из компьютерной техники и периферии также получает fail.
+warn допустим только для небольшого недостатка уже понятной карточки, когда товар
+однозначно виден на фотографии и соответствует названию.
 
 Цену не оценивай и не комментируй. Рыночных цен ты не знаешь: они зависят от
 состояния, комплектации, курса и площадки, а торг здесь дело продавца и покупателя.
@@ -55,9 +65,9 @@ const SYSTEM_PROMPT = `Ты модератор карточек товаров �
 «на фото один товар, по этой цене продаётся другой»), и это уже нарушение по сути,
 а не по сумме.
 
-verdict всей карточки: fail — только при явном нарушении (запрещённый товар, обман,
-мошенничество, подмена товара); warn — есть замечания, но публиковать можно;
-pass — замечаний нет. Итоговый verdict не мягче худшего из checks, кроме photoMatch без фото.`;
+verdict всей карточки: fail — при любом из перечисленных нарушений, мусорной или
+непроверяемой карточке; warn — есть небольшие замечания, но публиковать можно;
+pass — замечаний нет. Итоговый verdict не мягче худшего из checks.`;
 
 @Injectable()
 export class AiChecksService implements OnModuleInit {
@@ -139,16 +149,31 @@ export class AiChecksService implements OnModuleInit {
   }
 
   private async run(card: ProductCard): Promise<void> {
-    if (!this.ai) {
-      await this.publish(card.id, 'проверка отключена: нет ключа OpenRouter');
-      return;
-    }
-    if (!(await this.settings.isAiChecksEnabled())) {
-      await this.publish(card.id, 'проверка выключена в настройках');
+    const model = this.config.get<string>('openrouter.model') ?? 'unavailable';
+    const localViolation = obviousContentViolation(card);
+    if (localViolation) {
+      await this.reject(card, model, localViolation);
       return;
     }
 
-    const model = this.config.get<string>('openrouter.model')!;
+    if (!this.ai) {
+      await this.deferToManualReview(
+        card,
+        model,
+        'Проверка не выполнена — не настроен ключ OpenRouter',
+        'OPENROUTER_API_KEY is not configured',
+      );
+      return;
+    }
+    if (!(await this.settings.isAiChecksEnabled())) {
+      await this.deferToManualReview(
+        card,
+        model,
+        'Автоматическая проверка выключена — требуется ручная модерация',
+        'AI checks are disabled in settings',
+      );
+      return;
+    }
 
     let result: AiCheckResult;
     let tokensUsed: number | null = null;
@@ -159,17 +184,11 @@ export class AiChecksService implements OnModuleInit {
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger.error(`Модель не ответила по товару ${card.id}: ${message}`);
-      await this.repository.create({
-        productCardId: card.id,
-        verdict: 'warn',
-        checks: {},
-        summary: 'Проверка не выполнена — сервис проверки недоступен',
+      await this.deferToManualReview(
+        card,
         model,
-        error: message,
-      });
-      await this.publish(card.id, 'сервис проверки недоступен');
-      void this.notifications.notifyAdmins(
-        aiFailureText(card, 'проверка не выполнена', message),
+        'Проверка не выполнена — сервис проверки недоступен',
+        message,
       );
       return;
     }
@@ -207,17 +226,7 @@ export class AiChecksService implements OnModuleInit {
     model: string,
     card: ProductCard,
   ): Promise<OpenAI.Chat.ChatCompletion> {
-    try {
-      return await this.request(model, card, true);
-    } catch (err) {
-      if (!isImageFetchError(err) || photoKeys(card).length === 0) throw err;
-
-      const message = err instanceof Error ? err.message : String(err);
-      this.logger.warn(
-        `Модель не смогла скачать фото товара ${card.id} (${message}) — проверяем текст`,
-      );
-      return this.request(model, card, false);
-    }
+    return this.request(model, card, true);
   }
 
   private async request(
@@ -251,6 +260,48 @@ export class AiChecksService implements OnModuleInit {
     this.logger.log(`Товар ${cardId} опубликован — ${reason}`);
   }
 
+  private async deferToManualReview(
+    card: ProductCard,
+    model: string,
+    summary: string,
+    error: string,
+  ): Promise<void> {
+    await this.repository.create({
+      productCardId: card.id,
+      verdict: 'warn',
+      checks: {},
+      summary,
+      model,
+      error,
+    });
+    this.logger.warn(`Товар ${card.id} не опубликован: ${summary}`);
+    void this.notifications.notifyAdmins(
+      aiFailureText(card, 'требуется ручная проверка', `${summary}: ${error}`),
+    );
+  }
+
+  private async reject(
+    card: ProductCard,
+    model: string,
+    reason: string,
+  ): Promise<void> {
+    await this.repository.create({
+      productCardId: card.id,
+      verdict: 'fail',
+      checks: {
+        description: { verdict: 'fail', notes: reason },
+      },
+      summary: reason,
+      model,
+    });
+    const hidden = await this.repository.hideProduct(card.id);
+    if (hidden) await this.redis.delByPrefix(PRODUCT_CACHE_PREFIX);
+    this.logger.warn(`Товар ${card.id} отклонён до ИИ-проверки: ${reason}`);
+    void this.notifications.notifyAdmins(
+      aiFailureText(card, 'карточка забракована', reason),
+    );
+  }
+
   /**
    * Фото отдаём байтами в data-URL, а не ссылкой на S3. По ссылке за картинкой
    * ходила бы сама модель, и любая заминка на нашей стороне — опечатка в
@@ -279,6 +330,9 @@ export class AiChecksService implements OnModuleInit {
           this.logger.warn(`Фото ${key} не прочитано из S3: ${message}`);
         }
       }
+    }
+    if (withPhotos && keys.length > 0 && attached.length === 0) {
+      throw new Error('Не удалось загрузить фотографию товара для проверки');
     }
 
     const text = [
@@ -321,18 +375,22 @@ function photoNote(total: number, attached: number): string {
   );
 }
 
-/**
- * Модель скачивает картинки сама, и её неудача приходит обычным 400 — отличаем
- * такую ошибку от настоящей недоступности сервиса, чтобы повторить без фото.
- * Формулировки разные: одни пишут «Timeout while downloading»,
- * другие отдают ошибку HTTP-клиента вида `Get "****": dial tcp ...`.
- */
-const IMAGE_FETCH_ERROR =
-  /downloading|invalid[ _]image|image_parse|unsupported_image|dial tcp|no such host|context deadline|connection refused|Get "/i;
-
-function isImageFetchError(err: unknown): boolean {
-  const message = err instanceof Error ? err.message : String(err);
-  return IMAGE_FETCH_ERROR.test(message);
+export function obviousContentViolation(card: ProductCard): string | null {
+  const name = card.name.trim().toLowerCase();
+  const compact = name.replace(/[\s._-]+/g, '');
+  if (!/[\p{L}\p{N}]/u.test(name))
+    return 'Название не содержит названия товара';
+  if (
+    /^(?:test|тест|demo|пример|asdf|sdf|qwerty|zxcv|йцук|фыва|ячсм)\d*$/u.test(
+      compact,
+    )
+  ) {
+    return 'Название похоже на тестовую заглушку или случайный набор символов';
+  }
+  if (/^(?:sdf|asd|qwe|zxc|йцу|фыв|ячс){2,}$/u.test(compact)) {
+    return 'Название состоит из повторяющегося случайного набора символов';
+  }
+  return null;
 }
 
 /**

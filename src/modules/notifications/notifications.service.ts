@@ -87,6 +87,25 @@ export class NotificationsService {
   }
 
   /**
+   * Уведомление в браузер одному человеку — параллельно телеграму, а не вместо
+   * него: у продавца может не быть открытого чата с ботом, зато вкладка сайта
+   * открыта, и наоборот. Дубль на двух устройствах — меньшее зло, чем
+   * пропущенный вопрос покупателя.
+   */
+  async pushToUser(
+    userId: number,
+    payload: { title: string; body: string; url?: string },
+  ): Promise<void> {
+    try {
+      await this.push.sendToUser(userId, payload);
+    } catch (err) {
+      this.logger.error(
+        `Push пользователю ${userId} не ушёл: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /**
    * Рассылка из админки. Запись в журнале создаётся до отправки, а счётчики
    * дописываются после: если процесс упадёт на середине, в истории останется
    * след того, что рассылка вообще запускалась.
