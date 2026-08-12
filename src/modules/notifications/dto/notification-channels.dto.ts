@@ -14,7 +14,9 @@ export class PushChannelDto {
   })
   publicKey: string | null;
 
-  @ApiProperty({ description: 'Подписан ли этот человек хотя бы с одного устройства' })
+  @ApiProperty({
+    description: 'Подписан ли этот человек хотя бы с одного устройства',
+  })
   subscribed: boolean;
 }
 
@@ -23,11 +25,14 @@ export class TelegramChannelDto {
   available: boolean;
 
   @ApiProperty({
-    description: 'Открыт ли чат с ботом. Без него писать первым Telegram не даёт',
+    description:
+      'Открыт ли чат с ботом. Без него писать первым Telegram не даёт',
   })
   linked: boolean;
 
-  @ApiProperty({ description: 'Согласен ли человек получать уведомления в Telegram' })
+  @ApiProperty({
+    description: 'Согласен ли человек получать уведомления в Telegram',
+  })
   enabled: boolean;
 
   @ApiProperty({
