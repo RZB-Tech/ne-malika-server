@@ -296,6 +296,7 @@ function toChatDto(
     shopPhoto: string | null;
     buyerId: number;
     buyerName: string;
+    buyerPhoto: string | null;
     productCardId: number | null;
     productName: string | null;
     productPhotos: string[] | null;
@@ -313,6 +314,7 @@ function toChatDto(
     shopPhoto: row.shopPhoto,
     buyerId: row.buyerId,
     buyerName: row.buyerName,
+    buyerPhoto: row.buyerPhoto,
     productCardId: row.productCardId,
     productName: row.productName,
     productPhoto: row.productPhotos?.[0] ?? null,

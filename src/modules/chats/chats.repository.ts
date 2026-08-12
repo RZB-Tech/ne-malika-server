@@ -27,6 +27,7 @@ const CHAT_FIELDS = {
   shopPhoto: shops.photo,
   buyerId: chats.buyerId,
   buyerName: users.fullname,
+  buyerPhoto: users.telegramPhoto,
   productCardId: chats.productCardId,
   /** Из чата, а не из карточки: у снятого товара названия уже не спросишь. */
   productName: chats.productName,

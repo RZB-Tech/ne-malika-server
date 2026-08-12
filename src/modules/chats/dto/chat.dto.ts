@@ -114,6 +114,9 @@ export class ChatDto {
   @ApiProperty({ example: 'Азиз Рахимов' })
   buyerName: string;
 
+  @ApiProperty({ type: String, nullable: true, format: 'uri' })
+  buyerPhoto: string | null;
+
   @ApiProperty({
     type: Number,
     nullable: true,
