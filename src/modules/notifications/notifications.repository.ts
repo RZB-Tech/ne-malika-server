@@ -148,6 +148,38 @@ export class NotificationsRepository {
       .where(eq(users.id, userId));
   }
 
+  /**
+   * Состояние Telegram-канала одного человека для личного кабинета.
+   *
+   * `linked` и `enabled` разделены намеренно: без чата предлагать переключатель
+   * бессмысленно — включать нечего, нужно сперва открыть бота. С чатом, но
+   * выключенными уведомлениями хватит переключателя на самом сайте.
+   */
+  async telegramState(
+    userId: number,
+  ): Promise<{ linked: boolean; enabled: boolean }> {
+    const row = await this.db
+      .select({
+        chatId: users.telegramChatId,
+        enabled: users.telegramNotificationsEnabled,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1)
+      .then((rows) => rows[0]);
+
+    const linked = row?.chatId != null;
+    return { linked, enabled: linked && row?.enabled === true };
+  }
+
+  /** Переключатель из кабинета — зеркало команд /start и /stop в самом боте. */
+  setTelegramEnabled(userId: number, enabled: boolean): Promise<unknown> {
+    return this.db
+      .update(users)
+      .set({ telegramNotificationsEnabled: enabled, updatedAt: new Date() })
+      .where(eq(users.id, userId));
+  }
+
   createBroadcast(data: {
     authorId: number;
     audience: BroadcastAudience;

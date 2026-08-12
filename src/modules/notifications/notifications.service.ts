@@ -1,5 +1,6 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { TelegramApiService } from '../bot/telegram-api.service';
+import type { NotificationChannelsDto } from './dto/notification-channels.dto';
 import {
   NotificationsRepository,
   type Recipient,
@@ -25,6 +26,13 @@ const MAX_BAD_REQUESTS = 3;
 
 /** Сколько ждать, если Telegram всё же ответил 429 без указания времени. */
 const FALLBACK_RETRY_SEC = 3;
+
+/**
+ * Метка в ссылке на бота. Обработчику /start она не нужна — он привязывает чат
+ * при любом запуске, — но в журнале Telegram по ней видно, что человек пришёл
+ * именно за уведомлениями, а не из поиска.
+ */
+const BOT_START_PAYLOAD = 'notify';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -103,6 +111,58 @@ export class NotificationsService {
         `Push пользователю ${userId} не ушёл: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+  }
+
+  /**
+   * Состояние обоих каналов для кабинета.
+   *
+   * Отдаём одним ответом, потому что решение у человека одно: получать
+   * уведомления или нет. Раздельные запросы заставили бы интерфейс мигать —
+   * сперва «включите в браузере», а через мгновение «у вас уже есть Telegram».
+   */
+  async channels(userId: number): Promise<NotificationChannelsDto> {
+    const [subscribed, telegram, botUsername] = await Promise.all([
+      this.push.hasSubscription(userId),
+      this.repository.telegramState(userId),
+      this.telegram.username(),
+    ]);
+
+    return {
+      push: {
+        available: this.push.isEnabled(),
+        publicKey: this.push.publicKey(),
+        subscribed,
+      },
+      telegram: {
+        available: botUsername !== null,
+        linked: telegram.linked,
+        enabled: telegram.enabled,
+        url: botUsername
+          ? `https://t.me/${botUsername}?start=${BOT_START_PAYLOAD}`
+          : null,
+      },
+    };
+  }
+
+  /**
+   * Переключатель Telegram из кабинета.
+   *
+   * Включить можно только когда чат с ботом уже открыт: пока человек не нажал
+   * /start, Telegram не даёт боту написать первым, и поднятый флаг был бы
+   * обещанием, которое некому исполнить. Выключить — всегда и без условий:
+   * отписка не должна упираться ни во что.
+   */
+  async setTelegram(userId: number, enabled: boolean): Promise<void> {
+    if (enabled) {
+      const { linked } = await this.repository.telegramState(userId);
+      if (!linked) {
+        throw new BadRequestException(
+          'Сначала откройте чат с ботом — он не может написать первым',
+        );
+      }
+    }
+
+    await this.repository.setTelegramEnabled(userId, enabled);
   }
 
   /**

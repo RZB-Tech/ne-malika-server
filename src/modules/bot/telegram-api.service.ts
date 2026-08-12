@@ -13,10 +13,13 @@ export interface TelegramSendResult {
   description?: string;
   /** Сколько секунд просит подождать Telegram при 429. */
   retryAfter?: number;
+  /** Тело ответа Telegram. Нужно вызовам, которые спрашивают, а не отправляют. */
+  payload?: unknown;
 }
 
 interface TelegramApiResponse {
   ok?: boolean;
+  result?: unknown;
   error_code?: number;
   description?: string;
   parameters?: { retry_after?: number };
@@ -26,6 +29,7 @@ interface TelegramApiResponse {
 export class TelegramApiService {
   private readonly logger = new Logger(TelegramApiService.name);
   private readonly apiBase: string;
+  private cachedUsername: string | null = null;
 
   constructor(private readonly configService: ConfigService) {
     const botToken = this.configService.get<string>('telegram.botToken');
@@ -81,6 +85,32 @@ export class TelegramApiService {
     });
   }
 
+  /**
+   * Username бота — из него собирается ссылка t.me/<bot>, по которой человек
+   * включает уведомления, не вводя ничего руками.
+   *
+   * Спрашиваем у Telegram, а не держим в переменной окружения: токен уже есть,
+   * а лишняя настройка — лишний способ разъехаться с реальностью после смены
+   * бота. Удачный ответ кэшируем навсегда: username живёт столько же, сколько
+   * сам бот. Неудачу не кэшируем — иначе разовый сбой сети погасил бы канал до
+   * перезапуска.
+   */
+  async username(): Promise<string | null> {
+    if (this.cachedUsername) return this.cachedUsername;
+
+    const result = await this.call('getMe', {});
+    if (!result.ok) return null;
+
+    const payload = result.payload as { username?: string } | undefined;
+    if (!payload?.username) {
+      this.logger.error('getMe вернул ответ без username');
+      return null;
+    }
+
+    this.cachedUsername = payload.username;
+    return this.cachedUsername;
+  }
+
   private async call(
     method: string,
     body: Record<string, unknown>,
@@ -93,7 +123,7 @@ export class TelegramApiService {
       });
       const data = (await res.json()) as TelegramApiResponse;
 
-      if (data.ok) return { ok: true };
+      if (data.ok) return { ok: true, payload: data.result };
 
       if (data.error_code !== 403) {
         this.logger.error(
