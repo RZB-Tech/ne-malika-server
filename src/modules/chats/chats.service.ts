@@ -8,7 +8,6 @@ import { ChatEventsService } from './chat-events.service';
 import { ProductCardsRepository } from '../product-cards/product-cards.repository';
 import { ShopsService } from '../shops/shops.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { RedisService } from '../redis/redis.service';
 import { escapeHtml, excerpt } from '../bot/telegram-html';
 import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
 import type { AuthenticatedUser } from '../../common/types/auth.types';
@@ -23,17 +22,6 @@ import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 
 /** Сколько текста уходит в уведомление — остальное человек прочитает в чате. */
 const NOTIFY_EXCERPT = 200;
-
-/**
- * Пауза между уведомлениями об одной переписке.
- *
- * Без неё живой диалог из десяти реплик — это десять звонков телефона подряд.
- * С ней приходит первое сообщение очереди, а остальные человек видит, когда
- * откроет чат. Две минуты — примерно столько длится пауза, после которой
- * разговор считают возобновившимся.
- */
-const NOTIFY_COOLDOWN_SEC = 120;
-const NOTIFY_PREFIX = 'chatnotify:';
 
 /**
  * Внутренняя переписка покупателя с магазином.
@@ -52,7 +40,6 @@ export class ChatsService {
     private readonly productCards: ProductCardsRepository,
     private readonly shops: ShopsService,
     private readonly notifications: NotificationsService,
-    private readonly redis: RedisService,
   ) {}
 
   /** Список переписок с той стороны, с которой смотрят. */
@@ -236,6 +223,13 @@ export class ChatsService {
   /**
    * Уведомление второй стороне — в Telegram и в браузер.
    *
+   * Уходит на каждое сообщение. Здесь была пауза в две минуты «чтобы не
+   * частить», и она обернулась худшим из возможных поведений: человек получал
+   * первое сообщение и переставал получать остальные, считая уведомления
+   * сломанными. Пропущенный вопрос покупателя стоит дороже лишнего звонка, а
+   * от стопки уведомлений спасает не молчание, а метка переписки — браузер
+   * держит по одному уведомлению на разговор и обновляет его текст.
+   *
    * Побочный эффект: падение любого из каналов не должно ронять отправку
    * сообщения, поэтому вызывается без ожидания и с ловушкой.
    */
@@ -245,7 +239,6 @@ export class ChatsService {
     text: string,
   ): Promise<void> {
     const recipient = side === 'buyer' ? chat.ownerId : chat.buyerId;
-    if (!(await this.shouldNotify(chat.id, recipient))) return;
 
     const from =
       side === 'buyer'
@@ -263,27 +256,9 @@ export class ChatsService {
         title: side === 'buyer' ? 'Новое сообщение' : chat.shopName,
         body: excerpt(text, NOTIFY_EXCERPT),
         url: side === 'buyer' ? '/seller/messages' : '/messages',
+        tag: `chat-${chat.id}`,
       }),
     ]);
-  }
-
-  /**
-   * Не частим. Отметку ставим до отправки: два сообщения подряд не должны
-   * разойтись в две одинаковые тревоги, пока первое ещё уходит.
-   *
-   * Без Redis ограничитель молча выключается — уведомление важнее тишины.
-   */
-  private async shouldNotify(
-    chatId: number,
-    recipientId: number,
-  ): Promise<boolean> {
-    if (!this.redis.enabled) return true;
-
-    const key = `${NOTIFY_PREFIX}${chatId}:${recipientId}`;
-    if (await this.redis.get(key)) return false;
-
-    await this.redis.set(key, 1, NOTIFY_COOLDOWN_SEC);
-    return true;
   }
 }
 

@@ -102,7 +102,7 @@ export class NotificationsService {
    */
   async pushToUser(
     userId: number,
-    payload: { title: string; body: string; url?: string },
+    payload: { title: string; body: string; url?: string; tag?: string },
   ): Promise<void> {
     try {
       await this.push.sendToUser(userId, payload);
