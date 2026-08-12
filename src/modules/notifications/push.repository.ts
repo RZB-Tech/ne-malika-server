@@ -71,10 +71,9 @@ export class PushRepository {
           ? eq(users.role, 'user')
           : undefined;
 
-    const base = and(
-      isNull(users.blockedAt),
-      eq(users.telegramNotificationsEnabled, true),
-    );
+    // Web Push — самостоятельный канал. Подключён ли у пользователя Telegram,
+    // здесь неважно: браузерную подписку он включил отдельным действием.
+    const base = isNull(users.blockedAt);
 
     return this.db
       .select({
