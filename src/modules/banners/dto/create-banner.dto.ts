@@ -11,11 +11,11 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
-import { BANNER_IMAGE_HEIGHT, BANNER_IMAGE_WIDTH } from '../banners.constants';
+import { BANNER_FORMATS_LABEL } from '../banners.constants';
 
 const PHOTO_DESCRIPTION =
   `Ключ загруженного файла (POST /seller/uploads). ` +
-  `Требуемое разрешение — ${BANNER_IMAGE_WIDTH}×${BANNER_IMAGE_HEIGHT} ` +
+  `Допустимое разрешение — ${BANNER_FORMATS_LABEL} ` +
   `или кратно больше с тем же соотношением сторон.`;
 
 /**
