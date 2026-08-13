@@ -253,6 +253,13 @@
       "when": 1786611000000,
       "tag": "0036_welcome_credits",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1786611100000,
+      "tag": "0037_welcome_credits_topup",
+      "breakpoints": true
     }
   ]
 }
