@@ -54,6 +54,13 @@ export class UsersRepository {
         shopId: shops.id,
         shopName: shops.name,
         shopStatus: shops.status,
+        /**
+         * Кредиты принадлежат магазину, а не человеку: покупателю тратить их
+         * негде. Без магазина здесь NULL — в админке это прочерк, потому что
+         * «магазина нет» и «баланс кончился» разные вещи.
+         */
+        creditsBalance: shops.creditsBalance,
+        creditsReserved: shops.creditsReserved,
         productCount: sql<number>`count(${productCards.id})::int`,
         lastProductAt: sql<string | null>`max(${productCards.updatedAt})`,
       })
