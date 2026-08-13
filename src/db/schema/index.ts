@@ -15,4 +15,5 @@ export * from './generated-images.schema';
 export * from './credit-transactions.schema';
 export * from './ai-usage.schema';
 export * from './push-subscriptions.schema';
+export * from './banners.schema';
 export * from './relations';

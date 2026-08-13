@@ -27,6 +27,7 @@ import { SettingsModule } from './modules/settings/settings.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { CreditsModule } from './modules/credits/credits.module';
 import { AiUsageModule } from './modules/ai-usage/ai-usage.module';
+import { BannersModule } from './modules/banners/banners.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -55,6 +56,7 @@ import { AppService } from './app.service';
     NotificationsModule,
     CreditsModule,
     AiUsageModule,
+    BannersModule,
   ],
   controllers: [AppController],
   providers: [

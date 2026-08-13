@@ -239,6 +239,13 @@
       "when": 1786604558723,
       "tag": "0034_ai_usage",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1786610988553,
+      "tag": "0035_banners",
+      "breakpoints": true
     }
   ]
 }
