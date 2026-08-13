@@ -59,6 +59,15 @@ export class ReportsService {
       await this.reportsRepository.findAll(query);
     return buildPaginatedResult(data, total, page, limit);
   }
+
+  /** Жалоба разобрана — убираем её из очереди. */
+  async adminRemove(id: number) {
+    const report = await this.reportsRepository.findById(id);
+    if (!report) {
+      throw new NotFoundException('Жалоба не найдена');
+    }
+    await this.reportsRepository.delete(id);
+  }
 }
 
 /**

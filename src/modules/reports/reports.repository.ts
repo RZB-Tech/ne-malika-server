@@ -17,6 +17,19 @@ export class ReportsRepository {
       .then((r) => r[0]);
   }
 
+  findById(id: number) {
+    return this.db.query.reports.findFirst({ where: eq(reports.id, id) });
+  }
+
+  /**
+   * Удаление разобранной жалобы. Именно удаление, а не пометка «просмотрено»:
+   * жалоба — это сигнал, а не сущность со своей историей. Решение по ней и так
+   * остаётся видимым — упразднением товара или магазина с причиной.
+   */
+  delete(id: number) {
+    return this.db.delete(reports).where(eq(reports.id, id));
+  }
+
   async findAll(query: FindReportsQueryDto) {
     const { page, limit, offset } = resolvePage(query);
 
