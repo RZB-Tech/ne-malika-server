@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  IsInt,
   IsNumber,
   IsOptional,
   IsString,
@@ -12,8 +13,8 @@ import {
 export class GrantCreditsDto {
   @ApiProperty({
     description:
-      'Сумма, которую заплатил магазин, в долларах. Начислится делённой ' +
-      'на множитель наценки из настроек.',
+      'Сумма, которую заплатил магазин, в долларах. Начисляется ровно она: ' +
+      'наценка из настроек берётся при списании, а не при выдаче.',
     minimum: 1,
     maximum: 10000,
     example: 20,
@@ -62,4 +63,38 @@ export class CreditPreviewDto {
 
   @ApiProperty()
   markup: number;
+}
+
+export class RevokeCreditsDto {
+  @ApiProperty({
+    description:
+      'Сколько кредитов снять. Больше доступного снять нельзя — занятое ' +
+      'выполняющимся сейчас запросом остаётся магазину.',
+    minimum: 1,
+    example: 5000,
+  })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  credits: number;
+
+  @ApiPropertyOptional({
+    maxLength: 200,
+    description: 'Комментарий для истории: за что сняли',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  note?: string;
+}
+
+export class RevokeResultDto {
+  @ApiProperty({ description: 'Остаток после списания' })
+  balance: number;
+
+  @ApiProperty({
+    description:
+      'Сколько кредитов сняли на самом деле: могло быть меньше запрошенного',
+  })
+  taken: number;
 }

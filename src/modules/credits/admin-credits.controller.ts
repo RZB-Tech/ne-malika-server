@@ -26,6 +26,8 @@ import {
   CreditPreviewDto,
   GrantCreditsDto,
   GrantResultDto,
+  RevokeCreditsDto,
+  RevokeResultDto,
   ShopCreditsDto,
 } from './dto/credits.dto';
 
@@ -72,6 +74,20 @@ export class AdminCreditsController {
     @Body() dto: GrantCreditsDto,
   ): Promise<GrantResultDto> {
     return this.credits.grant(shopId, user.id, dto.amountUsd, dto.note);
+  }
+
+  /** Тот же лимит, что и у выдачи: это ровно так же деньги. */
+  @Post('revoke')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Отобрать кредиты у магазина' })
+  @ApiResponse({ status: 200, type: RevokeResultDto })
+  revoke(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('shopId', ParseIntPipe) shopId: number,
+    @Body() dto: RevokeCreditsDto,
+  ): Promise<RevokeResultDto> {
+    return this.credits.revoke(shopId, user.id, dto.credits, dto.note);
   }
 }
 

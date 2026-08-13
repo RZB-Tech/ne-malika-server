@@ -11,6 +11,7 @@ import { OPENROUTER_CLIENT } from '../openrouter/openrouter-client.provider';
 import { FilesService } from '../files/files.service';
 import { ImageGenRepository } from './image-gen.repository';
 import { CreditsService, type CreditHold } from '../credits/credits.service';
+import { AiUsageService } from '../ai-usage/ai-usage.service';
 import {
   estimateImagesUsd,
   estimatePromptUsd,
@@ -222,7 +223,37 @@ export class ImageGenService {
     private readonly config: ConfigService,
     private readonly repository: ImageGenRepository,
     private readonly credits: CreditsService,
+    private readonly aiUsage: AiUsageService,
   ) {}
+
+  /**
+   * Списать деньги и записать, кто именно ходил к модели.
+   *
+   * Двумя записями, а не одной: журнал денег ведётся по магазину и не знает,
+   * чьи руки нажали кнопку, а у администратора списания нет вовсе — его
+   * запросы оплачивает площадка, и без этого журнала они не видны нигде.
+   */
+  private async settleAndLog(
+    hold: CreditHold | null,
+    author: { id: number; isAdmin: boolean },
+    usd: number | undefined,
+    meta: {
+      operation: 'prompt' | 'description' | 'image';
+      model: string;
+      images?: number;
+    },
+  ): Promise<void> {
+    const credits = await this.credits.settle(hold, usd, meta);
+    await this.aiUsage.record({
+      userId: author.id,
+      shopId: hold?.shopId ?? null,
+      operation: meta.operation,
+      model: meta.model,
+      images: meta.images,
+      usd,
+      credits,
+    });
+  }
 
   /**
    * Остаток кредитов. Отдаётся клиенту, чтобы продавец видел его до нажатия
@@ -323,7 +354,7 @@ export class ImageGenService {
         { timeout: PROMPT_TIMEOUT_MS, maxRetries: 1 },
       );
 
-      await this.credits.settle(hold, usageCost(completion.usage), {
+      await this.settleAndLog(hold, author, usageCost(completion.usage), {
         operation: 'prompt',
         model,
       });
@@ -414,7 +445,7 @@ export class ImageGenService {
         { timeout: PROMPT_TIMEOUT_MS, maxRetries: 1 },
       );
 
-      await this.credits.settle(hold, usageCost(completion.usage), {
+      await this.settleAndLog(hold, author, usageCost(completion.usage), {
         operation: 'description',
         model,
       });
@@ -534,7 +565,7 @@ export class ImageGenService {
     }
 
     if (saved.length > 0) {
-      await this.credits.settle(hold, priced ? usd : undefined, {
+      await this.settleAndLog(hold, author, priced ? usd : undefined, {
         operation: 'image',
         model,
         images: saved.length,

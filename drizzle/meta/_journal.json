@@ -232,6 +232,13 @@
       "when": 1786599584400,
       "tag": "0033_categories_services",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1786604558723,
+      "tag": "0034_ai_usage",
+      "breakpoints": true
     }
   ]
 }

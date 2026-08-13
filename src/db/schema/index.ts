@@ -13,5 +13,6 @@ export * from './ai-products-checks.schema';
 export * from './broadcasts.schema';
 export * from './generated-images.schema';
 export * from './credit-transactions.schema';
+export * from './ai-usage.schema';
 export * from './push-subscriptions.schema';
 export * from './relations';

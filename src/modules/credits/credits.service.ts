@@ -103,7 +103,8 @@ export class CreditsService {
   }
 
   /**
-   * Списывает фактическую стоимость и снимает резерв.
+   * Списывает фактическую стоимость и снимает резерв. Возвращает списанное —
+   * журнал использования ИИ пишет ту же цифру, что увидел магазин.
    *
    * `usd` берётся из ответа OpenRouter. Если его нет (документация обещает
    * стоимость «когда доступна»), списываем резерв целиком и помечаем запись —
@@ -113,8 +114,8 @@ export class CreditsService {
     hold: CreditHold | null,
     usd: number | undefined,
     meta: CreditTxnMeta,
-  ): Promise<void> {
-    if (!hold) return;
+  ): Promise<number> {
+    if (!hold) return 0;
 
     const estimated = usd === undefined || usd <= 0;
     const credits = estimated ? hold.credits : await this.toCredits(usd);
@@ -131,11 +132,13 @@ export class CreditsService {
         usd,
         estimated,
       });
+      return credits;
     } catch (err) {
       this.logger.error(
         `Не удалось списать кредиты магазина ${hold.shopId}: ${err instanceof Error ? err.message : String(err)}`,
       );
       await this.repository.release(hold.shopId, hold.credits).catch(() => {});
+      return 0;
     }
   }
 
@@ -180,6 +183,35 @@ export class CreditsService {
       `Магазину ${shopId} начислено ${credits} кредитов (оплата $${paidUsd}, множитель ${markup})`,
     );
     return { balance, credits, markup };
+  }
+
+  /**
+   * Отобрать кредиты — ошибочная выдача, возврат оплаты, санкция.
+   *
+   * Отдельным видом операции (`adjust`), а не выдачей с минусом: в истории
+   * магазина должно быть видно, что баланс уменьшил человек, а не запрос к
+   * модели.
+   */
+  async revoke(
+    shopId: number,
+    authorId: number,
+    credits: number,
+    note?: string,
+  ): Promise<{ balance: number; taken: number }> {
+    const shop = await this.repository.find(shopId);
+    if (!shop) throw new NotFoundException('Магазин не найден');
+
+    const result = await this.repository.revoke({
+      shopId,
+      authorId,
+      credits,
+      note,
+    });
+
+    this.logger.log(
+      `У магазина ${shopId} снято ${result.taken} кредитов из запрошенных ${credits}, остаток ${result.balance}`,
+    );
+    return result;
   }
 
   /** Сколько кредитов даст сумма — для предпросмотра в форме выдачи. */

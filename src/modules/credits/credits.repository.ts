@@ -142,6 +142,59 @@ export class CreditsRepository {
     });
   }
 
+  /**
+   * Отобрать кредиты.
+   *
+   * Снимаем только из доступного: часть баланса бывает занята выполняющимся
+   * сейчас запросом, и забрать её значило бы оборвать чужую генерацию на
+   * полпути. Поэтому же строка магазина блокируется до конца транзакции —
+   * иначе параллельное списание посчитало бы доступное по-своему.
+   *
+   * Возвращаем реально снятое: администратор мог запросить больше, чем есть, и
+   * сказать ему об этом честнее, чем молча снять сколько получилось.
+   */
+  async revoke(data: {
+    shopId: number;
+    authorId: number;
+    credits: number;
+    note?: string;
+  }): Promise<{ taken: number; balance: number }> {
+    return this.db.transaction(async (tx) => {
+      const current = await tx
+        .select({
+          balance: shops.creditsBalance,
+          reserved: shops.creditsReserved,
+        })
+        .from(shops)
+        .where(eq(shops.id, data.shopId))
+        .for('update');
+
+      const balance = current[0]?.balance ?? 0;
+      const available = Math.max(0, balance - (current[0]?.reserved ?? 0));
+      const taken = Math.min(data.credits, available);
+      if (taken === 0) return { taken: 0, balance };
+
+      const rows = await tx
+        .update(shops)
+        .set({ creditsBalance: sql`${shops.creditsBalance} - ${taken}` })
+        .where(eq(shops.id, data.shopId))
+        .returning({ balance: shops.creditsBalance });
+
+      const balanceAfter = rows[0]?.balance ?? 0;
+
+      await tx.insert(creditTransactions).values({
+        shopId: data.shopId,
+        authorId: data.authorId,
+        kind: 'adjust',
+        amount: -taken,
+        balanceAfter,
+        note: data.note,
+      });
+
+      return { taken, balance: balanceAfter };
+    });
+  }
+
   async history(shopId: number, query: PaginationQueryDto) {
     const { page, limit, offset } = resolvePage(query);
 
