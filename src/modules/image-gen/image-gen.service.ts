@@ -12,8 +12,8 @@ import { FilesService } from '../files/files.service';
 import { ImageGenRepository } from './image-gen.repository';
 import { CreditsService, type CreditHold } from '../credits/credits.service';
 import {
-  estimateImageCredits,
-  PROMPT_ESTIMATE_CREDITS,
+  estimateImagesUsd,
+  estimatePromptUsd,
 } from '../credits/credits.constants';
 import {
   DESCRIPTION_MAX,
@@ -278,7 +278,7 @@ export class ImageGenService {
 
     const hold = await this.credits.hold(
       author,
-      PROMPT_ESTIMATE_CREDITS,
+      estimatePromptUsd(),
       'составление промпта',
     );
 
@@ -373,7 +373,7 @@ export class ImageGenService {
 
     const hold = await this.credits.hold(
       author,
-      PROMPT_ESTIMATE_CREDITS,
+      estimatePromptUsd(),
       'правка описания',
     );
 
@@ -464,9 +464,14 @@ export class ImageGenService {
     const count = Math.min(dto.count ?? 2, MAX_GENERATED_IMAGES);
     const size = dto.size ?? '960x1280';
 
+    /**
+     * Резерв считаем по прайсу модели с учётом качества: high при том же
+     * размере дороже medium вчетверо, и одна оценка на оба тарифа означала бы,
+     * что разницу оплачивает площадка.
+     */
     const hold = await this.credits.hold(
       author,
-      estimateImageCredits(size, count),
+      estimateImagesUsd(size, dto.quality, count, dto.referenceKey ? 2 : 1),
       'генерацию',
     );
 

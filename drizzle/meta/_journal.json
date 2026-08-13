@@ -218,6 +218,13 @@
       "when": 1786599584210,
       "tag": "0031_restricted_categories",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1786599584300,
+      "tag": "0032_credits_paid_units",
+      "breakpoints": true
     }
   ]
 }

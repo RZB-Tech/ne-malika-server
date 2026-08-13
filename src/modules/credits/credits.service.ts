@@ -55,18 +55,30 @@ export class CreditsService {
   }
 
   /**
-   * Занимает кредиты под запрос. `null` — списывать не с кого (администратор).
+   * Себестоимость запроса в кредиты, которые платит магазин. Наценка живёт
+   * ровно здесь — и резерв, и списание проходят через неё, поэтому оценка и
+   * факт всегда в одних единицах.
+   */
+  private async toCredits(usd: number): Promise<number> {
+    const markup = await this.settings.getCreditMarkup();
+    return usdToCredits(usd * markup);
+  }
+
+  /**
+   * Занимает кредиты под запрос — на вход себестоимость в долларах, наценку
+   * накидываем сами. `null` — списывать не с кого (администратор).
    *
    * Бросает, если у продавца нет активного магазина или не хватает остатка:
    * оба случая пользователь должен увидеть текстом, а не пустым результатом.
    */
   async hold(
     author: { id: number; isAdmin: boolean },
-    credits: number,
+    estimateUsd: number,
     what: string,
   ): Promise<CreditHold | null> {
     if (author.isAdmin) return null;
 
+    const credits = await this.toCredits(estimateUsd);
     const shopId = await this.repository.findShopIdByOwner(author.id);
     if (!shopId) {
       throw new ForbiddenException(
@@ -105,7 +117,7 @@ export class CreditsService {
     if (!hold) return;
 
     const estimated = usd === undefined || usd <= 0;
-    const credits = estimated ? hold.credits : usdToCredits(usd);
+    const credits = estimated ? hold.credits : await this.toCredits(usd);
 
     if (estimated) {
       this.logger.warn(
@@ -140,9 +152,9 @@ export class CreditsService {
   }
 
   /**
-   * Выдача кредитов. Администратор вводит сумму, которую заплатил магазин, а
-   * начисляется она делённой на множитель: $20 при множителе 2 превращаются в
-   * $10 доступного расхода, разница — маржа площадки.
+   * Выдача кредитов. Начисляем ровно оплаченное: $20 дают 20 000 кредитов,
+   * чтобы баланс совпадал с деньгами, которые магазин отдал. Маржа площадки
+   * берётся не здесь, а при списании — через тот же множитель.
    */
   async grant(
     shopId: number,
@@ -154,7 +166,7 @@ export class CreditsService {
     if (!shop) throw new NotFoundException('Магазин не найден');
 
     const markup = await this.settings.getCreditMarkup();
-    const credits = usdToCredits(paidUsd / markup);
+    const credits = usdToCredits(paidUsd);
 
     const balance = await this.repository.grant({
       shopId,
@@ -173,7 +185,7 @@ export class CreditsService {
   /** Сколько кредитов даст сумма — для предпросмотра в форме выдачи. */
   async preview(paidUsd: number): Promise<{ credits: number; markup: number }> {
     const markup = await this.settings.getCreditMarkup();
-    return { credits: usdToCredits(paidUsd / markup), markup };
+    return { credits: usdToCredits(paidUsd), markup };
   }
 }
 
