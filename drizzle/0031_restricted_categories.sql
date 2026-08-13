@@ -16,10 +16,14 @@ ALTER TABLE "shops" ADD COLUMN IF NOT EXISTS "restricted_categories_enabled" boo
 --
 -- Позиции 235 и 240 ставят разделы после «Сумок и рюкзаков» (230) и перед
 -- «Флешками» (250) — там же, где они стояли до удаления.
+--
+-- Не DO NOTHING, как в остальных сидах каталога: там повтор безвреден, а здесь
+-- уже существующий корень остался бы открытым для всех — то есть миграция
+-- прошла бы «успешно», не сделав ровно того, ради чего написана.
 INSERT INTO "categories" ("parent_id", "slug", "name_ru", "name_uz_latn", "name_uz_cyrl", "icon", "position", "restricted") VALUES
   (NULL, 'tablets', 'Планшеты',  'Planshetlar', 'Планшетлар', 'Tablet',     235, true),
   (NULL, 'phones',  'Смартфоны', 'Smartfonlar', 'Смартфонлар', 'Smartphone', 240, true)
-ON CONFLICT DO NOTHING;
+ON CONFLICT ("slug") WHERE "parent_id" IS NULL DO UPDATE SET "restricted" = true;
 --> statement-breakpoint
 
 -- Подкатегории — ровно те, что были в 0012 и 0013 до удаления родителей.
