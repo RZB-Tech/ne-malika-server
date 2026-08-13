@@ -29,6 +29,24 @@ export class CategoriesRepository {
   }
 
   /**
+   * Закрыт ли раздел, в который метит товар. Запрет стоит на корне, а выбирают
+   * обычно лист, поэтому идём вверх по родителям: «Чехлы» закрыты ровно потому,
+   * что закрыты «Смартфоны».
+   */
+  async isRestricted(id: number): Promise<boolean> {
+    const rows = await this.db.execute<{ restricted: boolean }>(sql`
+      WITH RECURSIVE ancestors AS (
+        SELECT id, parent_id, restricted FROM categories WHERE id = ${id}
+        UNION ALL
+        SELECT c.id, c.parent_id, c.restricted
+        FROM categories c JOIN ancestors a ON c.id = a.parent_id
+      )
+      SELECT true AS restricted FROM ancestors WHERE restricted LIMIT 1
+    `);
+    return rows.rows.length > 0;
+  }
+
+  /**
    * Категория и все её потомки. Нужна фильтрации каталога: выбрав «Ноутбуки»,
    * покупатель ждёт и товары из «Игровых», а не пустую выдачу.
    */

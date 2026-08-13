@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 import { CategoriesRepository } from './categories.repository';
 import { RedisService } from '../redis/redis.service';
 import { CategoryDto } from './dto/category.dto';
@@ -41,12 +45,33 @@ export class CategoriesService {
   /**
    * Проверка категории при сохранении товара. Пустое значение допустимо:
    * товары, заведённые до появления каталога, категории не имеют.
+   *
+   * `allowRestricted` — есть ли у магазина разрешение на закрытые разделы.
+   * Запрос лишний раз не делаем: у магазина с разрешением ответ один и тот же
+   * для любой категории, а таких запросов — по одному на каждое сохранение.
    */
-  async assertExists(categoryId: number | undefined): Promise<void> {
+  async assertUsable(
+    categoryId: number | undefined,
+    allowRestricted: boolean,
+  ): Promise<void> {
     if (categoryId === undefined) return;
     if (!(await this.repository.findById(categoryId))) {
       throw new BadRequestException('Категория не найдена');
     }
+    if (allowRestricted) return;
+    if (await this.repository.isRestricted(categoryId)) {
+      throw new ForbiddenException(
+        'Этот раздел каталога закрыт: выкладывать в него товары можно только с разрешения администратора',
+      );
+    }
+  }
+
+  /**
+   * Категория существует — без проверки доступа. Для админских операций: админ
+   * и есть тот, кто выдаёт разрешение, запрещать ему нечем.
+   */
+  assertExists(categoryId: number | undefined): Promise<void> {
+    return this.assertUsable(categoryId, true);
   }
 
   /** Ветка каталога целиком — фильтр по «Ноутбукам» обязан включать «Игровые». */
@@ -75,6 +100,7 @@ function buildTree(rows: Category[]): CategoryDto[] {
         'uz-Cyrl': row.nameUzCyrl,
       },
       icon: row.icon,
+      restricted: row.restricted,
       children: [],
     });
   }
@@ -89,5 +115,20 @@ function buildTree(rows: Category[]): CategoryDto[] {
       roots.push(node);
     }
   }
+
+  /**
+   * Запрет наследуется сверху вниз отдельным проходом, а не в цикле выше:
+   * порядок строк задан позицией, и ребёнок вполне может встретиться раньше
+   * родителя — тогда наследовать было бы ещё нечего.
+   */
+  for (const root of roots) inheritRestricted(root, root.restricted);
+
   return roots;
+}
+
+function inheritRestricted(node: CategoryDto, restricted: boolean): void {
+  node.restricted = restricted;
+  for (const child of node.children) {
+    inheritRestricted(child, restricted || child.restricted);
+  }
 }

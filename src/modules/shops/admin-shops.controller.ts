@@ -13,6 +13,7 @@ import { AdminOnly } from '../../common/decorators/roles.decorator';
 import { ShopsService } from './shops.service';
 import { ReasonDto } from '../../common/dto/reason.dto';
 import { FindAdminShopsQueryDto } from './dto/find-admin-shops-query.dto';
+import { RestrictedCategoriesDto } from './dto/restricted-categories.dto';
 
 @ApiTags('shops-admin')
 @ApiBearerAuth('access-token')
@@ -39,6 +40,19 @@ export class AdminShopsController {
   @ApiOperation({ summary: 'Вернуть упразднённый магазин в работу' })
   restore(@Param('id', ParseIntPipe) id: number) {
     return this.shopsService.adminRestore(id);
+  }
+
+  @Patch(':id/restricted-categories')
+  @ApiOperation({
+    summary:
+      'Выдать или отозвать доступ магазина к закрытым разделам каталога ' +
+      '(«Смартфоны» и «Планшеты»)',
+  })
+  setRestrictedCategories(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: RestrictedCategoriesDto,
+  ) {
+    return this.shopsService.adminSetRestrictedCategories(id, dto.enabled);
   }
 
   @Delete(':id')

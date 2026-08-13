@@ -54,7 +54,10 @@ export class ProductCardsService {
   ) {
     const shop = await this.shopsService.assertOwnership(ownerId, shopId);
     this.shopsService.assertAcceptsProducts(shop);
-    await this.categoriesService.assertExists(dto.categoryId);
+    await this.categoriesService.assertUsable(
+      dto.categoryId,
+      shop.restrictedCategoriesEnabled,
+    );
 
     const card = await this.productCardsRepository.create({
       shopId,
@@ -89,8 +92,8 @@ export class ProductCardsService {
   }
 
   async updateOwn(ownerId: number, id: number, dto: UpdateProductCardDto) {
-    await this.getOwnOrThrow(ownerId, id);
-    await this.categoriesService.assertExists(dto.categoryId);
+    const card = await this.getOwnOrThrow(ownerId, id);
+    await this.assertCategoryChangeAllowed(card, dto.categoryId);
     const updated = await this.productCardsRepository.update(id, {
       ...dto,
       price: priceColumn(dto.price),
@@ -100,6 +103,25 @@ export class ProductCardsService {
     await this.invalidateCache();
     this.aiChecksService.runInBackground(updated);
     return updated;
+  }
+
+  /**
+   * Проверка категории при правке своего товара.
+   *
+   * Спрашиваем разрешение только когда раздел меняется: товар мог оказаться в
+   * закрытом разделе руками администратора, и запрещать продавцу из-за этого
+   * править описание собственной карточки — наказание не по адресу.
+   */
+  private async assertCategoryChangeAllowed(
+    card: { shopId: number; categoryId: number | null },
+    categoryId: number | undefined,
+  ) {
+    if (categoryId === undefined || categoryId === card.categoryId) return;
+    const shop = await this.shopsService.getOrThrowById(card.shopId);
+    await this.categoriesService.assertUsable(
+      categoryId,
+      shop.restrictedCategoriesEnabled,
+    );
   }
 
   /**

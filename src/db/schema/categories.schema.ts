@@ -2,6 +2,7 @@ import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import {
   bigint,
   bigserial,
+  boolean,
   index,
   integer,
   pgTable,
@@ -36,6 +37,16 @@ export const categories = pgTable(
 
     /** Имя иконки lucide — клиент рисует ею плитку категории. Только у корней. */
     icon: varchar('icon', { length: 40 }),
+
+    /**
+     * Раздел закрыт: покупателю он виден как любой другой, но выложить туда
+     * товар может лишь магазин с разрешением от администратора
+     * (`shops.restrictedCategoriesEnabled`).
+     *
+     * Отмечается только корень — подкатегории наследуют запрет, иначе добавленный
+     * позже лист молча оказался бы открытым.
+     */
+    restricted: boolean('restricted').notNull().default(false),
 
     position: integer('position').notNull().default(0),
 

@@ -1,6 +1,7 @@
 import {
   bigint,
   bigserial,
+  boolean,
   doublePrecision,
   index,
   integer,
@@ -64,6 +65,19 @@ export const shops = pgTable(
     workSchedule: jsonb('work_schedule').$type<WorkScheduleEntry[]>(),
     /** [latitude, longitude] */
     location: doublePrecision('location').array(),
+
+    /**
+     * Разрешение выкладывать товар в закрытые разделы каталога
+     * (`categories.restricted` — сейчас это «Смартфоны» и «Планшеты»).
+     *
+     * Одно на все закрытые разделы: администратор решает про магазин целиком —
+     * «этому продавцу мобильную технику можно», — а не отмечает галочки по
+     * разделам. Понадобится раздавать поштучно — здесь появится таблица связи,
+     * а проверка в коде уже спрашивает «можно ли этому магазину эту категорию».
+     */
+    restrictedCategoriesEnabled: boolean('restricted_categories_enabled')
+      .notNull()
+      .default(false),
 
     status: entityStatusEnum('status').notNull().default('active'),
     abolishReason: text('abolish_reason'),

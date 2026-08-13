@@ -115,6 +115,7 @@ export class ShopsRepository {
         address: shops.address,
         status: shops.status,
         abolishReason: shops.abolishReason,
+        restrictedCategoriesEnabled: shops.restrictedCategoriesEnabled,
         createdAt: shops.createdAt,
         ratingAvg: shops.ratingAvg,
         ratingCount: shops.ratingCount,
@@ -152,6 +153,15 @@ export class ShopsRepository {
         abolishedAt: null,
         updatedAt: new Date(),
       })
+      .where(eq(shops.id, id))
+      .returning()
+      .then((r) => r[0]);
+  }
+
+  setRestrictedCategories(id: number, enabled: boolean): Promise<Shop> {
+    return this.db
+      .update(shops)
+      .set({ restrictedCategoriesEnabled: enabled, updatedAt: new Date() })
       .where(eq(shops.id, id))
       .returning()
       .then((r) => r[0]);

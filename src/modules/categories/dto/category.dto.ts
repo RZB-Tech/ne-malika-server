@@ -33,6 +33,19 @@ export class CategoryDto {
   })
   icon?: string | null;
 
+  /**
+   * Покупателю закрытый раздел виден как любой другой — флаг нужен форме товара,
+   * чтобы показать продавцу без разрешения, что раздел есть, но выбрать его
+   * нельзя.
+   */
+  @ApiProperty({
+    example: false,
+    description:
+      'Закрытый раздел: выложить товар может лишь магазин с разрешением от ' +
+      'администратора. У подкатегорий повторяет значение корня.',
+  })
+  restricted: boolean;
+
   @ApiProperty({ type: [CategoryDto], description: 'Подкатегории' })
   children: CategoryDto[];
 }
