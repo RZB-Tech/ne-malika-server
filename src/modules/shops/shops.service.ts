@@ -3,11 +3,13 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ShopsRepository } from './shops.repository';
 import { UsersService } from '../users/users.service';
 import { RedisService } from '../redis/redis.service';
+import { CreditsService } from '../credits/credits.service';
 import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
 import { PRODUCT_CACHE_PREFIX } from '../product-cards/product-cards.cache';
 import { CreateShopDto } from './dto/create-shop.dto';
@@ -17,10 +19,13 @@ import { Shop } from '../../db/schema';
 
 @Injectable()
 export class ShopsService {
+  private readonly logger = new Logger(ShopsService.name);
+
   constructor(
     private readonly shopsRepository: ShopsRepository,
     private readonly usersService: UsersService,
     private readonly redis: RedisService,
+    private readonly credits: CreditsService,
   ) {}
 
   async createForSeller(ownerId: number, dto: CreateShopDto) {
@@ -49,7 +54,7 @@ export class ShopsService {
     }
 
     try {
-      return await this.shopsRepository.createAndPromoteOwner({
+      const shop = await this.shopsRepository.createAndPromoteOwner({
         owner: ownerId,
         name: dto.name,
         description: dto.description,
@@ -60,6 +65,29 @@ export class ShopsService {
         workSchedule: dto.workSchedule,
         location: dto.location,
       });
+
+      /**
+       * Приветственные кредиты на пробную генерацию. Без права сорвать
+       * регистрацию: магазин уже в базе, и падение подарка не должно
+       * возвращаться продавцу ошибкой. Недоданное видно в логе и доначисляется
+       * руками из админки.
+       */
+      const granted = await this.credits
+        .grantWelcome(shop.id)
+        .catch((err: unknown) => {
+          this.logger.error(
+            `Не удалось начислить приветственные кредиты магазину ${shop.id}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+          return 0;
+        });
+
+      /* Строка прочитана до начисления — перечитываем, иначе продавец увидит
+         в ответе нулевой баланс при уже начисленных кредитах. */
+      return granted
+        ? ((await this.shopsRepository.findById(shop.id)) ?? shop)
+        : shop;
     } catch (error) {
       if (isUniqueViolation(error, 'shops_owner_unique_idx')) {
         throw new ConflictException('У пользователя уже есть магазин');

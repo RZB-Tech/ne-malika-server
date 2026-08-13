@@ -246,6 +246,13 @@
       "when": 1786610988553,
       "tag": "0035_banners",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1786611000000,
+      "tag": "0036_welcome_credits",
+      "breakpoints": true
     }
   ]
 }

@@ -109,10 +109,14 @@ export class CreditsRepository {
     });
   }
 
-  /** Выдача кредитов администратором. */
+  /**
+   * Выдача кредитов. `authorId` бывает пустым: приветственные начисляет
+   * система, а не человек, и подставлять туда администратора значило бы врать
+   * в журнале — колонка на этот случай и объявлена nullable.
+   */
   async grant(data: {
     shopId: number;
-    authorId: number;
+    authorId: number | null;
     credits: number;
     note?: string;
     meta: CreditTxnMeta;
@@ -140,6 +144,25 @@ export class CreditsRepository {
 
       return balanceAfter;
     });
+  }
+
+  /**
+   * Получал ли магазин выдачу по этой акции. Проверяется по журналу, а не по
+   * флагу в магазине: журнал и так источник правды по деньгам, а лишняя
+   * колонка разъехалась бы с ним при первом же ручном исправлении баланса.
+   */
+  async hasPromo(shopId: number, promo: string): Promise<boolean> {
+    const rows = await this.db
+      .select({ id: creditTransactions.id })
+      .from(creditTransactions)
+      .where(
+        and(
+          eq(creditTransactions.shopId, shopId),
+          sql`${creditTransactions.meta}->>'promo' = ${promo}`,
+        ),
+      )
+      .limit(1);
+    return rows.length > 0;
   }
 
   /**

@@ -9,7 +9,13 @@ import { SettingsService } from '../settings/settings.service';
 import type { CreditTxnMeta } from '../../db/schema';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
-import { CREDITS_PER_USD, usdToCredits } from './credits.constants';
+import {
+  CREDITS_PER_USD,
+  WELCOME_CREDITS,
+  WELCOME_NOTE,
+  WELCOME_PROMO,
+  usdToCredits,
+} from './credits.constants';
 
 /**
  * Занятый под запрос резерв. Возвращается из `reserve` и передаётся в
@@ -183,6 +189,33 @@ export class CreditsService {
       `Магазину ${shopId} начислено ${credits} кредитов (оплата $${paidUsd}, множитель ${markup})`,
     );
     return { balance, credits, markup };
+  }
+
+  /**
+   * Приветственные кредиты новому магазину — акция «попробуй генерацию
+   * бесплатно». Выдаются один раз: повторную выдачу ловим по метке в журнале,
+   * иначе удалённый и заново созданный магазин получал бы подарок снова.
+   *
+   * Автор выдачи пустой: начисляет система. Возвращает начисленное — 0 значит
+   * «уже получал», и вызывающему не о чем сообщать.
+   */
+  async grantWelcome(shopId: number): Promise<number> {
+    if (await this.repository.hasPromo(shopId, WELCOME_PROMO)) {
+      return 0;
+    }
+
+    await this.repository.grant({
+      shopId,
+      authorId: null,
+      credits: WELCOME_CREDITS,
+      note: WELCOME_NOTE,
+      meta: { promo: WELCOME_PROMO },
+    });
+
+    this.logger.log(
+      `Магазину ${shopId} начислено ${WELCOME_CREDITS} приветственных кредитов`,
+    );
+    return WELCOME_CREDITS;
   }
 
   /**
