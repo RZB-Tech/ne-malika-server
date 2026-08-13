@@ -29,6 +29,25 @@ export class CategoriesRepository {
   }
 
   /**
+   * Корень ветки, в которой лежит категория, — сама категория, если она уже
+   * корневая. Нужен всему, что решает по разделу целиком: и запрету на выкладку,
+   * и ИИ-проверке, которой важно знать, что перед ней услуга, а не вещь.
+   */
+  async findRootOf(id: number): Promise<Category | undefined> {
+    const rows = await this.db.execute<{ id: number }>(sql`
+      WITH RECURSIVE ancestors AS (
+        SELECT id, parent_id FROM categories WHERE id = ${id}
+        UNION ALL
+        SELECT c.id, c.parent_id
+        FROM categories c JOIN ancestors a ON c.id = a.parent_id
+      )
+      SELECT id FROM ancestors WHERE parent_id IS NULL LIMIT 1
+    `);
+    const rootId = rows.rows[0]?.id;
+    return rootId === undefined ? undefined : this.findById(Number(rootId));
+  }
+
+  /**
    * Закрыт ли раздел, в который метит товар. Запрет стоит на корне, а выбирают
    * обычно лист, поэтому идём вверх по родителям: «Чехлы» закрыты ровно потому,
    * что закрыты «Смартфоны».

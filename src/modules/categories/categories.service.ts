@@ -9,6 +9,12 @@ import { CategoryDto } from './dto/category.dto';
 import type { Category } from '../../db/schema';
 
 const TREE_CACHE_KEY = 'categories:tree';
+
+/**
+ * Корень раздела услуг. Услуги — такой же товар площадки, как железо, но
+ * проверять их карточки надо иначе: на фотографии там работа, а не вещь.
+ */
+const SERVICES_ROOT_SLUG = 'services';
 /** Дерево меняется вручную и редко, а читается на каждой странице каталога. */
 const TREE_TTL_SEC = 3600;
 
@@ -72,6 +78,33 @@ export class CategoriesService {
    */
   assertExists(categoryId: number | undefined): Promise<void> {
     return this.assertUsable(categoryId, true);
+  }
+
+  /**
+   * Подпись категории для ИИ-проверки и признак услуги.
+   *
+   * Модератору-модели нужно и то, и другое: без раздела она судит о карточке по
+   * одному названию, а услугу без явной пометки бракует за то, что на фото не
+   * видно продаваемой вещи.
+   */
+  async describeForCheck(
+    categoryId: number | null,
+  ): Promise<{ label: string; isService: boolean } | null> {
+    if (!categoryId) return null;
+
+    const category = await this.repository.findById(categoryId);
+    if (!category) return null;
+
+    const root = await this.repository.findRootOf(categoryId);
+    if (!root) return null;
+
+    return {
+      label:
+        root.id === category.id
+          ? root.nameRu
+          : `${root.nameRu} · ${category.nameRu}`,
+      isService: root.slug === SERVICES_ROOT_SLUG,
+    };
   }
 
   /** Ветка каталога целиком — фильтр по «Ноутбукам» обязан включать «Игровые». */

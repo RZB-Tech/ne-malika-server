@@ -7,6 +7,7 @@ import { SettingsService } from '../settings/settings.service';
 import { RedisService } from '../redis/redis.service';
 import { FilesService } from '../files/files.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { CategoriesService } from '../categories/categories.service';
 import { escapeHtml, excerpt } from '../bot/telegram-html';
 import { PRODUCT_CACHE_PREFIX } from '../product-cards/product-cards.cache';
 import type { ProductCard } from '../../db/schema';
@@ -54,9 +55,23 @@ const SYSTEM_PROMPT = `Ты модератор карточек товаров �
 
 Случайные названия вроде "sdf", "sdfsdf", "asdf", "test"/"тест", бессмысленный
 текст и карточки, по которым нельзя понять, что продаётся, всегда получают fail.
-Товар не из компьютерной техники и периферии также получает fail.
+Карточка не про компьютерную технику, периферию или услуги для них также получает fail.
 warn допустим только для небольшого недостатка уже понятной карточки, когда товар
 однозначно виден на фотографии и соответствует названию.
+
+Услуги на площадке разрешены наравне с техникой: ремонт, диагностика, чистка,
+установка систем и программ, восстановление данных, сборка и апгрейд, настройка
+сети. Понизить вердикт только за то, что продаётся работа, а не вещь, нельзя.
+Когда перед тобой услуга — об этом скажет категория карточки, а если её нет,
+то название и описание, — проверяй иначе:
+- photos — годится всё, что показывает саму работу: техника в ремонте, рабочее
+  место мастера, пример «до и после», оформленное объявление с текстом услуги.
+  Требовать фотографию продаваемой вещи здесь нечего. fail — только за мусор:
+  скриншоты переписки и кода, мемы, чужую рекламу, пустые изображения;
+- photoMatch — довольно того, что фотография не противоречит описанной услуге.
+  Отсутствие на снимке «того самого товара» нарушением не считается;
+- состояние «новый»/«б/у» к услуге не относится — это не рассогласование данных;
+- отсутствие характеристик у услуги нормально: там описывают работу словами.
 
 Цену не оценивай и не комментируй. Рыночных цен ты не знаешь: они зависят от
 состояния, комплектации, курса и площадки, а торг здесь дело продавца и покупателя.
@@ -81,6 +96,7 @@ export class AiChecksService implements OnModuleInit {
     private readonly files: FilesService,
     private readonly config: ConfigService,
     private readonly notifications: NotificationsService,
+    private readonly categories: CategoriesService,
   ) {}
 
   /**
@@ -327,6 +343,8 @@ export class AiChecksService implements OnModuleInit {
       .map((c) => `${c.key}: ${c.value}`)
       .join('; ');
 
+    const category = await this.categories.describeForCheck(card.categoryId);
+
     const keys = photoKeys(card);
     const attached: string[] = [];
     if (withPhotos) {
@@ -345,6 +363,13 @@ export class AiChecksService implements OnModuleInit {
 
     const text = [
       `Название: ${card.name}`,
+      `Категория: ${category?.label ?? '(не выбрана)'}`,
+      ...(category?.isService
+        ? [
+            'Это карточка услуги — продаётся работа, а не вещь. ' +
+              'Услуги на площадке разрешены: проверяй её по правилам для услуг.',
+          ]
+        : []),
       `Цена: ${card.price ?? 'договорная'}`,
       `Состояние: ${card.state === 'new' ? 'новый' : 'б/у'}`,
       `Описание: ${card.description ?? '(пусто)'}`,

@@ -225,6 +225,13 @@
       "when": 1786599584300,
       "tag": "0032_credits_paid_units",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1786599584400,
+      "tag": "0033_categories_services",
+      "breakpoints": true
     }
   ]
 }
