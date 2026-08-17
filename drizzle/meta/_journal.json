@@ -260,13 +260,6 @@
       "when": 1786611100000,
       "tag": "0037_welcome_credits_topup",
       "breakpoints": true
-    },
-    {
-      "idx": 38,
-      "version": "7",
-      "when": 1786973321000,
-      "tag": "0038_categories_remotes",
-      "breakpoints": true
     }
   ]
 }
