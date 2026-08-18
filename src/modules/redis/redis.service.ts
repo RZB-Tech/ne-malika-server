@@ -36,6 +36,30 @@ export class RedisService {
     }
   }
 
+  /**
+   * Занять ключ, если он свободен. Возвращает `true` только первому вызову
+   * в пределах `ttlSec` — на этом строится подсчёт уникальных посетителей и
+   * защита счётчика просмотров от F5.
+   *
+   * Атомарность обязательна: пара «прочитать, потом записать» под двумя
+   * одновременными запросами пропустила бы оба, и один человек посчитался бы
+   * двумя. `SET NX` решает это одной командой.
+   *
+   * Без Redis возвращает `true` — статистика продолжает считаться, но без
+   * схлопывания повторов. Лучше завышенные просмотры, чем потерянные: в проде
+   * Redis есть всегда (docker-compose.prod.yml), это путь для локального дева.
+   */
+  async claim(key: string, ttlSec: number): Promise<boolean> {
+    if (!this.client) return true;
+    try {
+      const res = await this.client.set(key, '1', 'EX', ttlSec, 'NX');
+      return res === 'OK';
+    } catch (err) {
+      this.warn('claim', key, err);
+      return true;
+    }
+  }
+
   async del(key: string): Promise<void> {
     if (!this.client) return;
     try {

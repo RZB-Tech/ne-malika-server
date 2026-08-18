@@ -260,6 +260,13 @@
       "when": 1786611100000,
       "tag": "0037_welcome_credits_topup",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1787051023122,
+      "tag": "0038_product_stats",
+      "breakpoints": true
     }
   ]
 }

@@ -17,6 +17,7 @@ import { CategoriesModule } from './modules/categories/categories.module';
 import { ProductCardsModule } from './modules/product-cards/product-cards.module';
 import { AiCompareModule } from './modules/ai-compare/ai-compare.module';
 import { ProductViewsModule } from './modules/product-views/product-views.module';
+import { ProductStatsModule } from './modules/product-stats/product-stats.module';
 import { FavoritesModule } from './modules/favorites/favorites.module';
 import { FilesModule } from './modules/files/files.module';
 import { ImageGenModule } from './modules/image-gen/image-gen.module';
@@ -46,6 +47,7 @@ import { AppService } from './app.service';
     ProductCardsModule,
     AiCompareModule,
     ProductViewsModule,
+    ProductStatsModule,
     FavoritesModule,
     FilesModule,
     ImageGenModule,

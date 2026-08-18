@@ -4,6 +4,7 @@ export * from './shops.schema';
 export * from './categories.schema';
 export * from './product-cards.schema';
 export * from './product-views.schema';
+export * from './product-stats.schema';
 export * from './favorites.schema';
 export * from './reports.schema';
 export * from './reviews.schema';
