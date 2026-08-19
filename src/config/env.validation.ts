@@ -60,6 +60,11 @@ class EnvironmentVariables {
   @IsString()
   OPENROUTER_VISION_MODEL?: string;
 
+  /** Автозаполнение карточки: нужна зрячая модель, разбирающая надписи на фото. */
+  @IsOptional()
+  @IsString()
+  OPENROUTER_AUTOFILL_MODEL?: string;
+
   @IsOptional()
   @IsString()
   OPENROUTER_IMAGE_MODEL?: string;

@@ -35,6 +35,15 @@ export default () => ({
      * их раскладывает по составляющим и сравнивает.
      */
     compareModel: process.env.OPENROUTER_COMPARE_MODEL ?? 'openai/gpt-4.1-nano',
+    /**
+     * Автозаполнение карточки по фотографиям. Модель нужна зрячая и при этом
+     * толковая: она разбирает надписи на корпусе и коробке и раскладывает
+     * увиденное по характеристикам, а не просто подписывает картинку. Поэтому
+     * не `visionModel`, который дешевле, но на такой работе путает модели и
+     * дописывает то, чего на фото нет.
+     */
+    autofillModel:
+      process.env.OPENROUTER_AUTOFILL_MODEL ?? 'openai/gpt-4.1-mini',
     /** Рисование. Идёт не в чат, а в отдельный Images API OpenRouter. */
     imageModel: process.env.OPENROUTER_IMAGE_MODEL ?? 'openai/gpt-image-2',
   },

@@ -15,6 +15,7 @@ import { BotModule } from './modules/bot/bot.module';
 import { ShopsModule } from './modules/shops/shops.module';
 import { CategoriesModule } from './modules/categories/categories.module';
 import { ProductCardsModule } from './modules/product-cards/product-cards.module';
+import { ProductAutofillModule } from './modules/product-autofill/product-autofill.module';
 import { AiCompareModule } from './modules/ai-compare/ai-compare.module';
 import { ProductViewsModule } from './modules/product-views/product-views.module';
 import { ProductStatsModule } from './modules/product-stats/product-stats.module';
@@ -45,6 +46,7 @@ import { AppService } from './app.service';
     ShopsModule,
     CategoriesModule,
     ProductCardsModule,
+    ProductAutofillModule,
     AiCompareModule,
     ProductViewsModule,
     ProductStatsModule,

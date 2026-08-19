@@ -83,9 +83,32 @@ export class CreditsService {
     what: string,
   ): Promise<CreditHold | null> {
     if (author.isAdmin) return null;
+    return this.reserve(author.id, await this.toCredits(estimateUsd), what);
+  }
 
-    const credits = await this.toCredits(estimateUsd);
-    const shopId = await this.repository.findShopIdByOwner(author.id);
+  /**
+   * Занимает ровно назначенную цену — для операций с фиксированным прайсом.
+   *
+   * Наценка здесь не при чём: она пересчитывает себестоимость, а прайс уже
+   * объявлен продавцу и от курса модели не зависит. Списывать такой резерв
+   * нужно через `settleFixed`, иначе фактическая стоимость перебьёт цену.
+   */
+  async holdFixed(
+    author: { id: number; isAdmin: boolean },
+    credits: number,
+    what: string,
+  ): Promise<CreditHold | null> {
+    if (author.isAdmin) return null;
+    return this.reserve(author.id, credits, what);
+  }
+
+  /** Общая часть обоих резервов: найти магазин и занять у него сумму. */
+  private async reserve(
+    ownerId: number,
+    credits: number,
+    what: string,
+  ): Promise<CreditHold> {
+    const shopId = await this.repository.findShopIdByOwner(ownerId);
     if (!shopId) {
       throw new ForbiddenException(
         'Генерация доступна только владельцу активного магазина.',
@@ -139,6 +162,40 @@ export class CreditsService {
         estimated,
       });
       return credits;
+    } catch (err) {
+      this.logger.error(
+        `Не удалось списать кредиты магазина ${hold.shopId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      await this.repository.release(hold.shopId, hold.credits).catch(() => {});
+      return 0;
+    }
+  }
+
+  /**
+   * Списывает назначенный прайс целиком, чем бы запрос ни обошёлся площадке.
+   *
+   * Фактическая стоимость идёт в журнал, но на сумму не влияет: цену кнопки
+   * продавец увидел до нажатия, и пересчитывать её задним числом — обман
+   * ожидания, даже когда пересчёт вышел бы в его пользу.
+   *
+   * Резерв и списание здесь всегда равны, поэтому отдельного возврата остатка
+   * не бывает: либо списали прайс, либо (при сбое записи) сняли резерв целиком
+   * и не взяли ничего.
+   */
+  async settleFixed(
+    hold: CreditHold | null,
+    usd: number | undefined,
+    meta: CreditTxnMeta,
+  ): Promise<number> {
+    if (!hold) return 0;
+
+    try {
+      await this.repository.spend(hold.shopId, hold.credits, hold.credits, {
+        ...meta,
+        usd,
+        fixed: true,
+      });
+      return hold.credits;
     } catch (err) {
       this.logger.error(
         `Не удалось списать кредиты магазина ${hold.shopId}: ${err instanceof Error ? err.message : String(err)}`,

@@ -7,7 +7,7 @@ export interface AiUsageEntry {
   userId: number;
   /** Магазин, с которого списано. `null` у администратора — платит площадка. */
   shopId: number | null;
-  operation: 'prompt' | 'description' | 'image';
+  operation: 'prompt' | 'description' | 'image' | 'autofill';
   model: string;
   images?: number;
   /** Фактическая стоимость у OpenRouter, если он её вернул. */
