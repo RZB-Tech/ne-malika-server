@@ -267,6 +267,13 @@
       "when": 1787051023122,
       "tag": "0038_product_stats",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1787118863294,
+      "tag": "0039_categories_projectors_remotes",
+      "breakpoints": true
     }
   ]
 }
