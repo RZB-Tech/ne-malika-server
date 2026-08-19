@@ -8,6 +8,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
   Min,
 } from 'class-validator';
@@ -90,10 +91,29 @@ export class FindProductCardsQueryDto extends PaginationQueryDto {
   category?: string;
 
   @ApiPropertyOptional({
-    enum: ['price_asc', 'price_desc', 'newest'],
+    enum: ['price_asc', 'price_desc', 'newest', 'random'],
     default: 'newest',
+    description:
+      'random — вперемешку: витрина не должна каждый раз открываться одними и ' +
+      'теми же товарами сверху. Порядок задаёт seed.',
   })
   @IsOptional()
-  @IsIn(['price_asc', 'price_desc', 'newest'])
-  sort?: 'price_asc' | 'price_desc' | 'newest';
+  @IsIn(['price_asc', 'price_desc', 'newest', 'random'])
+  sort?: 'price_asc' | 'price_desc' | 'newest' | 'random';
+
+  /**
+   * Зерно перемешивания: одно и то же зерно даёт один и тот же порядок.
+   *
+   * Без него `sort=random` был бы непригоден для ленты — вторая страница
+   * тасовалась бы заново и повторила часть товаров первой, а часть не показала
+   * бы вовсе. Клиент заводит зерно на один заход и шлёт его со всеми страницами.
+   */
+  @ApiPropertyOptional({
+    example: 'k3f9d1a7',
+    description: 'Зерно для sort=random; одно зерно — один и тот же порядок',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^[A-Za-z0-9_-]{1,32}$/)
+  seed?: string;
 }

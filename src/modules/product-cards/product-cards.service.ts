@@ -238,15 +238,20 @@ export class ProductCardsService {
   }
 
   async findPublicList(query: FindProductCardsQueryDto) {
-    const key = productListKey({ ...query });
-    const cached = await this.redis.get<PublicList>(key);
+    /**
+     * Витрину вперемешку кэшировать нечем: зерно своё у каждого захода, и в
+     * Redis копились бы тысячи ключей, которые никто не прочитает второй раз, —
+     * а заодно растягивался бы сброс по префиксу, он идёт перебором ключей.
+     */
+    const key = query.sort === 'random' ? null : productListKey({ ...query });
+    const cached = key ? await this.redis.get<PublicList>(key) : null;
     const result =
       cached ??
       (await this.productCardsRepository.findPublicList(
         query,
         await this.resolveCategoryIds(query),
       ));
-    if (!cached) {
+    if (key && !cached) {
       await this.redis.set(key, result, PRODUCT_LIST_TTL_SEC);
     }
 

@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   SQL,
   and,
+  asc,
   desc,
   eq,
   gte,
@@ -80,11 +81,33 @@ const SEARCH_DOCUMENT = sql`coalesce(${productCards.name}, '') || ' ' || coalesc
 const SEARCH_VECTOR = sql`(to_tsvector('russian', ${SEARCH_DOCUMENT}) || to_tsvector('simple', ${SEARCH_DOCUMENT}))`;
 
 /**
+ * Витрина вперемешку. Тасуем не `random()`, а хэшем от пары «зерно + id»:
+ * `random()` пересчитывается на каждый запрос, и вторая страница ленты
+ * перемешалась бы заново — часть товаров показалась бы дважды, часть не
+ * показалась бы вовсе. Хэш же при одном зерне даёт один и тот же порядок,
+ * сколько бы страниц ни попросили, а меняется зерно — меняется вся витрина.
+ *
+ * Порядок этот индексом не поддержан и считается перебором активных карточек.
+ * Их тысячи, а не миллионы, и запрос забирает только страницу — сортировка
+ * укладывается в единицы миллисекунд. Появятся миллионы — понадобится не
+ * индекс, а другой способ показывать случайное.
+ *
+ * id вторым ключом — на случай совпадения хэшей: без него порядок таких
+ * товаров решала бы сама СУБД, и он мог бы разойтись между страницами.
+ */
+function randomOrder(seed: string): SQL[] {
+  return [sql`md5(${seed} || ${productCards.id}::text)`, asc(productCards.id)];
+}
+
+/**
  * Порядок выдачи. При поиске сортировка по новизне бессмысленна: сверху обязан
  * оказаться товар, у которого совпало название, а не тот, что заведён вчера и
  * упомянут в описании вскользь.
  */
 function resolveSort(query: FindProductCardsQueryDto): SQL[] {
+  if (query.sort === 'random') {
+    return randomOrder(query.seed ?? '');
+  }
   if (query.sort === 'price_asc') {
     return [sql`${productCards.price} asc nulls last`];
   }
