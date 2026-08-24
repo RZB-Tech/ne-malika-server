@@ -14,6 +14,7 @@ import {
   sql,
 } from 'drizzle-orm';
 import { DRIZZLE, type DrizzleDb } from '../../db/db.provider';
+import { VISIBLE_PRODUCT } from '../../db/public-products';
 import { resolvePage } from '../../common/dto/pagination-query.dto';
 import {
   categories,
@@ -25,7 +26,11 @@ import {
 import { FindProductCardsQueryDto } from './dto/find-product-cards-query.dto';
 import { FindAdminProductCardsQueryDto } from './dto/find-admin-product-cards-query.dto';
 import { recomputeShopRating } from '../../db/rating';
-import { buildProductSearch, type ProductSearch } from './product-search';
+import {
+  buildProductSearch,
+  escapeLike,
+  type ProductSearch,
+} from './product-search';
 
 /** Проекция товара для покупателя: без внутренних полей модерации и эмбеддинга. */
 const PUBLIC_FIELDS = {
@@ -104,7 +109,10 @@ function randomOrder(seed: string): SQL[] {
  * оказаться товар, у которого совпало название, а не тот, что заведён вчера и
  * упомянут в описании вскользь.
  */
-function resolveSort(query: FindProductCardsQueryDto): SQL[] {
+function resolveSort(
+  query: FindProductCardsQueryDto,
+  search: ProductSearch | null,
+): SQL[] {
   if (query.sort === 'random') {
     return randomOrder(query.seed ?? '');
   }
@@ -115,7 +123,6 @@ function resolveSort(query: FindProductCardsQueryDto): SQL[] {
     return [sql`${productCards.price} desc nulls last`];
   }
 
-  const search = query.q ? buildProductSearch(query.q) : null;
   if (!search) return [desc(productCards.createdAt)];
 
   return [
@@ -183,7 +190,9 @@ export class ProductCardsRepository {
     categoryIds?: number[],
   ) {
     const { page, limit, offset } = resolvePage(query);
-    const where = and(...publicConditions(query, categoryIds));
+    /** Разбираем запрос один раз: он нужен и условию выборки, и порядку. */
+    const search = query.q ? buildProductSearch(query.q) : null;
+    const where = and(...publicConditions(query, categoryIds, search));
 
     const [data, totalRows] = await Promise.all([
       this.db
@@ -192,7 +201,7 @@ export class ProductCardsRepository {
         .innerJoin(shops, eq(productCards.shopId, shops.id))
         .leftJoin(categories, eq(productCards.categoryId, categories.id))
         .where(where)
-        .orderBy(...resolveSort(query))
+        .orderBy(...resolveSort(query, search))
         .limit(limit)
         .offset(offset),
       this.db
@@ -221,11 +230,10 @@ export class ProductCardsRepository {
       conditions.push(eq(productCards.shopId, query.shop_id));
     }
     if (query.q) {
+      /** Экранируем: «%» и «_» из строки поиска — это ввод, а не шаблон LIKE. */
+      const pattern = `%${escapeLike(query.q)}%`;
       conditions.push(
-        or(
-          ilike(productCards.name, `%${query.q}%`),
-          ilike(shops.name, `%${query.q}%`),
-        )!,
+        or(ilike(productCards.name, pattern), ilike(shops.name, pattern))!,
       );
     }
     if (query.uncategorized) {
@@ -324,11 +332,9 @@ export class ProductCardsRepository {
 function publicConditions(
   query: FindProductCardsQueryDto = {},
   categoryIds?: number[],
+  search: ProductSearch | null = null,
 ): SQL[] {
-  const conditions: SQL[] = [
-    eq(productCards.status, 'active'),
-    eq(shops.status, 'active'),
-  ];
+  const conditions: SQL[] = [...VISIBLE_PRODUCT];
 
   if (categoryIds) {
     conditions.push(
@@ -344,7 +350,6 @@ function publicConditions(
     );
   }
   if (query.q) {
-    const search = buildProductSearch(query.q);
     conditions.push(search ? searchCondition(search) : sql`false`);
   }
   if (query.price_min !== undefined) {

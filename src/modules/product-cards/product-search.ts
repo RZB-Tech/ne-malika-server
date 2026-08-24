@@ -203,6 +203,6 @@ function unique(values: string[]): string[] {
 }
 
 /** `%` и `_` в вводе — это подстановочные знаки LIKE, а не то, что искал человек. */
-function escapeLike(value: string): string {
+export function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 }

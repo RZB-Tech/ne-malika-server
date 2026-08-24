@@ -66,10 +66,6 @@ export class ReviewsAiService {
     private readonly config: ConfigService,
   ) {}
 
-  get enabled(): boolean {
-    return this.ai !== null;
-  }
-
   /**
    * `null` — проверка не состоялась: ключа нет или модель не ответила. Отзыв в
    * этом случае остаётся человеку. Молча публиковать непроверенное нельзя, а

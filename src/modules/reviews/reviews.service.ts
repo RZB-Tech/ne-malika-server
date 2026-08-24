@@ -17,14 +17,12 @@ import { ProductCardsRepository } from '../product-cards/product-cards.repositor
 import { ProductCardsService } from '../product-cards/product-cards.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
+import { isUniqueViolation } from '../../db/errors';
 import { escapeHtml, excerpt } from '../bot/telegram-html';
 import { CreateReviewDto } from './dto/create-review.dto';
 import { UpdateReviewDto } from './dto/update-review.dto';
 import { FindReviewsQueryDto } from './dto/find-reviews-query.dto';
 import { FindAdminReviewsQueryDto } from './dto/find-admin-reviews-query.dto';
-
-/** Ошибка Postgres «нарушено уникальное ограничение». */
-const UNIQUE_VIOLATION = '23505';
 
 /** Если модель забраковала отзыв, но объяснить не смогла. */
 const AI_REJECT_FALLBACK = 'Отзыв нарушает правила площадки';
@@ -340,15 +338,6 @@ function shortName(fullname: string): string {
   const [first, second] = fullname.trim().split(/\s+/);
   if (!first) return 'Покупатель';
   return second ? `${first} ${second[0]}.` : first;
-}
-
-function isUniqueViolation(err: unknown): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    'code' in err &&
-    (err as { code?: string }).code === UNIQUE_VIOLATION
-  );
 }
 
 /**

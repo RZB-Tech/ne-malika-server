@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsIn,
   IsInt,
@@ -21,6 +21,17 @@ export const MESSAGE_MAX = 2000;
 /** С какой стороны смотрит запрашивающий: своя переписка или переписка магазина. */
 export const CHAT_ROLES = ['buyer', 'seller'] as const;
 export type ChatRole = (typeof CHAT_ROLES)[number];
+
+/**
+ * Обрезаем пробелы до проверки длины.
+ *
+ * Иначе сообщение из одних пробелов проходит `@MinLength(1)`, а сервис отвергает
+ * его уже после того, как «написать продавцу» завело переписку, — в списках
+ * обеих сторон оставался пустой разговор, которого никто не начинал.
+ */
+const trimmed = Transform(({ value }: { value: unknown }) =>
+  typeof value === 'string' ? value.trim() : value,
+);
 
 export class StartChatDto {
   @ApiPropertyOptional({
@@ -46,6 +57,7 @@ export class StartChatDto {
     maxLength: MESSAGE_MAX,
     example: 'Здравствуйте! Ещё в наличии?',
   })
+  @trimmed
   @IsString()
   @MinLength(1)
   @MaxLength(MESSAGE_MAX)
@@ -57,6 +69,7 @@ export class SendMessageDto {
     maxLength: MESSAGE_MAX,
     example: 'Да, могу отложить до завтра',
   })
+  @trimmed
   @IsString()
   @MinLength(1)
   @MaxLength(MESSAGE_MAX)

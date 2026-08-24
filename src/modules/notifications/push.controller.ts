@@ -80,8 +80,11 @@ export class PushController {
   @Delete('subscribe')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Отписать браузер' })
-  async unsubscribe(@Body() dto: UnsubscribePushDto): Promise<{ ok: true }> {
-    await this.push.unsubscribe(dto.endpoint);
+  async unsubscribe(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UnsubscribePushDto,
+  ): Promise<{ ok: true }> {
+    await this.push.unsubscribe(user.id, dto.endpoint);
     return { ok: true };
   }
 }

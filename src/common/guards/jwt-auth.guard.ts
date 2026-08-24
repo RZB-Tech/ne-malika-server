@@ -32,20 +32,28 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('Отсутствует access-токен');
     }
 
+    let payload: JwtAccessPayload;
     try {
-      const payload = this.jwtService.verify<JwtAccessPayload>(token, {
+      payload = this.jwtService.verify<JwtAccessPayload>(token, {
         secret: this.configService.get<string>('jwt.accessSecret'),
       });
-      if (payload.type !== 'access') {
-        throw new UnauthorizedException('Неверный тип токена');
-      }
-      request.user = { id: payload.sub, role: payload.role };
-      return true;
     } catch {
       throw new UnauthorizedException(
         'Недействительный или просроченный токен',
       );
     }
+
+    /**
+     * Проверка вида токена — вне try: брошенная внутри, она попадала в ту же
+     * ловушку и подменялась общим «просроченный токен». Отличать эти два
+     * случая нужно и в поддержке, и переводчику ошибок.
+     */
+    if (payload.type !== 'access') {
+      throw new UnauthorizedException('Неверный тип токена');
+    }
+
+    request.user = { id: payload.sub, role: payload.role };
+    return true;
   }
 
   private extractToken(request: Request): string | undefined {

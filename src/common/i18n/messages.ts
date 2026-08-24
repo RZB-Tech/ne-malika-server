@@ -106,11 +106,11 @@ const TRANSLATIONS: Record<string, Record<Exclude<ApiLocale, 'ru'>, string>> = {
     'uz-Latn': 'Mahsulot ko‘rsatilgan do‘konga tegishli emas',
     'uz-Cyrl': 'Маҳсулот кўрсатилган дўконга тегишли эмас',
   },
-  'Товар упразднён администратором — отправить на проверку нельзя': {
+  'Товар упразднён администратором — изменить его нельзя': {
     'uz-Latn':
-      'Mahsulot administrator tomonidan tugatilgan — tekshiruvga yuborib bo‘lmaydi',
+      'Mahsulot administrator tomonidan tugatilgan — uni o‘zgartirib bo‘lmaydi',
     'uz-Cyrl':
-      'Маҳсулот администратор томонидан тугатилган — текширувга юбориб бўлмайди',
+      'Маҳсулот администратор томонидан тугатилган — уни ўзгартириб бўлмайди',
   },
   'Магазин упразднён — добавлять товары нельзя': {
     'uz-Latn': 'Do‘kon tugatilgan — mahsulot qo‘shib bo‘lmaydi',
@@ -130,10 +130,6 @@ const TRANSLATIONS: Record<string, Record<Exclude<ApiLocale, 'ru'>, string>> = {
       'uz-Cyrl':
         'Алоқа рақамини аниқлаб бўлмади — телефон бот орқали тасдиқланмаган, рақамни қўлда киритинг',
     },
-  'Генерация изображений не подключена. Обратитесь к администратору.': {
-    'uz-Latn': 'Rasm generatsiyasi ulanmagan. Administratorga murojaat qiling.',
-    'uz-Cyrl': 'Расм генерацияси уланмаган. Администраторга мурожаат қилинг.',
-  },
   'ИИ-сравнение сейчас недоступно': {
     'uz-Latn': 'Sun’iy intellekt bilan taqqoslash hozir ishlamayapti',
     'uz-Cyrl': 'Сунъий интеллект билан таққослаш ҳозир ишламаяпти',

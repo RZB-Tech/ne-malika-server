@@ -55,10 +55,12 @@ export class SettingsService {
   }
 
   async getAll(): Promise<AppSettingsDto> {
-    return {
-      aiChecksEnabled: await this.isAiChecksEnabled(),
-      creditMarkup: await this.getCreditMarkup(),
-    };
+    /** Настройки независимы — читаем разом, а не по очереди. */
+    const [aiChecksEnabled, creditMarkup] = await Promise.all([
+      this.isAiChecksEnabled(),
+      this.getCreditMarkup(),
+    ]);
+    return { aiChecksEnabled, creditMarkup };
   }
 
   async update(dto: AppSettingsDto): Promise<AppSettingsDto> {

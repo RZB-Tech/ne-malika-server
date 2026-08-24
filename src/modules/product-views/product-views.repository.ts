@@ -1,20 +1,20 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { DRIZZLE, type DrizzleDb } from '../../db/db.provider';
-import { resolvePage } from '../../common/dto/pagination-query.dto';
-import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import {
+  PaginationQueryDto,
+  resolvePage,
+} from '../../common/dto/pagination-query.dto';
+import {
+  PUBLIC_PRODUCT_SUMMARY,
+  VISIBLE_PRODUCT,
+  filterVisibleProductIds,
+} from '../../db/public-products';
 import { productCards, productViews, shops } from '../../db/schema';
 
 /** Публичная проекция карточки + когда и сколько раз её открывали. */
 const VIEW_FIELDS = {
-  id: productCards.id,
-  shopId: productCards.shopId,
-  shopName: shops.name,
-  name: productCards.name,
-  description: productCards.description,
-  photos: productCards.photos,
-  price: productCards.price,
-  state: productCards.state,
+  ...PUBLIC_PRODUCT_SUMMARY,
   viewedAt: productViews.viewedAt,
   viewCount: productViews.viewCount,
 };
@@ -23,27 +23,9 @@ const VIEW_FIELDS = {
 export class ProductViewsRepository {
   constructor(@Inject(DRIZZLE) private readonly db: DrizzleDb) {}
 
-  /**
-   * Из присланных id оставляет те, что реально видны покупателю. Внешний ключ
-   * гарантирует лишь существование товара — без этой проверки в историю можно
-   * было бы записать скрытую модератором карточку и подсмотреть её название.
-   */
-  async filterPublicIds(ids: number[]): Promise<Set<number>> {
-    if (ids.length === 0) return new Set();
-
-    const rows = await this.db
-      .select({ id: productCards.id })
-      .from(productCards)
-      .innerJoin(shops, eq(productCards.shopId, shops.id))
-      .where(
-        and(
-          inArray(productCards.id, ids),
-          eq(productCards.status, 'active'),
-          eq(shops.status, 'active'),
-        ),
-      );
-
-    return new Set(rows.map((r) => r.id));
+  /** Из присланных id — только те, что видны покупателю. */
+  filterPublicIds(ids: number[]): Promise<Set<number>> {
+    return filterVisibleProductIds(this.db, ids);
   }
 
   /**
@@ -97,11 +79,7 @@ export class ProductViewsRepository {
    */
   async findByUser(userId: number, query: PaginationQueryDto) {
     const { page, limit, offset } = resolvePage(query);
-    const where = and(
-      eq(productViews.userId, userId),
-      eq(productCards.status, 'active'),
-      eq(shops.status, 'active'),
-    );
+    const where = and(eq(productViews.userId, userId), ...VISIBLE_PRODUCT);
 
     const [data, totalRows] = await Promise.all([
       this.db

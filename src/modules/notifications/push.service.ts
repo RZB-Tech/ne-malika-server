@@ -84,8 +84,8 @@ export class PushService implements OnModuleInit {
     return this.repository.upsert(data);
   }
 
-  unsubscribe(endpoint: string): Promise<void> {
-    return this.repository.remove(endpoint);
+  unsubscribe(userId: number, endpoint: string): Promise<void> {
+    return this.repository.remove(userId, endpoint);
   }
 
   hasSubscription(userId: number): Promise<boolean> {

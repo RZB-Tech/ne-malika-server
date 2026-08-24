@@ -18,7 +18,9 @@ import { TelegramWidgetDto } from './dto/telegram-widget.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
 
 const REFRESH_COOKIE = 'refresh_token';
-const REFRESH_COOKIE_PATH = '/api/v1/auth';
+
+/** Тридцать суток — столько же живёт сам refresh-токен (JWT_REFRESH_TTL). */
+const REFRESH_COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 type Tokens = Awaited<ReturnType<AuthService['refresh']>>;
 
@@ -27,10 +29,21 @@ type Tokens = Awaited<ReturnType<AuthService['refresh']>>;
 @Throttle({ default: { ttl: 60_000, limit: 10 } })
 @Controller('auth')
 export class AuthController {
+  /**
+   * Cookie ограничена путём авторизации: браузер не станет прикладывать её к
+   * каждому запросу каталога. Путь собирается из настроенного префикса, а не
+   * записан строкой: при смене API_PREFIX прошитый «/api/v1/auth» указывал бы
+   * в никуда, и обновление токена молча переставало бы работать.
+   */
+  private readonly refreshCookiePath: string;
+
   constructor(
     private readonly authService: AuthService,
     private readonly configService: ConfigService,
-  ) {}
+  ) {
+    const prefix = this.configService.get<string>('apiPrefix') ?? '';
+    this.refreshCookiePath = `/${prefix}/auth`.replace(/\/{2,}/g, '/');
+  }
 
   @Post('telegram')
   @HttpCode(HttpStatus.OK)
@@ -93,7 +106,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Выход — очищает refresh-cookie' })
   logout(@Res({ passthrough: true }) res: Response) {
-    res.clearCookie(REFRESH_COOKIE, { path: REFRESH_COOKIE_PATH });
+    res.clearCookie(REFRESH_COOKIE, { path: this.refreshCookiePath });
     return { success: true };
   }
 
@@ -107,8 +120,8 @@ export class AuthController {
       httpOnly: true,
       secure: isProd,
       sameSite: isProd ? 'none' : 'lax',
-      path: REFRESH_COOKIE_PATH,
-      maxAge: 30 * 24 * 60 * 60 * 1000,
+      path: this.refreshCookiePath,
+      maxAge: REFRESH_COOKIE_MAX_AGE_MS,
     });
     return { accessToken, user };
   }

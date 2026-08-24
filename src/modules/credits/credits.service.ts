@@ -10,7 +10,6 @@ import type { CreditTxnMeta } from '../../db/schema';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
 import {
-  CREDITS_PER_USD,
   WELCOME_CREDITS,
   WELCOME_NOTE,
   WELCOME_PROMO,
@@ -310,5 +309,3 @@ export class CreditsService {
     return { credits: usdToCredits(paidUsd), markup };
   }
 }
-
-export { CREDITS_PER_USD };

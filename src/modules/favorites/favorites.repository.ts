@@ -1,22 +1,20 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { DRIZZLE, type DrizzleDb } from '../../db/db.provider';
 import {
   PaginationQueryDto,
   resolvePage,
 } from '../../common/dto/pagination-query.dto';
+import {
+  PUBLIC_PRODUCT_SUMMARY,
+  VISIBLE_PRODUCT,
+  filterVisibleProductIds,
+} from '../../db/public-products';
 import { favorites, productCards, shops } from '../../db/schema';
 
 /** Публичная проекция карточки + когда её добавили в избранное. */
 const FAVORITE_FIELDS = {
-  id: productCards.id,
-  shopId: productCards.shopId,
-  shopName: shops.name,
-  name: productCards.name,
-  description: productCards.description,
-  photos: productCards.photos,
-  price: productCards.price,
-  state: productCards.state,
+  ...PUBLIC_PRODUCT_SUMMARY,
   addedAt: favorites.addedAt,
 };
 
@@ -24,27 +22,9 @@ const FAVORITE_FIELDS = {
 export class FavoritesRepository {
   constructor(@Inject(DRIZZLE) private readonly db: DrizzleDb) {}
 
-  /**
-   * Оставляет из присланных id те, что видны покупателю. Внешний ключ
-   * подтверждает только существование товара — без этой проверки в избранное
-   * попала бы скрытая модератором карточка.
-   */
-  async filterPublicIds(ids: number[]): Promise<Set<number>> {
-    if (ids.length === 0) return new Set();
-
-    const rows = await this.db
-      .select({ id: productCards.id })
-      .from(productCards)
-      .innerJoin(shops, eq(productCards.shopId, shops.id))
-      .where(
-        and(
-          inArray(productCards.id, ids),
-          eq(productCards.status, 'active'),
-          eq(shops.status, 'active'),
-        ),
-      );
-
-    return new Set(rows.map((r) => r.id));
+  /** Из присланных id — только те, что видны покупателю. */
+  filterPublicIds(ids: number[]): Promise<Set<number>> {
+    return filterVisibleProductIds(this.db, ids);
   }
 
   /**
@@ -87,11 +67,7 @@ export class FavoritesRepository {
    */
   async findByUser(userId: number, query: PaginationQueryDto) {
     const { page, limit, offset } = resolvePage(query);
-    const where = and(
-      eq(favorites.userId, userId),
-      eq(productCards.status, 'active'),
-      eq(shops.status, 'active'),
-    );
+    const where = and(eq(favorites.userId, userId), ...VISIBLE_PRODUCT);
 
     const [data, totalRows] = await Promise.all([
       this.db

@@ -251,14 +251,25 @@ export class AiChecksService implements OnModuleInit {
 
   /**
    * Запрос к модели с фотографиями, а при неудачной загрузке — повтор по одному
-   * тексту. Фото лежат в публичном S3, и скачивает их сама модель: её таймаут на
-   * нашей картинке не должен превращаться в непройденную проверку.
+   * тексту. Фото лежат в S3 и читаются нами: его заминка не должна превращаться
+   * в непройденную проверку и отправлять исправную карточку к модератору. При
+   * повторе модели прямо говорится, что фотографии есть, но недоступны, — иначе
+   * она решит, что продавец их не загрузил, и забракует карточку за это.
    */
   private async complete(
     model: string,
     card: ProductCard,
   ): Promise<OpenAI.Chat.ChatCompletion> {
-    return this.request(model, card, true);
+    try {
+      return await this.request(model, card, true);
+    } catch (err) {
+      if (!(err instanceof PhotosUnavailableError)) throw err;
+
+      this.logger.warn(
+        `Товар ${card.id} проверяется без фотографий: ${err.message}`,
+      );
+      return this.request(model, card, false);
+    }
   }
 
   private async request(
@@ -365,7 +376,9 @@ export class AiChecksService implements OnModuleInit {
       }
     }
     if (withPhotos && keys.length > 0 && attached.length === 0) {
-      throw new Error('Не удалось загрузить фотографию товара для проверки');
+      throw new PhotosUnavailableError(
+        'не удалось прочитать ни одной фотографии из хранилища',
+      );
     }
 
     const text = [
@@ -395,6 +408,13 @@ export class AiChecksService implements OnModuleInit {
     return parts;
   }
 }
+
+/**
+ * Фотографии у товара есть, но до нас они не дошли. Отдельный тип, а не текст
+ * ошибки: по нему проверка решает повторить запрос без картинок, тогда как
+ * любую другую ошибку повторять этим способом бессмысленно.
+ */
+class PhotosUnavailableError extends Error {}
 
 function photoKeys(card: ProductCard): string[] {
   return (card.photos ?? []).slice(0, MAX_PHOTOS);

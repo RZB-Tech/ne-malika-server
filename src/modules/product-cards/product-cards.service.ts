@@ -93,6 +93,7 @@ export class ProductCardsService {
 
   async updateOwn(ownerId: number, id: number, dto: UpdateProductCardDto) {
     const card = await this.getOwnOrThrow(ownerId, id);
+    this.assertNotAbolished(card);
     await this.assertCategoryChangeAllowed(card, dto.categoryId);
     const updated = await this.productCardsRepository.update(id, {
       ...dto,
@@ -132,16 +133,30 @@ export class ProductCardsService {
    */
   async recheckOwn(ownerId: number, id: number) {
     const card = await this.getOwnOrThrow(ownerId, id);
-    if (card.status === 'abolished') {
-      throw new ForbiddenException(
-        card.abolishReason
-          ? `Товар упразднён администратором: ${card.abolishReason}`
-          : 'Товар упразднён администратором — отправить на проверку нельзя',
-      );
-    }
+    this.assertNotAbolished(card);
 
     this.aiChecksService.runInBackground(card);
     return { queued: true };
+  }
+
+  /**
+   * Упразднённый товар продавец не трогает вовсе.
+   *
+   * Не только повторная отправка на проверку, но и обычная правка: она
+   * переводит карточку в `pending`, а прошедшая после этого ИИ-проверка
+   * вернула бы её в выдачу — то есть любой продавец снимал бы решение
+   * администратора, поправив в описании запятую.
+   */
+  private assertNotAbolished(card: {
+    status: string;
+    abolishReason: string | null;
+  }) {
+    if (card.status !== 'abolished') return;
+    throw new ForbiddenException(
+      card.abolishReason
+        ? `Товар упразднён администратором: ${card.abolishReason}`
+        : 'Товар упразднён администратором — изменить его нельзя',
+    );
   }
 
   async removeOwn(ownerId: number, id: number) {
@@ -150,10 +165,10 @@ export class ProductCardsService {
     await this.invalidateCache();
   }
 
-  /** Снимает и ИИ-скрытие, и упразднение — как и восстановление магазина. */
   /**
    * Возврат товара в выдачу — он же ручное одобрение после ИИ-проверки,
    * поэтому снимаем проверку с очереди модерации: решение принято человеком.
+   * Снимает и ИИ-скрытие, и упразднение — как и восстановление магазина.
    */
   async adminRestore(id: number) {
     await this.getOrThrow(id);

@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { asc, eq, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
 import { DRIZZLE, type DrizzleDb } from '../../db/db.provider';
 import { categories, type Category } from '../../db/schema';
 
@@ -24,7 +24,7 @@ export class CategoriesRepository {
   /** Корень ищется по slug отдельно: у листьев slug уникален лишь внутри родителя. */
   findRootBySlug(slug: string): Promise<Category | undefined> {
     return this.db.query.categories.findFirst({
-      where: sql`${categories.slug} = ${slug} AND ${categories.parentId} IS NULL`,
+      where: and(eq(categories.slug, slug), isNull(categories.parentId)),
     });
   }
 
@@ -79,14 +79,5 @@ export class CategoriesRepository {
       SELECT id FROM subtree
     `);
     return rows.rows.map((r) => Number(r.id));
-  }
-
-  /** Категории верхнего уровня — для витрины и меню каталога. */
-  findRoots(): Promise<Category[]> {
-    return this.db
-      .select()
-      .from(categories)
-      .where(or(isNull(categories.parentId)))
-      .orderBy(asc(categories.position));
   }
 }

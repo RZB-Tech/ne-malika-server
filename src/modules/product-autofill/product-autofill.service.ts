@@ -8,6 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import type OpenAI from 'openai';
 import { OPENROUTER_CLIENT } from '../openrouter/openrouter-client.provider';
+import { describeError, usageCost } from '../openrouter/openrouter.util';
 import { FilesService } from '../files/files.service';
 import { CategoriesService } from '../categories/categories.service';
 import { ShopsService } from '../shops/shops.service';
@@ -110,38 +111,6 @@ const SERVICE_NOTE = `Это карточка УСЛУГИ — продаётс�
 - characteristics — состав и условия работы: «Что входит», «Сроки», «Выезд», «Оборудование». Разъёмы, объёмы памяти и прочие характеристики вещи здесь не нужны;
 - brand и model — обычно null: у услуги их нет. Заполняй только если услуга привязана к конкретной модели техники;
 - state — всегда null: к услуге «новый» и «б/у» не относятся.`;
-
-/**
- * Стоимость запроса у OpenRouter. В типах SDK этого поля нет — это их
- * расширение, поэтому читаем через unknown, а не приводим весь usage.
- */
-function usageCost(usage: unknown): number | undefined {
-  const cost = (usage as { cost?: unknown } | undefined)?.cost;
-  return typeof cost === 'number' && cost > 0 ? cost : undefined;
-}
-
-/**
- * Разбор ошибки SDK. Отдельно вытаскиваем cause: при обрыве связи наружу летит
- * общее «Connection error.», а настоящая причина лежит только там.
- */
-function describeError(err: unknown): string {
-  const e = err as {
-    status?: number;
-    code?: string;
-    message?: string;
-    cause?: { code?: string; message?: string };
-  };
-  return [
-    e.status ? `HTTP ${e.status}` : null,
-    e.code,
-    e.message ?? String(err),
-    e.cause
-      ? `причина: ${e.cause.code ?? ''} ${e.cause.message ?? ''}`.trim()
-      : null,
-  ]
-    .filter(Boolean)
-    .join(' · ');
-}
 
 /**
  * Автозаполнение карточки товара по фотографиям.

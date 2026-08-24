@@ -4,6 +4,7 @@ import { resolvePage } from '../../common/dto/pagination-query.dto';
 import { DRIZZLE, type DrizzleDb } from '../../db/db.provider';
 import { NewShop, Shop, productCards, shops, users } from '../../db/schema';
 import { FindAdminShopsQueryDto } from './dto/find-admin-shops-query.dto';
+import { escapeLike } from '../product-cards/product-search';
 
 @Injectable()
 export class ShopsRepository {
@@ -95,13 +96,15 @@ export class ShopsRepository {
     const { page, limit, offset } = resolvePage(query);
 
     const search = query.q?.trim();
-    const where = search
+    /** Экранируем: «%» и «_» из строки поиска — это ввод, а не шаблон LIKE. */
+    const pattern = search ? `%${escapeLike(search)}%` : null;
+    const where = pattern
       ? or(
-          ilike(shops.name, `%${search}%`),
-          ilike(shops.contact, `%${search}%`),
-          ilike(shops.address, `%${search}%`),
-          ilike(users.fullname, `%${search}%`),
-          ilike(users.telegramUsername, `%${search}%`),
+          ilike(shops.name, pattern),
+          ilike(shops.contact, pattern),
+          ilike(shops.address, pattern),
+          ilike(users.fullname, pattern),
+          ilike(users.telegramUsername, pattern),
         )
       : undefined;
 

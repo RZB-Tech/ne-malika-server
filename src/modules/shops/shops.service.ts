@@ -16,6 +16,7 @@ import { CreateShopDto } from './dto/create-shop.dto';
 import { UpdateShopDto } from './dto/update-shop.dto';
 import { FindAdminShopsQueryDto } from './dto/find-admin-shops-query.dto';
 import { Shop } from '../../db/schema';
+import { isUniqueViolation } from '../../db/errors';
 
 @Injectable()
 export class ShopsService {
@@ -229,15 +230,4 @@ export class ShopsService {
       ? `https://t.me/${owner.telegramUsername}`
       : undefined;
   }
-}
-
-function isUniqueViolation(error: unknown, constraint: string) {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    'constraint' in error &&
-    error.code === '23505' &&
-    error.constraint === constraint
-  );
 }

@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, asc, eq, gte, lte, sql } from 'drizzle-orm';
 import { DRIZZLE, type DrizzleDb } from '../../db/db.provider';
+import { VISIBLE_PRODUCT } from '../../db/public-products';
 import { productCards, productStatsDaily, shops } from '../../db/schema';
 
 /** Сколько чего прибавить к суткам за одно событие. */
@@ -44,13 +45,7 @@ export class ProductStatsRepository {
       .select({ id: productCards.id })
       .from(productCards)
       .innerJoin(shops, eq(productCards.shopId, shops.id))
-      .where(
-        and(
-          eq(productCards.id, productCardId),
-          eq(productCards.status, 'active'),
-          eq(shops.status, 'active'),
-        ),
-      )
+      .where(and(eq(productCards.id, productCardId), ...VISIBLE_PRODUCT))
       .limit(1);
 
     return row !== undefined;

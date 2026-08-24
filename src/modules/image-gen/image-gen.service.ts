@@ -8,6 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import type OpenAI from 'openai';
 import { OPENROUTER_CLIENT } from '../openrouter/openrouter-client.provider';
+import { describeError, usageCost } from '../openrouter/openrouter.util';
 import { FilesService } from '../files/files.service';
 import { ImageGenRepository } from './image-gen.repository';
 import { CreditsService, type CreditHold } from '../credits/credits.service';
@@ -38,15 +39,6 @@ interface ImageReference {
 interface OpenRouterImagesResponse {
   data?: { b64_json?: string; media_type?: string }[];
   usage?: { cost?: number };
-}
-
-/**
- * Стоимость запроса у OpenRouter. В типах SDK этого поля нет — это их
- * расширение, поэтому читаем через unknown, а не приводим весь usage.
- */
-function usageCost(usage: unknown): number | undefined {
-  const cost = (usage as { cost?: unknown } | undefined)?.cost;
-  return typeof cost === 'number' && cost > 0 ? cost : undefined;
 }
 
 /** Сколько прошлых вариантов показывать в галерее диалога. */
@@ -354,19 +346,25 @@ export class ImageGenService {
         { timeout: PROMPT_TIMEOUT_MS, maxRetries: 1 },
       );
 
-      await this.settleAndLog(hold, author, usageCost(completion.usage), {
-        operation: 'prompt',
-        model,
-      });
-
       const choice = completion.choices[0];
       const prompt = cleanPrompt(choice?.message?.content);
+      /**
+       * Проверяем ответ до списания: `settle` уже снял резерв, и повторный
+       * `cancel` из ловушки освободил бы сверх него чужой — тот, что занят
+       * соседним запросом того же магазина.
+       */
       if (!prompt) {
         throw new Error(
           `модель вернула пустой промпт (finish_reason: ${choice?.finish_reason ?? '—'}, ` +
             `токенов: ${completion.usage?.completion_tokens ?? '—'})`,
         );
       }
+
+      await this.settleAndLog(hold, author, usageCost(completion.usage), {
+        operation: 'prompt',
+        model,
+      });
+
       return { prompt };
     } catch (err) {
       await this.credits.cancel(hold);
@@ -445,21 +443,23 @@ export class ImageGenService {
         { timeout: PROMPT_TIMEOUT_MS, maxRetries: 1 },
       );
 
-      await this.settleAndLog(hold, author, usageCost(completion.usage), {
-        operation: 'description',
-        model,
-      });
-
       const choice = completion.choices[0];
       const text = cleanPrompt(choice?.message?.content).slice(
         0,
         DESCRIPTION_MAX,
       );
+      /** Как и в промпте: списываем только то, что дошло до продавца. */
       if (!text) {
         throw new Error(
           `модель вернула пустой текст (finish_reason: ${choice?.finish_reason ?? '—'})`,
         );
       }
+
+      await this.settleAndLog(hold, author, usageCost(completion.usage), {
+        operation: 'description',
+        model,
+      });
+
       return { text };
     } catch (err) {
       await this.credits.cancel(hold);
@@ -687,30 +687,6 @@ function pickDirections(count: number): string[] {
     { length: count },
     (_, i) => CARD_DIRECTIONS[(start + i) % CARD_DIRECTIONS.length],
   );
-}
-
-/**
- * Разбор ошибки SDK. Отдельно вытаскиваем cause: при обрыве связи наружу летит
- * общее «Connection error.», а настоящая причина (ECONNRESET, таймаут заголовков,
- * сброс TLS) лежит только там — без неё чинить нечего.
- */
-function describeError(err: unknown): string {
-  const e = err as {
-    status?: number;
-    code?: string;
-    message?: string;
-    cause?: { code?: string; message?: string };
-  };
-  return [
-    e.status ? `HTTP ${e.status}` : null,
-    e.code,
-    e.message ?? String(err),
-    e.cause
-      ? `причина: ${e.cause.code ?? ''} ${e.cause.message ?? ''}`.trim()
-      : null,
-  ]
-    .filter(Boolean)
-    .join(' · ');
 }
 
 /**

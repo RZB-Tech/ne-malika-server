@@ -71,10 +71,6 @@ export function usdToCredits(usd: number): number {
   return Math.ceil(usd * CREDITS_PER_USD);
 }
 
-export function creditsToUsd(credits: number): number {
-  return credits / CREDITS_PER_USD;
-}
-
 /**
  * Прайс OpenRouter на модели, которыми пользуемся.
  *

@@ -12,6 +12,14 @@ export interface PushTarget {
   auth: string;
 }
 
+/** Ровно то, что нужно web-push. Один набор на все выборки подписок. */
+const TARGET_FIELDS = {
+  id: pushSubscriptions.id,
+  endpoint: pushSubscriptions.endpoint,
+  p256dh: pushSubscriptions.p256dh,
+  auth: pushSubscriptions.auth,
+};
+
 @Injectable()
 export class PushRepository {
   constructor(@Inject(DRIZZLE) private readonly db: DrizzleDb) {}
@@ -42,10 +50,20 @@ export class PushRepository {
       });
   }
 
-  async remove(endpoint: string): Promise<void> {
+  /**
+   * Отписка своего браузера. Ограничение по владельцу обязательно: endpoint —
+   * это просто строка из тела запроса, и без него любой вошедший отписал бы
+   * чужое устройство, узнав или подобрав его адрес.
+   */
+  async remove(userId: number, endpoint: string): Promise<void> {
     await this.db
       .delete(pushSubscriptions)
-      .where(eq(pushSubscriptions.endpoint, endpoint));
+      .where(
+        and(
+          eq(pushSubscriptions.endpoint, endpoint),
+          eq(pushSubscriptions.userId, userId),
+        ),
+      );
   }
 
   /** Мёртвые подписки: push-сервис ответил 404/410 — они уже не оживут. */
@@ -57,13 +75,16 @@ export class PushRepository {
   }
 
   /**
-   * Адресаты рассылки в браузере.
+   * Кого считать аудиторией рассылки в браузере.
    *
    * Роль берём ту же, что и у Telegram-рассылки, — аудитория одна, каналы
    * разные. Заблокированных исключаем: закрытый вход и уведомления о новинках
    * плохо сочетаются.
+   *
+   * Условие одно на обе выборки — список адресатов и их число: разойдясь, они
+   * показали бы админу «получат N», а ушло бы M.
    */
-  audience(audience: BroadcastAudience): Promise<PushTarget[]> {
+  private audienceWhere(audience: BroadcastAudience) {
     const byRole =
       audience === 'sellers'
         ? eq(users.role, 'seller')
@@ -72,17 +93,16 @@ export class PushRepository {
           : undefined;
 
     const base = isNull(users.blockedAt);
+    return byRole ? and(base, byRole) : base;
+  }
 
+  /** Адресаты рассылки в браузере. */
+  audience(audience: BroadcastAudience): Promise<PushTarget[]> {
     return this.db
-      .select({
-        id: pushSubscriptions.id,
-        endpoint: pushSubscriptions.endpoint,
-        p256dh: pushSubscriptions.p256dh,
-        auth: pushSubscriptions.auth,
-      })
+      .select(TARGET_FIELDS)
       .from(pushSubscriptions)
       .innerJoin(users, eq(users.id, pushSubscriptions.userId))
-      .where(byRole ? and(base, byRole) : base);
+      .where(this.audienceWhere(audience));
   }
 
   /**
@@ -93,12 +113,7 @@ export class PushRepository {
    */
   byUser(userId: number): Promise<PushTarget[]> {
     return this.db
-      .select({
-        id: pushSubscriptions.id,
-        endpoint: pushSubscriptions.endpoint,
-        p256dh: pushSubscriptions.p256dh,
-        auth: pushSubscriptions.auth,
-      })
+      .select(TARGET_FIELDS)
       .from(pushSubscriptions)
       .innerJoin(users, eq(users.id, pushSubscriptions.userId))
       .where(
@@ -108,20 +123,11 @@ export class PushRepository {
 
   /** Сколько браузеров получат рассылку — показывается рядом с числом чатов. */
   countAudience(audience: BroadcastAudience): Promise<number> {
-    const byRole =
-      audience === 'sellers'
-        ? eq(users.role, 'seller')
-        : audience === 'buyers'
-          ? eq(users.role, 'user')
-          : undefined;
-
-    const base = isNull(users.blockedAt);
-
     return this.db
       .select({ count: sql<number>`count(*)::int` })
       .from(pushSubscriptions)
       .innerJoin(users, eq(users.id, pushSubscriptions.userId))
-      .where(byRole ? and(base, byRole) : base)
+      .where(this.audienceWhere(audience))
       .then((rows) => rows[0]?.count ?? 0);
   }
 
