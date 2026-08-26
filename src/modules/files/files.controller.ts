@@ -68,6 +68,8 @@ export class FilesController {
       response.setHeader('Last-Modified', file.lastModified.toUTCString());
     }
 
+    response.on('close', () => file.body.destroy());
+
     return new StreamableFile(file.body);
   }
 }
