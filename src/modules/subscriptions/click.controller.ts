@@ -202,8 +202,25 @@ function isPaidComplete(body: Record<string, unknown>): boolean {
  * а сгенерированный orval'ом хук на такую ручку клиенту не нужен и только
  * засорял бы `lib/api/generated`.
  */
+/**
+ * Пути, на которых колбэк принимается. Их несколько по той же причине, что и в
+ * рабочем образце (save-up слушает `/rpc/click/callback`, `/api/click/callback`
+ * и `/click/callback`): адрес колбэка живёт не в коде, а в кабинете Click, и
+ * поправить его там может не тот, кто писал код. Промах на один сегмент даёт
+ * 404, а Click показывает плательщику «Оплата временно невозможна.
+ * Недостаточно информации от поставщика» — сообщение, по которому невозможно
+ * догадаться, что дело в адресе.
+ *
+ * Лишние пути ничего не стоят: обработчик один, гварды одни, а вся проверка
+ * начинается с подписи — на любой из них неподписанный запрос уйдёт с `-1`.
+ *
+ * Глобальный префикс `api/v1` добавляется к обоим (см. `main.ts`), так что
+ * наружу это `/api/v1/subscriptions/click/callback` и `/api/v1/click/callback`.
+ */
+const CALLBACK_ROUTES = ['subscriptions/click', 'click'];
+
 @ApiExcludeController()
-@Controller('subscriptions/click')
+@Controller(CALLBACK_ROUTES)
 export class ClickController {
   private readonly logger = new Logger(ClickController.name);
 

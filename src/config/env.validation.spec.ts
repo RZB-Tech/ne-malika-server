@@ -130,7 +130,6 @@ describe('environment validation', () => {
         CLICK_MERCHANT_USER_ID: 'merchant-user',
         CLICK_MERCHANT_API_URL: 'https://api.click.uz/v2/merchant',
         CLICK_REVERSAL_TIMEOUT_MS: '5000',
-        CLICK_RETURN_URL: 'https://nemalika.uz/seller/subscription',
       }),
     );
   });

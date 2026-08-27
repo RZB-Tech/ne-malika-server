@@ -273,10 +273,6 @@ class EnvironmentVariables {
   @Min(1000)
   CLICK_REVERSAL_TIMEOUT_MS?: number;
 
-  @IsOptional()
-  @IsString()
-  CLICK_RETURN_URL?: string;
-
   /**
    * Прайс подписки в сумах. Умолчания — в `configuration.ts`, здесь только
    * проверка вменяемости: цена обязана быть целым положительным числом.

@@ -206,7 +206,5 @@ export default () => ({
      * Complete по той же транзакции.
      */
     reversalTimeoutMs: envInt(process.env.CLICK_REVERSAL_TIMEOUT_MS, 5_000),
-    /** Куда Click вернёт плательщика после кассы. Пусто — оставит у себя. */
-    returnUrl: envText(process.env.CLICK_RETURN_URL),
   },
 });

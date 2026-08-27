@@ -306,12 +306,12 @@ export class SubscriptionsService implements OnModuleInit {
     return {
       amountUzs: this.testPriceUzs,
       armedUntil: until.toISOString(),
+      /** Без `return_url` — тем же составом, что и боевая касса выше. */
       url: createClickPaymentUrl({
         serviceId: this.config.get<string>('click.serviceId')!,
         merchantId: this.config.get<string>('click.merchantId')!,
         amountUzs: this.testPriceUzs,
         transactionParam: String(shop.ownerTelegramId),
-        returnUrl: this.config.get<string>('click.returnUrl'),
       }),
     };
   }
@@ -382,12 +382,19 @@ export class SubscriptionsService implements OnModuleInit {
       provider: 'click',
       plan: spec.id,
       amountUzs: spec.priceUzs,
+      /**
+       * `return_url` не передаётся намеренно — ровно как в рабочем образце
+       * (save-up собирает ссылку из четырёх параметров и только). Click
+       * принимает его не у всякой услуги, а лишний параметр в адресе кассы —
+       * первое, на что думаешь при отказе «недостаточно информации от
+       * поставщика». Плательщик возвращается сам: касса открывается в той же
+       * вкладке, и кнопка «назад» ведёт на страницу подписки.
+       */
       url: createClickPaymentUrl({
         serviceId: this.config.get<string>('click.serviceId')!,
         merchantId: this.config.get<string>('click.merchantId')!,
         amountUzs: spec.priceUzs,
         transactionParam: String(shop.ownerTelegramId),
-        returnUrl: this.config.get<string>('click.returnUrl'),
       }),
     };
   }
