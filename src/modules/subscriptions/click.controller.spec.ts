@@ -303,7 +303,7 @@ describe('колбэк Click: Complete', () => {
     }
   });
 
-  it('возвращает деньги на каждом отказе выдачи и отвечает -9', async () => {
+  it('возвращает деньги на каждом отказе выдачи и отвечает успехом', async () => {
     for (const kind of [
       'not_found',
       'invalid_amount',
@@ -313,7 +313,8 @@ describe('колбэк Click: Complete', () => {
       const { controller, calls } = build({ complete: { kind } });
       const answer = await controller.handle(sign(COMPLETE));
 
-      assert.equal(answer.error, -9, kind);
+      assert.equal(answer.error, 0, kind);
+      assert.equal(answer.merchant_confirm_id, 55, kind);
       assert.deepEqual(calls.reverse, ['2000'], kind);
       assert.equal(calls.failed.length, 1, kind);
       assert.equal(calls.failed[0].reversed, true, kind);
@@ -322,7 +323,7 @@ describe('колбэк Click: Complete', () => {
     }
   });
 
-  it('отвечает -7, когда вернуть деньги не удалось', async () => {
+  it('отвечает успехом, даже когда вернуть деньги не удалось', async () => {
     const { controller, calls } = build({
       complete: { kind: 'not_found' },
       reversal: { ok: false, reason: 'request_failed', detail: 'HTTP 500' },
@@ -330,7 +331,7 @@ describe('колбэк Click: Complete', () => {
 
     const answer = await controller.handle(sign(COMPLETE));
 
-    assert.equal(answer.error, -7);
+    assert.equal(answer.error, 0);
     assert.equal(calls.failed[0].reversed, false);
     assert.match(
       calls.failed[0].reversalNote ?? '',
@@ -347,7 +348,7 @@ describe('колбэк Click: Complete', () => {
 
     const answer = await controller.handle(sign(COMPLETE));
 
-    assert.equal(answer.error, -9);
+    assert.equal(answer.error, 0);
     assert.deepEqual(calls.reverse, ['2000']);
     assert.match(calls.failed[0].errorNote, /база не ответила/);
   });
@@ -357,7 +358,7 @@ describe('колбэк Click: Complete', () => {
 
     const answer = await controller.handle(sign(COMPLETE));
 
-    assert.equal(answer.error, -9);
+    assert.equal(answer.error, 0);
     assert.deepEqual(calls.reverse, ['2000']);
     assert.equal(calls.failed[0].shopId, null);
     assert.equal(calls.complete, 0);

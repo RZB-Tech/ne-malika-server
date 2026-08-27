@@ -354,9 +354,14 @@ export class ClickController {
       );
     }
 
+    const confirmId = Number(clickField(body, 'merchant_prepare_id'));
+
     return answer(
       body,
-      reversal.ok ? CLICK_RESPONSE.cancelled : CLICK_RESPONSE.updateFailed,
+      CLICK_RESPONSE.success,
+      Number.isSafeInteger(confirmId) && confirmId > 0
+        ? { merchant_confirm_id: confirmId }
+        : undefined,
     );
   }
 }
