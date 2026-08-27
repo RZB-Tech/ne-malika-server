@@ -23,6 +23,5 @@ import { SellerReviewsController } from './seller-reviews.controller';
     SellerReviewsController,
   ],
   providers: [ReviewsRepository, ReviewsAiService, ReviewsService],
-  exports: [ReviewsService],
 })
 export class ReviewsModule {}

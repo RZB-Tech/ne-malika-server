@@ -12,6 +12,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { effectiveLimits } from '../subscriptions/subscriptions.constants';
 import { escapeHtml, excerpt } from '../bot/telegram-html';
 import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
+import { errorMessage } from '../../common/errors';
 import { BannersRepository } from './banners.repository';
 import {
   bucketKey,
@@ -267,7 +268,7 @@ export class BannersService {
   ): void {
     this.logger.error(
       `Решение по баннеру не доставлено (${channel}) пользователю ${ownerId}: ` +
-        (err instanceof Error ? err.message : String(err)),
+        errorMessage(err),
     );
   }
 

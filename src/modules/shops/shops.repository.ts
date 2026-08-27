@@ -71,6 +71,19 @@ export class ShopsRepository {
       .then((r) => r[0]);
   }
 
+  updateOwned(
+    id: number,
+    ownerId: number,
+    data: Partial<NewShop>,
+  ): Promise<Shop | undefined> {
+    return this.db
+      .update(shops)
+      .set({ ...data, updatedAt: new Date() })
+      .where(and(eq(shops.id, id), eq(shops.owner, ownerId)))
+      .returning()
+      .then((r) => r[0]);
+  }
+
   deleteAndDemoteOwner(id: number, ownerId: number): Promise<boolean> {
     return this.db.transaction(async (tx) => {
       const deleted = await tx

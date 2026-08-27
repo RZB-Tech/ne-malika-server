@@ -29,6 +29,5 @@ import { SubscriptionsService } from './subscriptions.service';
     ClickMerchantService,
     SubscriptionRemindersService,
   ],
-  exports: [SubscriptionsService],
 })
 export class SubscriptionsModule {}

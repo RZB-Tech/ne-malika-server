@@ -59,5 +59,4 @@ export const aiUsage = pgTable(
   }),
 );
 
-export type AiUsage = typeof aiUsage.$inferSelect;
 export type NewAiUsage = typeof aiUsage.$inferInsert;

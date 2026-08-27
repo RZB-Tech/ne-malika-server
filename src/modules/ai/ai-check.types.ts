@@ -1,4 +1,4 @@
-export const AI_VERDICTS = ['pass', 'warn', 'fail'] as const;
+const AI_VERDICTS = ['pass', 'warn', 'fail'] as const;
 export type AiVerdict = (typeof AI_VERDICTS)[number];
 
 export const AI_ASPECTS = [
@@ -8,7 +8,7 @@ export const AI_ASPECTS = [
   'photoMatch',
 ] as const;
 
-export interface AiCheckDetail {
+interface AiCheckDetail {
   verdict: AiVerdict;
   notes: string;
 }
@@ -32,7 +32,7 @@ const VERDICT_WEIGHT: Record<AiVerdict, number> = {
 export function parseAiCheckResult(
   raw: string | null | undefined,
 ): AiCheckResult {
-  let parsed: Record<string, unknown> = {};
+  let parsed: Record<string, unknown>;
   try {
     parsed = JSON.parse(raw ?? '{}') as Record<string, unknown>;
   } catch {

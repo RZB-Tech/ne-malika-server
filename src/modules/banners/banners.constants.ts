@@ -1,6 +1,6 @@
 import { moderationStatusEnum } from '../../db/schema';
 
-export const BANNER_FORMATS = [
+const BANNER_FORMATS = [
   { width: 1942, height: 809 },
   { width: 1240, height: 400 },
 ] as const;

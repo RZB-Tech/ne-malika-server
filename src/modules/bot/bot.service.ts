@@ -3,6 +3,7 @@ import { UsersRepository } from '../users/users.repository';
 import { TelegramApiService } from './telegram-api.service';
 import { TelegramMessage, TelegramUpdate } from './types/telegram-update.types';
 import { ConfigService } from '@nestjs/config';
+import { buildFullname } from '../../common/telegram';
 
 const WELCOME_TEXT =
   'Добро пожаловать в <b>НеМалика</b> 👋\n\n' +
@@ -120,11 +121,10 @@ export class BotService implements OnModuleInit {
       return;
     }
 
-    const fullname =
-      [message.from.first_name, message.from.last_name]
-        .filter(Boolean)
-        .join(' ')
-        .trim() || 'Без имени';
+    const fullname = buildFullname(
+      message.from.first_name,
+      message.from.last_name,
+    );
 
     try {
       await this.usersRepository.upsertFromBotContact({

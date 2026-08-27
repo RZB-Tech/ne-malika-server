@@ -7,5 +7,3 @@ export const appSettings = pgTable('app_settings', {
     .notNull()
     .defaultNow(),
 });
-
-export type AppSetting = typeof appSettings.$inferSelect;

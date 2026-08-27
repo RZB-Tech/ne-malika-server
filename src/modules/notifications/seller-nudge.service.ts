@@ -3,6 +3,7 @@ import { Cron } from '@nestjs/schedule';
 import { NotificationsRepository } from './notifications.repository';
 import { NotificationsService } from './notifications.service';
 import { escapeHtml } from '../bot/telegram-html';
+import { errorMessage } from '../../common/errors';
 
 const STALE_DAYS = 7;
 
@@ -46,7 +47,7 @@ export class SellerNudgeService {
       sellers = await this.repository.staleSellers(staleBefore, nudgedBefore);
     } catch (err) {
       this.logger.error(
-        `Не удалось выбрать продавцов для напоминания: ${err instanceof Error ? err.message : String(err)}`,
+        `Не удалось выбрать продавцов для напоминания: ${errorMessage(err)}`,
       );
       return;
     }

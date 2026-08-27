@@ -10,11 +10,8 @@ import {
   shops,
   users,
 } from '../../db/schema';
-import {
-  recomputeProductRating,
-  recomputeShopRating,
-  type Tx,
-} from '../../db/rating';
+import { recomputeProductRating, recomputeShopRating } from '../../db/rating';
+import type { Tx } from '../../db/db.provider';
 import type { AiVerdict } from '../ai/ai-check.types';
 import { FindReviewsQueryDto } from './dto/find-reviews-query.dto';
 import { FindAdminReviewsQueryDto } from './dto/find-admin-reviews-query.dto';
@@ -264,12 +261,12 @@ function target(query: FindReviewsQueryDto): SQL[] {
 
 function ownTarget(query: FindReviewsQueryDto): SQL[] {
   if (query.product_id !== undefined) {
-    return [eq(reviews.productCardId, query.product_id)];
+    return target(query);
   }
   if (query.shop_id !== undefined) {
-    return [eq(reviews.shopId, query.shop_id), isNull(reviews.productCardId)];
+    return [...target(query), isNull(reviews.productCardId)];
   }
-  return [];
+  return target(query);
 }
 
 async function recompute(tx: Tx, review: Review): Promise<void> {

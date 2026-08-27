@@ -26,6 +26,7 @@ import {
   SubscriptionsService,
   type CompleteResult,
 } from './subscriptions.service';
+import { errorMessage } from '../../common/errors';
 
 interface ClickAnswer {
   click_trans_id: string;
@@ -46,24 +47,26 @@ interface CallbackContext {
 
 const LOG_BODY_LIMIT = 1000;
 
-const COMPLETE_FAILURE_CODE: Record<
+const COMPLETE_FAILURE: Record<
   'not_found' | 'invalid_amount' | 'mismatch' | 'shop_gone',
-  ClickResponseCode
+  { code: ClickResponseCode; note: string }
 > = {
-  not_found: CLICK_RESPONSE.transactionNotFound,
-  invalid_amount: CLICK_RESPONSE.invalidAmount,
-  mismatch: CLICK_RESPONSE.invalidRequest,
-  shop_gone: CLICK_RESPONSE.invalidRequest,
-};
-
-const COMPLETE_FAILURE_NOTE: Record<
-  'not_found' | 'invalid_amount' | 'mismatch' | 'shop_gone',
-  string
-> = {
-  not_found: 'Complete по транзакции, которой нет в журнале платежей',
-  invalid_amount: 'Сумма Complete не совпала с суммой принятого Prepare',
-  mismatch: 'Реквизиты Complete не сошлись с сохранённым Prepare',
-  shop_gone: 'Магазин перестал быть активным между Prepare и Complete',
+  not_found: {
+    code: CLICK_RESPONSE.transactionNotFound,
+    note: 'Complete по транзакции, которой нет в журнале платежей',
+  },
+  invalid_amount: {
+    code: CLICK_RESPONSE.invalidAmount,
+    note: 'Сумма Complete не совпала с суммой принятого Prepare',
+  },
+  mismatch: {
+    code: CLICK_RESPONSE.invalidRequest,
+    note: 'Реквизиты Complete не сошлись с сохранённым Prepare',
+  },
+  shop_gone: {
+    code: CLICK_RESPONSE.invalidRequest,
+    note: 'Магазин перестал быть активным между Prepare и Complete',
+  },
 };
 
 function bodyForLog(body: Record<string, unknown>): string {
@@ -114,7 +117,7 @@ export class ClickController {
     try {
       return await this.dispatch(body, context);
     } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
+      const detail = errorMessage(error);
       this.logger.error(
         `Колбэк Click сорвался: ${detail} | ${bodyForLog(body)}`,
         error instanceof Error ? error.stack : undefined,
@@ -311,10 +314,10 @@ export class ClickController {
     }
 
     if (!this.owesRefund(body, context)) {
-      return answer(body, COMPLETE_FAILURE_CODE[result.kind]);
+      return answer(body, COMPLETE_FAILURE[result.kind].code);
     }
 
-    return this.failComplete(body, context, COMPLETE_FAILURE_NOTE[result.kind]);
+    return this.failComplete(body, context, COMPLETE_FAILURE[result.kind].note);
   }
 
   private async failComplete(

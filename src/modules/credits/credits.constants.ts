@@ -1,6 +1,6 @@
 import type { CreditTxnMeta } from '../../db/schema';
 
-export const CREDITS_PER_USD = 1000;
+const CREDITS_PER_USD = 1000;
 
 export const DEFAULT_CREDIT_MARKUP = 2;
 
@@ -26,7 +26,6 @@ const IMAGE_TOKENS_PER_PIXEL: Record<string, number> = {
   low: 272 / (1024 * 1024),
   medium: 1056 / (1024 * 1024),
   high: 4160 / (1024 * 1024),
-  auto: 4160 / (1024 * 1024),
 };
 
 const IMAGE_REFERENCE_TOKENS = 1500;
@@ -58,7 +57,7 @@ export function estimatePromptUsd(): number {
   return 0.001;
 }
 
-export interface SpendSplit {
+interface SpendSplit {
   fromSubscription: number;
   fromBalance: number;
 }

@@ -25,6 +25,10 @@ import { SubscriptionsService } from './subscriptions.service';
 import { ActivateSubscriptionDto } from './dto/activate-subscription.dto';
 import { FindAdminSubscriptionsQueryDto } from './dto/find-admin-subscriptions-query.dto';
 import {
+  SubscriptionReportDto,
+  SubscriptionReportQueryDto,
+} from './dto/subscription-report.dto';
+import {
   PaginatedAdminSubscriptionsDto,
   PaginatedSubscriptionPaymentsDto,
   SellerSubscriptionDto,
@@ -47,6 +51,23 @@ export class AdminSubscriptionsController {
     @Query() query: FindAdminSubscriptionsQueryDto,
   ): Promise<PaginatedAdminSubscriptionsDto> {
     return this.subscriptions.adminList(query);
+  }
+
+  @Get('report')
+  @ApiOperation({
+    summary: 'Отчёт по продажам подписок',
+    description:
+      'Выручка, оплаты и разбивки по тарифам, провайдерам и магазинам. ' +
+      'В выручку идут только оплаченные счёта — без тестовых прогонов и без ' +
+      'тех, по которым провайдер вернул деньги; сколько таких отброшено, ' +
+      'видно в excludedTest и excludedRefunded. Ряд по дням сплошной: сутки ' +
+      'без оплат приходят нулями.',
+  })
+  @ApiResponse({ status: 200, type: SubscriptionReportDto })
+  report(
+    @Query() query: SubscriptionReportQueryDto,
+  ): Promise<SubscriptionReportDto> {
+    return this.subscriptions.adminReport(query.days ?? 30);
   }
 }
 

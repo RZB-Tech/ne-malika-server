@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsIn, IsString, Length } from 'class-validator';
 
-export const PRODUCT_EVENT_KINDS = ['view', 'phone', 'telegram'] as const;
+const PRODUCT_EVENT_KINDS = ['view', 'phone', 'telegram'] as const;
 
 export type ProductEventKind = (typeof PRODUCT_EVENT_KINDS)[number];
 

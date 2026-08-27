@@ -11,6 +11,5 @@ import { AdminReportsController } from './admin-reports.controller';
   imports: [ShopsModule, ProductCardsModule, NotificationsModule],
   controllers: [ReportsController, AdminReportsController],
   providers: [ReportsRepository, ReportsService],
-  exports: [ReportsService],
 })
 export class ReportsModule {}

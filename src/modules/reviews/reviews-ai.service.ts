@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { errorMessage } from '../../common/errors';
 import { ConfigService } from '@nestjs/config';
 import type OpenAI from 'openai';
 import { OPENROUTER_CLIENT } from '../openrouter/openrouter-client.provider';
@@ -75,8 +76,9 @@ export class ReviewsAiService {
 
       return parseResult(completion.choices[0]?.message?.content);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Модель не ответила по отзыву (${model}): ${message}`);
+      this.logger.error(
+        `Модель не ответила по отзыву (${model}): ${errorMessage(err)}`,
+      );
       return null;
     }
   }

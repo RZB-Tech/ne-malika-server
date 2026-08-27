@@ -37,6 +37,3 @@ export const favorites = pgTable(
     ),
   }),
 );
-
-export type Favorite = typeof favorites.$inferSelect;
-export type NewFavorite = typeof favorites.$inferInsert;

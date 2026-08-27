@@ -12,13 +12,13 @@ import {
   MinLength,
 } from 'class-validator';
 
-export const IMAGE_QUALITIES = ['low', 'medium', 'high'] as const;
+const IMAGE_QUALITIES = ['low', 'medium', 'high'] as const;
 export type ImageQuality = (typeof IMAGE_QUALITIES)[number];
 
-export const CARD_STYLES = ['infographic', 'photo'] as const;
+const CARD_STYLES = ['infographic', 'photo'] as const;
 export type CardStyle = (typeof CARD_STYLES)[number];
 
-export const IMAGE_SIZES = [
+const IMAGE_SIZES = [
   '960x1280',
   '1440x1920',
   '1728x2304',

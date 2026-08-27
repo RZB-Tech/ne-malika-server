@@ -1,26 +1,17 @@
+import type {
+  ShopDailyPointDto,
+  TopProductDto,
+} from './dto/shop-analytics.dto';
+
 const SEP = ';';
 
 const EOL = '\r\n';
 
 const BOM = '\uFEFF';
 
-export interface AnalyticsCsvProduct {
-  name: string;
-  views: number;
-  visits: number;
-  contacts: number;
-  contactVisitors: number;
-  conversionPercent: number;
-}
+export type AnalyticsCsvProduct = Omit<TopProductDto, 'id'>;
 
-export interface AnalyticsCsvDay {
-  date: string;
-  views: number;
-  visitors: number;
-  phoneClicks: number;
-  telegramClicks: number;
-  contactVisitors: number;
-}
+export type AnalyticsCsvDay = ShopDailyPointDto;
 
 export interface AnalyticsCsvInput {
   shopName: string;

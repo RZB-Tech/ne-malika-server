@@ -56,20 +56,7 @@ export class ProductCardsService {
       shop.restrictedCategoriesEnabled,
     );
 
-    const card = await this.productCardsRepository.create({
-      shopId,
-      categoryId: dto.categoryId,
-      name: dto.name,
-      description: dto.description,
-      photos: dto.photos,
-      price: priceColumn(dto.price) ?? null,
-      state: dto.state,
-      characteristics: dto.characteristics,
-      status: 'pending',
-    });
-
-    this.aiChecksService.runInBackground(card);
-    return card;
+    return this.createCard(shopId, dto);
   }
 
   async listForSeller(ownerId: number, shopId: number) {
@@ -92,12 +79,31 @@ export class ProductCardsService {
     const card = await this.getOwnOrThrow(ownerId, id);
     this.assertNotAbolished(card);
     await this.assertCategoryChangeAllowed(card, dto.categoryId);
+    return this.updateCard(id, dto);
+  }
+
+  private async createCard(shopId: number, dto: CreateProductCardDto) {
+    const card = await this.productCardsRepository.create({
+      shopId,
+      categoryId: dto.categoryId,
+      name: dto.name,
+      description: dto.description,
+      photos: dto.photos,
+      price: priceColumn(dto.price) ?? null,
+      state: dto.state,
+      characteristics: dto.characteristics,
+      status: 'pending',
+    });
+    this.aiChecksService.runInBackground(card);
+    return card;
+  }
+
+  private async updateCard(id: number, dto: UpdateProductCardDto) {
     const updated = await this.productCardsRepository.update(id, {
       ...dto,
       price: priceColumn(dto.price),
       status: 'pending',
     });
-
     await this.invalidateCache();
     this.aiChecksService.runInBackground(updated);
     return updated;
@@ -108,7 +114,7 @@ export class ProductCardsService {
     categoryId: number | undefined,
   ) {
     if (categoryId === undefined || categoryId === card.categoryId) return;
-    const shop = await this.shopsService.getOrThrowById(card.shopId);
+    const shop = await this.shopsService.getOrThrow(card.shopId);
     await this.categoriesService.assertUsable(
       categoryId,
       shop.restrictedCategoriesEnabled,
@@ -122,7 +128,6 @@ export class ProductCardsService {
     this.aiChecksService.runInBackground(card);
     return { queued: true };
   }
-
   private assertNotAbolished(card: {
     status: string;
     abolishReason: string | null;
@@ -163,35 +168,16 @@ export class ProductCardsService {
   }
 
   async adminCreate(shopId: number, dto: CreateProductCardDto) {
-    const shop = await this.shopsService.getOrThrowById(shopId);
+    const shop = await this.shopsService.getOrThrow(shopId);
     this.shopsService.assertAcceptsProducts(shop);
     await this.categoriesService.assertExists(dto.categoryId);
-    const card = await this.productCardsRepository.create({
-      shopId,
-      categoryId: dto.categoryId,
-      name: dto.name,
-      description: dto.description,
-      photos: dto.photos,
-      price: priceColumn(dto.price) ?? null,
-      state: dto.state,
-      characteristics: dto.characteristics,
-      status: 'pending',
-    });
-    this.aiChecksService.runInBackground(card);
-    return card;
+    return this.createCard(shopId, dto);
   }
 
   async adminUpdate(id: number, dto: UpdateProductCardDto) {
     await this.getOrThrow(id);
     await this.categoriesService.assertExists(dto.categoryId);
-    const updated = await this.productCardsRepository.update(id, {
-      ...dto,
-      price: priceColumn(dto.price),
-      status: 'pending',
-    });
-    await this.invalidateCache();
-    this.aiChecksService.runInBackground(updated);
-    return updated;
+    return this.updateCard(id, dto);
   }
 
   async adminRecheck(id: number) {
@@ -224,17 +210,17 @@ export class ProductCardsService {
     const { visitor_id: visitorId, ...cacheable } = query;
     const key = query.sort === 'random' ? null : productListKey(cacheable);
     const cached = key ? await this.redis.get<PublicList>(key) : null;
+    const categoryIds = cached
+      ? undefined
+      : await this.resolveCategoryIds(query);
     const result =
       cached ??
-      (await this.productCardsRepository.findPublicList(
-        query,
-        await this.resolveCategoryIds(query),
-      ));
+      (await this.productCardsRepository.findPublicList(query, categoryIds));
     if (key && !cached) {
       await this.redis.set(key, result, PRODUCT_LIST_TTL_SEC);
     }
 
-    this.recordSearchHit(query, visitorId, userAgent);
+    this.recordSearchHit(query, visitorId, userAgent, categoryIds);
 
     const { data, total, page, limit } = result;
     return buildPaginatedResult(data, total, page, limit);
@@ -244,13 +230,14 @@ export class ProductCardsService {
     query: FindProductCardsQueryDto,
     visitorId: string | undefined,
     userAgent: string | undefined,
+    categoryIds: number[] | undefined,
   ): void {
     if (!query.q || (query.page ?? 1) !== 1) return;
 
     this.searchStats.record(query.q, visitorId, userAgent, async () =>
       this.productCardsRepository.findMatchingShopIds(
         query,
-        await this.resolveCategoryIds(query),
+        categoryIds ?? (await this.resolveCategoryIds(query)),
         SEARCH_HIT_SHOP_LIMIT,
       ),
     );

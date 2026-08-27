@@ -1,6 +1,18 @@
-import type { Shop } from '../../db/schema';
+import { subscriptionPlanEnum, type Shop } from '../../db/schema';
+import { monthStart, TZ } from '../product-stats/product-stats.util';
 
-export { monthStart, TZ } from '../product-stats/product-stats.util';
+export { monthStart, TZ };
+
+export const PLAN_VALUES = [...subscriptionPlanEnum.enumValues];
+
+export function formatDate(value: Date): string {
+  return new Intl.DateTimeFormat('ru-RU', {
+    timeZone: TZ,
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(value);
+}
 
 export const PAID_PLANS = ['start', 'pro', 'max'] as const;
 export type PaidPlan = (typeof PAID_PLANS)[number];

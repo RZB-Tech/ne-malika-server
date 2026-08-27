@@ -117,14 +117,6 @@ export class ReviewsService {
     return this.repository.statusCounts();
   }
 
-  approve(adminId: number, id: number) {
-    return this.publish(id, adminId);
-  }
-
-  reject(adminId: number, id: number, reason: string) {
-    return this.decline(id, adminId, reason);
-  }
-
   async recheck(id: number) {
     await this.getOrThrow(id);
     await this.runAiCheck(id);
@@ -173,11 +165,7 @@ export class ReviewsService {
     void this.notifications.notifyAdmins(needsHumanText(review, result.note));
   }
 
-  private async publish(
-    id: number,
-    moderatedBy: number | null,
-    ai?: ReviewAiResult,
-  ) {
+  async publish(id: number, moderatedBy: number | null, ai?: ReviewAiResult) {
     const review = await this.getOrThrow(id);
     const updated = await this.repository.setStatus(id, {
       status: 'approved',
@@ -199,7 +187,7 @@ export class ReviewsService {
     return updated;
   }
 
-  private async decline(
+  async decline(
     id: number,
     moderatedBy: number | null,
     reason: string,
@@ -254,7 +242,6 @@ export class ReviewsService {
       return {
         shopId: shop.id,
         productCardId: card.id,
-        title: `товар «${card.name}»`,
       };
     }
 
@@ -262,7 +249,6 @@ export class ReviewsService {
     return {
       shopId: shop.id,
       productCardId: undefined,
-      title: `магазин «${shop.name}»`,
     };
   }
 

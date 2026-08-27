@@ -61,11 +61,10 @@ export class ReportsService {
   }
 
   async adminRemove(id: number) {
-    const report = await this.reportsRepository.findById(id);
-    if (!report) {
+    const deleted = await this.reportsRepository.deleteReturningId(id);
+    if (deleted === 0) {
       throw new NotFoundException('Жалоба не найдена');
     }
-    await this.reportsRepository.delete(id);
   }
 }
 

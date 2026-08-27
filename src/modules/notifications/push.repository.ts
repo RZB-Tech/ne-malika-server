@@ -3,6 +3,7 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { DRIZZLE, type DrizzleDb } from '../../db/db.provider';
 import { pushSubscriptions, users } from '../../db/schema';
 import type { BroadcastAudience } from './dto/create-broadcast.dto';
+import { audienceRoleFilter } from './audience.filter';
 
 export interface PushTarget {
   id: number;
@@ -62,15 +63,8 @@ export class PushRepository {
   }
 
   private audienceWhere(audience: BroadcastAudience) {
-    const byRole =
-      audience === 'sellers'
-        ? eq(users.role, 'seller')
-        : audience === 'buyers'
-          ? eq(users.role, 'user')
-          : undefined;
-
     const base = isNull(users.blockedAt);
-    return byRole ? and(base, byRole) : base;
+    return and(base, audienceRoleFilter(audience)) ?? base;
   }
 
   audience(audience: BroadcastAudience): Promise<PushTarget[]> {

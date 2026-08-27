@@ -37,5 +37,3 @@ export const pushSubscriptions = pgTable(
     userIdIdx: index('push_subscriptions_user_id_idx').on(table.userId),
   }),
 );
-
-export type PushSubscriptionRow = typeof pushSubscriptions.$inferSelect;

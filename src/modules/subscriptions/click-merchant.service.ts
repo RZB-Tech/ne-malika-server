@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createClickMerchantAuth } from './click-protocol';
+import { errorMessage } from '../../common/errors';
 
 export type ClickReversalResult =
   | { ok: true }
@@ -31,7 +32,6 @@ interface ClickMerchantResponse {
   invoice_status_note?: string;
   status?: number | null;
   status_note?: string | null;
-  payment_id?: number | null;
 }
 
 const DEFAULT_MERCHANT_API_URL = 'https://api.click.uz/v2/merchant';
@@ -146,7 +146,7 @@ export class ClickMerchantService {
       );
       return { ok: false, reason: 'request_failed', detail };
     } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
+      const detail = errorMessage(error);
       this.logger.error(`Счёт Click не выставлен: ${detail}`);
       return { ok: false, reason: 'request_failed', detail };
     }
@@ -180,7 +180,7 @@ export class ClickMerchantService {
       return {
         ok: false,
         reason: 'request_failed',
-        detail: error instanceof Error ? error.message : String(error),
+        detail: errorMessage(error),
       };
     }
   }
@@ -201,58 +201,29 @@ export class ClickMerchantService {
     }
 
     const serviceId = this.config.get<string>('click.serviceId')!;
-    const merchantUserId = this.config.get<string>('click.merchantUserId')!;
-    const secretKey = this.config.get<string>('click.secretKey')!;
-    const baseUrl = (
-      this.config.get<string>('click.merchantApiUrl') ??
-      DEFAULT_MERCHANT_API_URL
-    ).replace(/\/+$/, '');
-    const timeoutMs =
-      this.config.get<number>('click.reversalTimeoutMs') ??
-      DEFAULT_REVERSAL_TIMEOUT_MS;
-
-    const timestamp = Math.floor(Date.now() / 1000);
-    const auth = createClickMerchantAuth(merchantUserId, secretKey, timestamp);
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      const response = await fetch(
-        `${baseUrl}/payment/reversal/${encodeURIComponent(serviceId)}/${encodeURIComponent(paymentId)}`,
-        {
-          method: 'DELETE',
-          headers: {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-            Auth: auth,
-          },
-          signal: controller.signal,
-        },
+      const { ok, status, payload } = await this.call(
+        `${this.baseUrl()}/payment/reversal/${encodeURIComponent(serviceId)}/${encodeURIComponent(paymentId)}`,
+        'DELETE',
       );
 
-      const payload = (await response
-        .json()
-        .catch(() => null)) as ClickMerchantResponse | null;
-
-      if (response.ok && payload?.error_code === 0) {
+      if (ok && payload?.error_code === 0) {
         this.logger.warn(`Платёж Click ${paymentId} возвращён покупателю`);
         return { ok: true };
       }
 
-      const detail = payload?.error_note ?? `HTTP ${response.status}`;
+      const detail = payload?.error_note ?? `HTTP ${status}`;
       this.logger.error(
         `Возврат платежа Click ${paymentId} отклонён: ${detail}`,
       );
       return { ok: false, reason: 'request_failed', detail };
     } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
+      const detail = errorMessage(error);
       this.logger.error(
         `Возврат платежа Click ${paymentId} не прошёл: ${detail}`,
       );
       return { ok: false, reason: 'request_failed', detail };
-    } finally {
-      clearTimeout(timeout);
     }
   }
 }

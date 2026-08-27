@@ -16,7 +16,7 @@ import {
 } from 'class-validator';
 import { subscriptionPlanEnum } from '../../../db/schema';
 import type { SubscriptionPlanId } from '../../subscriptions/subscriptions.constants';
-import { CharacteristicDto } from '../../shops/dto/characteristics';
+import { CharacteristicDto } from '../../../common/dto/characteristic.dto';
 
 export const AUTOFILL_MAX_PHOTOS = 3;
 

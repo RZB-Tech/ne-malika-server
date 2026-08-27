@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { errorMessage } from '../../common/errors';
 
 export interface TelegramSendResult {
   ok: boolean;
@@ -116,7 +117,7 @@ export class TelegramApiService {
       this.logger.error(`Telegram API ${method} request error`, err as Error);
       return {
         ok: false,
-        description: err instanceof Error ? err.message : String(err),
+        description: errorMessage(err),
       };
     }
   }

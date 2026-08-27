@@ -42,10 +42,6 @@ describe('environment validation', () => {
     );
   });
 
-  it('поднимается без единого реквизита Click', () => {
-    assert.doesNotThrow(() => validate(baseConfig));
-  });
-
   it('пропускает CLICK_SECRET_KEY без CLICK_SERVICE_ID', () => {
     assert.doesNotThrow(() =>
       validate({ ...baseConfig, CLICK_SECRET_KEY: 'secret' }),

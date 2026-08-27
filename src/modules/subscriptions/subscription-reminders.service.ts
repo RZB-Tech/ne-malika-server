@@ -6,12 +6,13 @@ import { RedisService } from '../redis/redis.service';
 import { SearchStatsService } from '../search-stats/search-stats.service';
 import { escapeHtml } from '../bot/telegram-html';
 import { today } from '../product-stats/product-stats.util';
+import { errorMessage } from '../../common/errors';
 import type { SubscriptionReminder } from '../../db/schema';
 import {
   SubscriptionsRepository,
   type ReminderCandidate,
 } from './subscriptions.repository';
-import { REMINDER_LEAD_DAYS, TZ } from './subscriptions.constants';
+import { REMINDER_LEAD_DAYS, TZ, formatDate } from './subscriptions.constants';
 
 type ReminderStage = SubscriptionReminder['stage'];
 
@@ -45,7 +46,7 @@ export class SubscriptionRemindersService {
       candidates = await this.repository.reminderCandidates(REMINDER_LEAD_DAYS);
     } catch (error) {
       this.logger.error(
-        `Не удалось выбрать магазины для напоминания: ${message(error)}`,
+        `Не удалось выбрать магазины для напоминания: ${errorMessage(error)}`,
       );
       return;
     }
@@ -69,7 +70,9 @@ export class SubscriptionRemindersService {
         })),
       );
     } catch (error) {
-      this.logger.error(`Не удалось занять напоминания: ${message(error)}`);
+      this.logger.error(
+        `Не удалось занять напоминания: ${errorMessage(error)}`,
+      );
       return;
     }
 
@@ -96,7 +99,7 @@ export class SubscriptionRemindersService {
       );
     } catch (error) {
       this.logger.error(
-        `Не удалось выбрать адресатов Telegram: ${message(error)}`,
+        `Не удалось выбрать адресатов Telegram: ${errorMessage(error)}`,
       );
     }
 
@@ -111,7 +114,7 @@ export class SubscriptionRemindersService {
       telegramDelivered = telegram.delivered;
     } catch (error) {
       this.logger.error(
-        `Рассылка напоминаний в Telegram оборвалась: ${message(error)}`,
+        `Рассылка напоминаний в Telegram оборвалась: ${errorMessage(error)}`,
       );
     }
 
@@ -137,7 +140,7 @@ export class SubscriptionRemindersService {
       const result = pushResults[index];
       if (result.status === 'rejected') {
         this.logger.warn(
-          `Push о подписке магазина ${row.shopId} не ушёл: ${message(result.reason)}`,
+          `Push о подписке магазина ${row.shopId} не ушёл: ${errorMessage(result.reason)}`,
         );
       }
       const devices = result.status === 'fulfilled' ? result.value : 0;
@@ -160,7 +163,7 @@ export class SubscriptionRemindersService {
       await this.repository.confirmReminders(confirmed);
     } catch (error) {
       this.logger.error(
-        `Не удалось записать итог напоминаний: ${message(error)}`,
+        `Не удалось записать итог напоминаний: ${errorMessage(error)}`,
       );
     }
 
@@ -168,7 +171,7 @@ export class SubscriptionRemindersService {
       await this.repository.releaseReminders(orphaned);
     } catch (error) {
       this.logger.error(
-        `Не удалось освободить недоставленные напоминания: ${message(error)}`,
+        `Не удалось освободить недоставленные напоминания: ${errorMessage(error)}`,
       );
     }
 
@@ -193,7 +196,7 @@ export class SubscriptionRemindersService {
       }
     } catch (error) {
       this.logger.error(
-        `Не удалось убрать старые поисковые запросы: ${message(error)}`,
+        `Не удалось убрать старые поисковые запросы: ${errorMessage(error)}`,
       );
     }
 
@@ -206,7 +209,7 @@ export class SubscriptionRemindersService {
       }
     } catch (error) {
       this.logger.error(
-        `Не удалось убрать старые напоминания: ${message(error)}`,
+        `Не удалось убрать старые напоминания: ${errorMessage(error)}`,
       );
     }
   }
@@ -214,15 +217,6 @@ export class SubscriptionRemindersService {
 
 function stageOf(daysLeft: number): ReminderStage {
   return daysLeft <= 0 ? 'expires_today' : 'expiring_3d';
-}
-
-function formatDate(value: Date): string {
-  return new Intl.DateTimeFormat('ru-RU', {
-    timeZone: TZ,
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  }).format(value);
 }
 
 function whenLeft(daysLeft: number): string {
@@ -252,8 +246,4 @@ function telegramText(row: {
     `Магазин <b>${shop}</b> оплачен до ${until}. ` +
     'Продлевать можно заранее: оплаченные дни не сгорают, новый месяц прибавится к остатку.'
   );
-}
-
-function message(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }

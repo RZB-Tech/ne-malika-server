@@ -1,16 +1,13 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type Redis from 'ioredis';
 import { REDIS_CLIENT } from './redis-client.provider';
+import { errorMessage } from '../../common/errors';
 
 @Injectable()
 export class RedisService {
   private readonly logger = new Logger(RedisService.name);
 
   constructor(@Inject(REDIS_CLIENT) private readonly client: Redis | null) {}
-
-  get enabled(): boolean {
-    return this.client !== null;
-  }
 
   async get<T>(key: string): Promise<T | null> {
     if (!this.client) return null;
@@ -73,8 +70,6 @@ export class RedisService {
   }
 
   private warn(op: string, key: string, err: unknown) {
-    this.logger.warn(
-      `Redis ${op} ${key}: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    this.logger.warn(`Redis ${op} ${key}: ${errorMessage(err)}`);
   }
 }

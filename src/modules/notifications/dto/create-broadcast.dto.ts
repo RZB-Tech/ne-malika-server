@@ -12,7 +12,7 @@ import {
 export const BROADCAST_AUDIENCES = ['all', 'sellers', 'buyers'] as const;
 export type BroadcastAudience = (typeof BROADCAST_AUDIENCES)[number];
 
-export const BROADCAST_MAX_LENGTH = 4096;
+const BROADCAST_MAX_LENGTH = 4096;
 
 const ALLOWED_TAGS = [
   'b',
@@ -35,7 +35,7 @@ const ALLOWED_TAGS = [
 const TAG_RE = /<\/?([a-zA-Z-]+)(\s[^<>]*)?>/g;
 
 @ValidatorConstraint({ name: 'telegramHtml' })
-export class TelegramHtmlConstraint implements ValidatorConstraintInterface {
+class TelegramHtmlConstraint implements ValidatorConstraintInterface {
   private problem = 'разметка не по правилам Telegram';
 
   validate(value: unknown): boolean {

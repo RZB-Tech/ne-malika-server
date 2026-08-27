@@ -44,6 +44,3 @@ export const productViews = pgTable(
     ),
   }),
 );
-
-export type ProductView = typeof productViews.$inferSelect;
-export type NewProductView = typeof productViews.$inferInsert;

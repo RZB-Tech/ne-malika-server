@@ -91,6 +91,4 @@ export const chatMessages = pgTable(
 );
 
 export type Chat = typeof chats.$inferSelect;
-export type NewChat = typeof chats.$inferInsert;
 export type ChatMessage = typeof chatMessages.$inferSelect;
-export type NewChatMessage = typeof chatMessages.$inferInsert;

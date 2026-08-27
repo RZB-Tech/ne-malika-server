@@ -44,4 +44,3 @@ export const aiProductChecks = pgTable(
 );
 
 export type AiProductCheck = typeof aiProductChecks.$inferSelect;
-export type NewAiProductCheck = typeof aiProductChecks.$inferInsert;

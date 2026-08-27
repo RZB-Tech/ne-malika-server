@@ -1,4 +1,4 @@
-export const TELEGRAM_MAX_MESSAGE = 4096;
+const TELEGRAM_MAX_MESSAGE = 4096;
 
 export function escapeHtml(value: string): string {
   return value

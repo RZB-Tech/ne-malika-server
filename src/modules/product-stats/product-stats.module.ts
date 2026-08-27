@@ -18,6 +18,5 @@ import { AdminStatsController } from './admin-stats.controller';
     AdminStatsController,
   ],
   providers: [ProductStatsRepository, ProductStatsService],
-  exports: [ProductStatsService],
 })
 export class ProductStatsModule {}

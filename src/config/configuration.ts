@@ -12,7 +12,7 @@ function envInt(value: string | undefined, fallback: number): number {
 
 export default () => ({
   env: process.env.NODE_ENV,
-  port: parseInt(process.env.PORT ?? '3000', 10),
+  port: envInt(process.env.PORT, 3000),
   apiPrefix: process.env.API_PREFIX ?? 'api/v1',
 
   corsOrigins: (process.env.CORS_ORIGINS ?? '')
@@ -54,10 +54,7 @@ export default () => ({
 
   telegram: {
     botToken: process.env.TELEGRAM_BOT_TOKEN,
-    initDataTtlSec: parseInt(
-      process.env.TELEGRAM_INIT_DATA_TTL_SEC ?? '86400',
-      10,
-    ),
+    initDataTtlSec: envInt(process.env.TELEGRAM_INIT_DATA_TTL_SEC, 86_400),
     webhookUrl: process.env.TELEGRAM_WEBHOOK_URL,
     webhookSecret: process.env.TELEGRAM_WEBHOOK_SECRET,
   },

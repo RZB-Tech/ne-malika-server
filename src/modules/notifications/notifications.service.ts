@@ -10,6 +10,7 @@ import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
 import { clampMessage } from '../bot/telegram-html';
 import { PushService } from './push.service';
+import { errorMessage } from '../../common/errors';
 
 const BULK_DELAY_MS = 70;
 
@@ -46,7 +47,7 @@ export class NotificationsService {
       await this.deliver(admins, text);
     } catch (err) {
       this.logger.error(
-        `Не удалось уведомить администраторов: ${err instanceof Error ? err.message : String(err)}`,
+        `Не удалось уведомить администраторов: ${errorMessage(err)}`,
       );
     }
   }
@@ -58,7 +59,7 @@ export class NotificationsService {
       await this.deliver([recipient], text);
     } catch (err) {
       this.logger.error(
-        `Не удалось уведомить пользователя ${userId}: ${err instanceof Error ? err.message : String(err)}`,
+        `Не удалось уведомить пользователя ${userId}: ${errorMessage(err)}`,
       );
     }
   }
@@ -71,7 +72,7 @@ export class NotificationsService {
       await this.push.sendToUser(userId, payload);
     } catch (err) {
       this.logger.error(
-        `Push пользователю ${userId} не ушёл: ${err instanceof Error ? err.message : String(err)}`,
+        `Push пользователю ${userId} не ушёл: ${errorMessage(err)}`,
       );
     }
   }
@@ -150,18 +151,14 @@ export class NotificationsService {
     try {
       counters = await this.deliver(recipients, text);
     } catch (err) {
-      this.logger.error(
-        `Рассылка ${id} прервана: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      this.logger.error(`Рассылка ${id} прервана: ${errorMessage(err)}`);
     }
 
     let pushCounters = { delivered: 0, failed: 0 };
     try {
       pushCounters = await this.push.broadcast(audience, text, PUSH_TITLE);
     } catch (err) {
-      this.logger.error(
-        `Push-рассылка ${id} не удалась: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      this.logger.error(`Push-рассылка ${id} не удалась: ${errorMessage(err)}`);
     }
 
     try {
@@ -173,7 +170,7 @@ export class NotificationsService {
       });
     } catch (err) {
       this.logger.error(
-        `Не удалось записать итог рассылки ${id}: ${err instanceof Error ? err.message : String(err)}`,
+        `Не удалось записать итог рассылки ${id}: ${errorMessage(err)}`,
       );
     }
 
@@ -240,7 +237,7 @@ export class NotificationsService {
           await this.repository.disableNotifications(recipient.id);
         } catch (err) {
           this.logger.error(
-            `Не удалось снять подписку у ${recipient.id}: ${err instanceof Error ? err.message : String(err)}`,
+            `Не удалось снять подписку у ${recipient.id}: ${errorMessage(err)}`,
           );
         }
       }

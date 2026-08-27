@@ -23,6 +23,7 @@ import {
   resolvePage,
 } from '../../common/dto/pagination-query.dto';
 import type { BroadcastAudience } from './dto/create-broadcast.dto';
+import { audienceRoleFilter } from './audience.filter';
 
 export interface Recipient {
   id: number;
@@ -64,14 +65,7 @@ export class NotificationsRepository {
   }
 
   private audienceWhere(audience: BroadcastAudience) {
-    const byRole =
-      audience === 'sellers'
-        ? eq(users.role, 'seller')
-        : audience === 'buyers'
-          ? eq(users.role, 'user')
-          : undefined;
-
-    return byRole ? and(REACHABLE, byRole) : REACHABLE;
+    return and(REACHABLE, audienceRoleFilter(audience)) ?? REACHABLE;
   }
 
   audience(audience: BroadcastAudience): Promise<Recipient[]> {

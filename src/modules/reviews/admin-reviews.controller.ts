@@ -46,7 +46,7 @@ export class AdminReviewsController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('id', ParseIntPipe) id: number,
   ) {
-    return this.reviewsService.approve(user.id, id);
+    return this.reviewsService.publish(id, user.id);
   }
 
   @Post(':id/recheck')
@@ -68,7 +68,7 @@ export class AdminReviewsController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: RejectReviewDto,
   ) {
-    return this.reviewsService.reject(user.id, id, dto.reason);
+    return this.reviewsService.decline(id, user.id, dto.reason);
   }
 
   @Delete(':id')

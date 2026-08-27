@@ -12,9 +12,9 @@ import {
 import { PaginationQueryDto } from '../../../common/dto/pagination-query.dto';
 import { PaginationMetaDto } from '../../../common/dto/paginated-response.dto';
 
-export const MESSAGE_MAX = 2000;
+const MESSAGE_MAX = 2000;
 
-export const CHAT_ROLES = ['buyer', 'seller'] as const;
+const CHAT_ROLES = ['buyer', 'seller'] as const;
 export type ChatRole = (typeof CHAT_ROLES)[number];
 
 const trimmed = Transform(({ value }: { value: unknown }) =>

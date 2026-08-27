@@ -3,7 +3,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { ChatsRepository, type ChatWithOwner } from './chats.repository';
+import {
+  ChatsRepository,
+  type ChatMessageRow,
+  type ChatRow,
+  type ChatWithOwner,
+} from './chats.repository';
 import { ChatEventsService } from './chat-events.service';
 import { ProductCardsRepository } from '../product-cards/product-cards.repository';
 import { ShopsService } from '../shops/shops.service';
@@ -18,7 +23,10 @@ import {
   SendMessageDto,
   StartChatDto,
 } from './dto/chat.dto';
-import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import {
+  PaginationQueryDto,
+  resolvePage,
+} from '../../common/dto/pagination-query.dto';
 
 const NOTIFY_EXCERPT = 200;
 
@@ -71,13 +79,7 @@ export class ChatsService {
     }
 
     return buildPaginatedResult(
-      page.data.map((row) => ({
-        id: row.id,
-        kind: row.kind,
-        text: row.text,
-        readAt: row.readAt,
-        createdAt: row.createdAt,
-      })),
+      page.data.map(toMessageDto),
       page.total,
       page.page,
       page.limit,
@@ -88,7 +90,7 @@ export class ChatsService {
     const { shopId, productCardId, productName } =
       await this.resolveTarget(dto);
 
-    const shop = await this.shops.getOrThrowById(shopId);
+    const shop = await this.shops.getOrThrow(shopId);
     if (shop.owner === user.id) {
       throw new BadRequestException(
         'Это ваш магазин — писать самому себе незачем',
@@ -129,15 +131,9 @@ export class ChatsService {
     const recipient = side === 'buyer' ? chat.ownerId : chat.buyerId;
 
     this.events.emit(recipient, { chatId: chat.id, kind: 'message' });
-    void this.notify(chat, side, text);
+    void this.notify(chat, side, text, recipient);
 
-    return {
-      id: message.id,
-      kind: message.kind,
-      text: message.text,
-      readAt: message.readAt,
-      createdAt: message.createdAt,
-    };
+    return toMessageDto(message);
   }
 
   private async access(
@@ -182,12 +178,8 @@ export class ChatsService {
     const shops = await this.shops.listOwn(user.id);
     const shop = shops[0];
     if (!shop) {
-      return {
-        data: [],
-        total: 0,
-        page: query.page ?? 1,
-        limit: query.limit ?? 20,
-      };
+      const { page, limit } = resolvePage(query);
+      return { data: [], total: 0, page, limit };
     }
     return this.repository.findForShop(shop.id, query);
   }
@@ -196,9 +188,8 @@ export class ChatsService {
     chat: ChatWithOwner,
     side: 'buyer' | 'seller',
     text: string,
+    recipient: number,
   ): Promise<void> {
-    const recipient = side === 'buyer' ? chat.ownerId : chat.buyerId;
-
     const from =
       side === 'buyer'
         ? 'покупателя'
@@ -221,25 +212,17 @@ export class ChatsService {
   }
 }
 
-function toChatDto(
-  row: {
-    id: number;
-    shopId: number;
-    shopName: string;
-    shopPhoto: string | null;
-    buyerId: number;
-    buyerName: string;
-    buyerPhoto: string | null;
-    productCardId: number | null;
-    productName: string | null;
-    productPhotos: string[] | null;
-    lastMessageText: string | null;
-    lastMessageAt: Date;
-    buyerUnread: number;
-    sellerUnread: number;
-  },
-  role: ChatRole,
-): ChatDto {
+function toMessageDto(row: ChatMessageRow) {
+  return {
+    id: row.id,
+    kind: row.kind,
+    text: row.text,
+    readAt: row.readAt,
+    createdAt: row.createdAt,
+  };
+}
+
+function toChatDto(row: ChatRow, role: ChatRole): ChatDto {
   return {
     id: row.id,
     shopId: row.shopId,

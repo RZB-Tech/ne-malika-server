@@ -8,6 +8,7 @@ import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
 import { UsersRepository } from './users.repository';
 import { TelegramUserPayload } from '../auth/telegram-signature.util';
 import { UserRole } from '../../common/types/auth.types';
+import { buildFullname } from '../../common/telegram';
 import { User } from '../../db/schema';
 
 @Injectable()
@@ -68,15 +69,10 @@ export class UsersService {
       return this.usersRepository.updateProfileFromTelegram(existing.id, {
         telegramUsername: payload.username ?? existing.telegramUsername,
         telegramPhoto: payload.photo_url ?? existing.telegramPhoto,
-        fullname: existing.fullname,
       });
     }
 
-    const fullname =
-      [payload.first_name, payload.last_name]
-        .filter(Boolean)
-        .join(' ')
-        .trim() || 'Без имени';
+    const fullname = buildFullname(payload.first_name, payload.last_name);
 
     return this.usersRepository.create({
       telegramId: payload.id,

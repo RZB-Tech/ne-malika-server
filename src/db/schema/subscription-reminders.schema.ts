@@ -40,4 +40,3 @@ export const subscriptionReminders = pgTable(
 );
 
 export type SubscriptionReminder = typeof subscriptionReminders.$inferSelect;
-export type NewSubscriptionReminder = typeof subscriptionReminders.$inferInsert;

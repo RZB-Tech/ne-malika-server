@@ -25,7 +25,8 @@ export class FavoritesRepository {
     return filterVisibleProductIds(this.db, ids);
   }
 
-  add(userId: number, productCardId: number, addedAt = new Date()) {
+  add(userId: number, productCardId: number) {
+    const addedAt = new Date();
     return this.db
       .insert(favorites)
       .values({ userId, productCardId, addedAt })

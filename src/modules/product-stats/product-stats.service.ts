@@ -114,15 +114,11 @@ export class ProductStatsService {
     const from = shiftDay(to, -(days - 1));
     const rows = await this.repository.findRange(productCardId, from, to);
 
-    const byDay = new Map(rows.map((r) => [r.day.slice(0, 10), r]));
-    const daily = eachDay(from, to).map((date) => {
-      const row = byDay.get(date);
-      return {
-        date,
-        views: row?.views ?? 0,
-        visitors: row?.visitors ?? 0,
-      };
-    });
+    const daily = dailyFilled(from, to, rows, (date, row) => ({
+      date,
+      views: row?.views ?? 0,
+      visitors: row?.visitors ?? 0,
+    }));
 
     const sevenFrom = shiftDay(to, -6);
 
@@ -188,18 +184,14 @@ export class ProductStatsService {
       this.repository.shopTopProducts(shop.id, from, to, TOP_PRODUCTS),
     ]);
 
-    const byDay = new Map(rows.map((r) => [r.day.slice(0, 10), r]));
-    const daily = eachDay(from, to).map((date) => {
-      const row = byDay.get(date);
-      return {
-        date,
-        views: row?.views ?? 0,
-        visitors: row?.visitors ?? 0,
-        phoneClicks: row?.phoneClicks ?? 0,
-        telegramClicks: row?.telegramClicks ?? 0,
-        contactVisitors: row?.contactVisitors ?? 0,
-      };
-    });
+    const daily = dailyFilled(from, to, rows, (date, row) => ({
+      date,
+      views: row?.views ?? 0,
+      visitors: row?.visitors ?? 0,
+      phoneClicks: row?.phoneClicks ?? 0,
+      telegramClicks: row?.telegramClicks ?? 0,
+      contactVisitors: row?.contactVisitors ?? 0,
+    }));
 
     const visits = sum(rows, (r) => r.visitors);
     const contactVisitors = sum(rows, (r) => r.contactVisitors);
@@ -248,16 +240,20 @@ export class ProductStatsService {
     const productsBy = toMap(products);
     const shopsBy = toMap(shops);
     const usersBy = toMap(users);
-    const viewsBy = new Map(views.map((v) => [v.day.slice(0, 10), v] as const));
 
-    const daily: ActivityPointDto[] = eachDay(from, to).map((date) => ({
-      date,
-      products: productsBy.get(date) ?? 0,
-      shops: shopsBy.get(date) ?? 0,
-      users: usersBy.get(date) ?? 0,
-      views: viewsBy.get(date)?.views ?? 0,
-      contacts: viewsBy.get(date)?.contacts ?? 0,
-    }));
+    const daily: ActivityPointDto[] = dailyFilled(
+      from,
+      to,
+      views,
+      (date, v) => ({
+        date,
+        products: productsBy.get(date) ?? 0,
+        shops: shopsBy.get(date) ?? 0,
+        users: usersBy.get(date) ?? 0,
+        views: v?.views ?? 0,
+        contacts: v?.contacts ?? 0,
+      }),
+    );
 
     return {
       daily,
@@ -287,4 +283,14 @@ function conversionOf(contactVisitors: number, visits: number): number {
 
 function toMap(rows: { day: string; count: number }[]): Map<string, number> {
   return new Map(rows.map((r) => [r.day.slice(0, 10), r.count]));
+}
+
+function dailyFilled<R extends { day: string }, T>(
+  from: string,
+  to: string,
+  rows: R[],
+  build: (date: string, row: R | undefined) => T,
+): T[] {
+  const byDay = new Map(rows.map((r) => [r.day.slice(0, 10), r]));
+  return eachDay(from, to).map((date) => build(date, byDay.get(date)));
 }

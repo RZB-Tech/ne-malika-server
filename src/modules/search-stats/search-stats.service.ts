@@ -9,6 +9,8 @@ import {
 } from './search-stats.util';
 import type { SearchHitDto } from './dto/search-hit.dto';
 
+import { errorMessage } from '../../common/errors';
+
 @Injectable()
 export class SearchStatsService {
   private readonly logger = new Logger(SearchStatsService.name);
@@ -54,7 +56,7 @@ export class SearchStatsService {
       await this.repository.record(shopIds, today(), query);
     } catch (err) {
       this.logger.error(
-        `Не удалось записать поисковый запрос: ${err instanceof Error ? err.message : String(err)}`,
+        `Не удалось записать поисковый запрос: ${errorMessage(err)}`,
       );
     }
   }

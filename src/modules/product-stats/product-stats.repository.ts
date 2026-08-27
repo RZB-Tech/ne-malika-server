@@ -12,7 +12,7 @@ export interface StatsDelta {
   contactVisitors: number;
 }
 
-export interface DailyRow {
+interface DailyRow {
   day: string;
   views: number;
   visitors: number;
@@ -21,12 +21,12 @@ export interface DailyRow {
   contactVisitors: number;
 }
 
-export interface CountByDay {
+interface CountByDay {
   day: string;
   count: number;
 }
 
-export interface TopProductRow {
+interface TopProductRow {
   id: number;
   name: string;
   views: number;

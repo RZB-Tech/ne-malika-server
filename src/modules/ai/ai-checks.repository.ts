@@ -38,11 +38,7 @@ export class AiChecksRepository {
     return this.db.transaction(async (tx) => {
       const rows = await tx
         .update(productCards)
-        .set(
-          status
-            ? { status, updatedAt: new Date() }
-            : { updatedAt: new Date() },
-        )
+        .set({ ...(status && { status }), updatedAt: new Date() })
         .where(
           and(
             eq(productCards.id, card.id),

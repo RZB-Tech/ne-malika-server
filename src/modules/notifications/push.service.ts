@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import webpush from 'web-push';
 import { PushRepository, type PushTarget } from './push.repository';
 import type { BroadcastAudience } from './dto/create-broadcast.dto';
+import { errorMessage } from '../../common/errors';
 
 interface PushPayload {
   title: string;
@@ -13,7 +14,7 @@ interface PushPayload {
 
 const BATCH_SIZE = 50;
 
-export interface PushCounters {
+interface PushCounters {
   delivered: number;
   failed: number;
 }
@@ -94,6 +95,28 @@ export class PushService implements OnModuleInit {
       url: '/',
     };
 
+    const counters = await this.sendAll(targets, payload);
+
+    this.logger.log(
+      `Push-рассылка: доставлено ${counters.delivered} из ${targets.length}`,
+    );
+    return counters;
+  }
+
+  async sendToUser(userId: number, payload: PushPayload): Promise<number> {
+    if (!this.enabled) return 0;
+
+    const targets = await this.repository.byUser(userId);
+    if (targets.length === 0) return 0;
+
+    const { delivered } = await this.sendAll(targets, payload);
+    return delivered;
+  }
+
+  private async sendAll(
+    targets: PushTarget[],
+    payload: PushPayload,
+  ): Promise<PushCounters> {
     let delivered = 0;
     let failed = 0;
     const dead: number[] = [];
@@ -120,50 +143,13 @@ export class PushService implements OnModuleInit {
         .removeMany(dead)
         .catch((err: unknown) =>
           this.logger.error(
-            `Не удалось удалить отозванные подписки: ${err instanceof Error ? err.message : String(err)}`,
+            `Не удалось удалить отозванные подписки: ${errorMessage(err)}`,
           ),
         );
       this.logger.log(`Удалено отозванных подписок: ${dead.length}`);
     }
 
-    this.logger.log(
-      `Push-рассылка: доставлено ${delivered} из ${targets.length}`,
-    );
     return { delivered, failed };
-  }
-
-  async sendToUser(userId: number, payload: PushPayload): Promise<number> {
-    if (!this.enabled) return 0;
-
-    const targets = await this.repository.byUser(userId);
-    if (targets.length === 0) return 0;
-
-    const results = await Promise.allSettled(
-      targets.map((target) => this.sendOne(target, payload)),
-    );
-
-    const dead: number[] = [];
-    let delivered = 0;
-    results.forEach((result, index) => {
-      if (result.status === 'fulfilled') {
-        delivered += 1;
-        return;
-      }
-      const status = (result.reason as { statusCode?: number })?.statusCode;
-      if (status === 404 || status === 410) dead.push(targets[index].id);
-    });
-
-    if (dead.length > 0) {
-      await this.repository
-        .removeMany(dead)
-        .catch((err: unknown) =>
-          this.logger.warn(
-            `Не удалось удалить отозванные подписки: ${err instanceof Error ? err.message : String(err)}`,
-          ),
-        );
-    }
-
-    return delivered;
   }
 
   private sendOne(target: PushTarget, payload: PushPayload): Promise<unknown> {

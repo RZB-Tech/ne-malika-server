@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import type OpenAI from 'openai';
 import { OPENROUTER_CLIENT } from '../openrouter/openrouter-client.provider';
 import { describeError } from '../openrouter/openrouter.util';
+import { errorMessage } from '../../common/errors';
 import { AiChecksRepository } from './ai-checks.repository';
 import { SettingsService } from '../settings/settings.service';
 import { RedisService } from '../redis/redis.service';
@@ -144,8 +145,9 @@ export class AiChecksService implements OnModuleInit {
       try {
         await this.run(card);
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        this.logger.error(`Повтор проверки товара ${card.id} упал: ${message}`);
+        this.logger.error(
+          `Повтор проверки товара ${card.id} упал: ${errorMessage(err)}`,
+        );
       }
     }
   }
@@ -207,28 +209,23 @@ export class AiChecksService implements OnModuleInit {
     } as const;
 
     if (result.verdict === 'fail') {
-      const applied = await this.repository.recordDecision(
+      await this.applyDecision(
         card,
         decision,
         'hidden',
-      );
-      if (!applied) return this.logStale(card);
-      await this.redis.delByPrefix(PRODUCT_CACHE_PREFIX);
-      this.logger.warn(`Товар ${card.id} скрыт по вердикту ИИ-проверки`);
-      void this.notifications.notifyAdmins(
+        {
+          level: 'warn',
+          text: `Товар ${card.id} скрыт по вердикту ИИ-проверки`,
+        },
         aiFailureText(card, 'модель забраковала товар', result.summary),
       );
       return;
     }
 
-    const applied = await this.repository.recordDecision(
-      card,
-      decision,
-      'active',
-    );
-    if (!applied) return this.logStale(card);
-    await this.redis.delByPrefix(PRODUCT_CACHE_PREFIX);
-    this.logger.log(`Товар ${card.id} опубликован — вердикт ${result.verdict}`);
+    await this.applyDecision(card, decision, 'active', {
+      level: 'log',
+      text: `Товар ${card.id} опубликован — вердикт ${result.verdict}`,
+    });
   }
 
   private async complete(
@@ -268,22 +265,46 @@ export class AiChecksService implements OnModuleInit {
     });
   }
 
+  private async applyDecision(
+    card: ProductCard,
+    decision: Parameters<AiChecksRepository['recordDecision']>[1],
+    status: 'active' | 'hidden' | undefined,
+    log: { level: 'log' | 'warn'; text: string },
+    notifyText?: string,
+  ): Promise<void> {
+    const applied = await this.repository.recordDecision(
+      card,
+      decision,
+      status,
+    );
+    if (!applied) return this.logStale(card);
+
+    // status не задан только при отложенной ручной проверке — карточка
+    // остаётся pending, публиковать её в кэше ещё нечего.
+    if (status) await this.redis.delByPrefix(PRODUCT_CACHE_PREFIX);
+    this.logger[log.level](log.text);
+    if (notifyText) {
+      void this.notifications.notifyAdmins(notifyText);
+    }
+  }
+
   private async deferToManualReview(
     card: ProductCard,
     model: string,
     summary: string,
     error: string,
   ): Promise<void> {
-    const applied = await this.repository.recordDecision(card, {
-      verdict: 'warn',
-      checks: {},
-      summary,
-      model,
-      error,
-    });
-    if (!applied) return this.logStale(card);
-    this.logger.warn(`Товар ${card.id} не опубликован: ${summary}`);
-    void this.notifications.notifyAdmins(
+    await this.applyDecision(
+      card,
+      {
+        verdict: 'warn',
+        checks: {},
+        summary,
+        model,
+        error,
+      },
+      undefined,
+      { level: 'warn', text: `Товар ${card.id} не опубликован: ${summary}` },
       aiFailureText(card, 'требуется ручная проверка', `${summary}: ${error}`),
     );
   }
@@ -293,7 +314,7 @@ export class AiChecksService implements OnModuleInit {
     model: string,
     reason: string,
   ): Promise<void> {
-    const applied = await this.repository.recordDecision(
+    await this.applyDecision(
       card,
       {
         verdict: 'fail',
@@ -304,11 +325,10 @@ export class AiChecksService implements OnModuleInit {
         model,
       },
       'hidden',
-    );
-    if (!applied) return this.logStale(card);
-    await this.redis.delByPrefix(PRODUCT_CACHE_PREFIX);
-    this.logger.warn(`Товар ${card.id} отклонён до ИИ-проверки: ${reason}`);
-    void this.notifications.notifyAdmins(
+      {
+        level: 'warn',
+        text: `Товар ${card.id} отклонён до ИИ-проверки: ${reason}`,
+      },
       aiFailureText(card, 'карточка забракована', reason),
     );
   }
@@ -336,8 +356,9 @@ export class AiChecksService implements OnModuleInit {
         try {
           attached.push(await this.files.toDataUrl(key));
         } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          this.logger.warn(`Фото ${key} не прочитано из S3: ${message}`);
+          this.logger.warn(
+            `Фото ${key} не прочитано из S3: ${errorMessage(err)}`,
+          );
         }
       }
     }

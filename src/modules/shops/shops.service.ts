@@ -17,6 +17,7 @@ import { UpdateShopDto } from './dto/update-shop.dto';
 import { FindAdminShopsQueryDto } from './dto/find-admin-shops-query.dto';
 import { Shop } from '../../db/schema';
 import { isUniqueViolation } from '../../db/errors';
+import { errorMessage } from '../../common/errors';
 
 @Injectable()
 export class ShopsService {
@@ -71,9 +72,7 @@ export class ShopsService {
         .grantWelcome(shop.id)
         .catch((err: unknown) => {
           this.logger.error(
-            `Не удалось начислить приветственные кредиты магазину ${shop.id}: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
+            `Не удалось начислить приветственные кредиты магазину ${shop.id}: ${errorMessage(err)}`,
           );
           return 0;
         });
@@ -102,23 +101,26 @@ export class ShopsService {
   }
 
   async getOwnOrThrow(ownerId: number, shopId: number) {
-    const shop = await this.shopsRepository.findOwnedByIdAndOwner(
-      shopId,
+    return this.findOwnedOrThrow(
       ownerId,
+      shopId,
+      () => new NotFoundException('Магазин не найден'),
     );
-    if (!shop) {
-      throw new NotFoundException('Магазин не найден');
-    }
-    return shop;
   }
 
   async updateOwn(ownerId: number, shopId: number, dto: UpdateShopDto) {
-    await this.getOwnOrThrow(ownerId, shopId);
-    return this.shopsRepository.update(shopId, dto);
+    const updated = await this.shopsRepository.updateOwned(
+      shopId,
+      ownerId,
+      dto,
+    );
+    if (!updated) {
+      throw new NotFoundException('Магазин не найден');
+    }
+    return updated;
   }
 
   async removeOwn(ownerId: number, shopId: number) {
-    await this.getOwnOrThrow(ownerId, shopId);
     const deleted = await this.shopsRepository.deleteAndDemoteOwner(
       shopId,
       ownerId,
@@ -181,10 +183,6 @@ export class ShopsService {
     await this.redis.delByPrefix(PRODUCT_CACHE_PREFIX);
   }
 
-  getOrThrowById(shopId: number) {
-    return this.getOrThrow(shopId);
-  }
-
   assertAcceptsProducts(shop: Shop) {
     if (shop.status !== 'active') {
       throw new ForbiddenException(
@@ -196,7 +194,7 @@ export class ShopsService {
     return shop;
   }
 
-  private async getOrThrow(shopId: number) {
+  async getOrThrow(shopId: number) {
     const shop = await this.shopsRepository.findById(shopId);
     if (!shop) {
       throw new NotFoundException('Магазин не найден');
@@ -205,13 +203,23 @@ export class ShopsService {
   }
 
   async assertOwnership(ownerId: number, shopId: number) {
+    return this.findOwnedOrThrow(
+      ownerId,
+      shopId,
+      () => new ForbiddenException('Магазин не найден или вам не принадлежит'),
+    );
+  }
+
+  private async findOwnedOrThrow(
+    ownerId: number,
+    shopId: number,
+    createError: () => Error,
+  ) {
     const shop = await this.shopsRepository.findOwnedByIdAndOwner(
       shopId,
       ownerId,
     );
-    if (!shop) {
-      throw new ForbiddenException('Магазин не найден или вам не принадлежит');
-    }
+    if (!shop) throw createError();
     return shop;
   }
 

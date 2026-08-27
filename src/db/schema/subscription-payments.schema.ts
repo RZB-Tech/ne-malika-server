@@ -127,4 +127,3 @@ export const subscriptionPayments = pgTable(
 );
 
 export type SubscriptionPayment = typeof subscriptionPayments.$inferSelect;
-export type NewSubscriptionPayment = typeof subscriptionPayments.$inferInsert;

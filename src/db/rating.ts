@@ -2,8 +2,6 @@ import { SQL, and, eq, sql } from 'drizzle-orm';
 import { productCards, reviews, shops } from './schema';
 import type { Tx } from './db.provider';
 
-export type { Tx };
-
 export async function recomputeProductRating(
   tx: Tx,
   productCardId: number,

@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import type OpenAI from 'openai';
 import { OPENROUTER_CLIENT } from '../openrouter/openrouter-client.provider';
 import { describeError, usageCost } from '../openrouter/openrouter.util';
+import { errorMessage } from '../../common/errors';
 import { FilesService } from '../files/files.service';
 import { ImageGenRepository } from './image-gen.repository';
 import { CreditsService, type CreditHold } from '../credits/credits.service';
@@ -238,7 +239,6 @@ export class ImageGenService {
           }),
         ),
       );
-
       const completion = await this.router.chat.completions.create(
         {
           model,
@@ -278,18 +278,11 @@ export class ImageGenService {
 
       return { prompt };
     } catch (err) {
-      await this.credits.cancel(hold);
-
-      const details = describeError(err);
-      this.logger.error(
-        `Промпт по фото ${dto.photoKey} не составлен (модель ${model}): ${details}`,
-      );
-
-      const status = (err as { status?: number }).status;
-      throw new BadGatewayException(
-        status === 429
-          ? `Лимит запросов исчерпан. ${details}`
-          : `Не удалось составить промпт: ${details}`,
+      throw await this.gatewayFailure(
+        err,
+        hold,
+        `Промпт по фото ${dto.photoKey} не составлен (модель ${model})`,
+        'Не удалось составить промпт',
       );
     }
   }
@@ -365,20 +358,32 @@ export class ImageGenService {
 
       return { text };
     } catch (err) {
-      await this.credits.cancel(hold);
-
-      const details = describeError(err);
-      this.logger.error(
-        `Описание по фото ${dto.photoKey} не исправлено (модель ${model}): ${details}`,
-      );
-
-      const status = (err as { status?: number }).status;
-      throw new BadGatewayException(
-        status === 429
-          ? `Лимит запросов исчерпан. ${details}`
-          : `Не удалось исправить описание: ${details}`,
+      throw await this.gatewayFailure(
+        err,
+        hold,
+        `Описание по фото ${dto.photoKey} не исправлено (модель ${model})`,
+        'Не удалось исправить описание',
       );
     }
+  }
+
+  private async gatewayFailure(
+    err: unknown,
+    hold: CreditHold | null,
+    logContext: string,
+    action: string,
+  ): Promise<BadGatewayException> {
+    await this.credits.cancel(hold);
+
+    const details = describeError(err);
+    this.logger.error(`${logContext}: ${details}`);
+
+    const status = (err as { status?: number }).status;
+    return new BadGatewayException(
+      status === 429
+        ? `Лимит запросов исчерпан. ${details}`
+        : `${action}: ${details}`,
+    );
   }
 
   async generate(
@@ -401,7 +406,7 @@ export class ImageGenService {
     );
 
     try {
-      return await this.run(dto, count, author, hold);
+      return await this.run(dto, count, size, author, hold);
     } catch (err) {
       await this.credits.cancel(hold);
       throw err;
@@ -411,6 +416,7 @@ export class ImageGenService {
   private async run(
     dto: GenerateImagesDto,
     count: number,
+    size: string,
     author: { id: number; isAdmin: boolean },
     hold: CreditHold | null,
   ): Promise<GeneratedImageDto[]> {
@@ -429,7 +435,7 @@ export class ImageGenService {
         })),
       );
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = errorMessage(err);
       this.logger.error(
         `Исходное фото ${dto.photoKey} не прочитано: ${message}`,
       );
@@ -441,7 +447,7 @@ export class ImageGenService {
     const directions = pickDirections(count);
     const attempts = await Promise.allSettled(
       Array.from({ length: count }, (_, i) =>
-        this.requestOne(model, references, dto, directions[i]),
+        this.requestOne(model, references, dto, size, directions[i]),
       ),
     );
 
@@ -489,7 +495,7 @@ export class ImageGenService {
       );
     } catch (err) {
       this.logger.error(
-        `Не удалось записать сгенерированные картинки: ${err instanceof Error ? err.message : String(err)}`,
+        `Не удалось записать сгенерированные картинки: ${errorMessage(err)}`,
       );
     }
 
@@ -505,6 +511,7 @@ export class ImageGenService {
     model: string,
     references: ImageReference[],
     dto: GenerateImagesDto,
+    size: string,
     direction: string,
   ): Promise<{ images: GeneratedImageDto[]; usd?: number }> {
     const result = await this.router!.post<unknown, OpenRouterImagesResponse>(
@@ -517,7 +524,7 @@ export class ImageGenService {
             ...styleTail(references.length, dto, direction),
           ].join('\n\n'),
           n: 1,
-          size: dto.size ?? '960x1280',
+          size,
           quality: dto.quality ?? 'medium',
           input_references: references,
         },

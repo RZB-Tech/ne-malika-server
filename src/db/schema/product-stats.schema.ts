@@ -33,6 +33,3 @@ export const productStatsDaily = pgTable(
     dayIdx: index('product_stats_daily_day_idx').on(table.day),
   }),
 );
-
-export type ProductStatsDaily = typeof productStatsDaily.$inferSelect;
-export type NewProductStatsDaily = typeof productStatsDaily.$inferInsert;

@@ -15,22 +15,17 @@ const TREE_TTL_SEC = 3600;
 
 @Injectable()
 export class CategoriesService {
-  private cacheStale = true;
-
   constructor(
     private readonly repository: CategoriesRepository,
     private readonly redis: RedisService,
   ) {}
 
   async getTree(): Promise<CategoryDto[]> {
-    if (!this.cacheStale) {
-      const cached = await this.redis.get<CategoryDto[]>(TREE_CACHE_KEY);
-      if (cached) return cached;
-    }
+    const cached = await this.redis.get<CategoryDto[]>(TREE_CACHE_KEY);
+    if (cached) return cached;
 
     const tree = buildTree(await this.repository.findAll());
     await this.redis.set(TREE_CACHE_KEY, tree, TREE_TTL_SEC);
-    this.cacheStale = false;
     return tree;
   }
 

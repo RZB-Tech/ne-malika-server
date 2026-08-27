@@ -37,6 +37,3 @@ export const generatedImages = pgTable(
     userIdIdx: index('generated_images_user_id_idx').on(table.userId),
   }),
 );
-
-export type GeneratedImage = typeof generatedImages.$inferSelect;
-export type NewGeneratedImage = typeof generatedImages.$inferInsert;

@@ -44,4 +44,3 @@ export const broadcasts = pgTable(
 );
 
 export type Broadcast = typeof broadcasts.$inferSelect;
-export type NewBroadcast = typeof broadcasts.$inferInsert;

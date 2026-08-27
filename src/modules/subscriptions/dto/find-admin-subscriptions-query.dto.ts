@@ -10,10 +10,10 @@ import {
   Min,
 } from 'class-validator';
 import { PaginationQueryDto } from '../../../common/dto/pagination-query.dto';
-import { subscriptionPlanEnum } from '../../../db/schema';
-import type { SubscriptionPlanId } from '../subscriptions.constants';
-
-const PLAN_VALUES = [...subscriptionPlanEnum.enumValues];
+import {
+  PLAN_VALUES,
+  type SubscriptionPlanId,
+} from '../subscriptions.constants';
 
 export class FindAdminSubscriptionsQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional({

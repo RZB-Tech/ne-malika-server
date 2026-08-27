@@ -13,7 +13,11 @@ import { SettingsService } from '../settings/settings.service';
 import type { CreditTxnMeta } from '../../db/schema';
 import type { Tx } from '../../db/db.provider';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
-import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
+import {
+  PaginatedResult,
+  buildPaginatedResult,
+} from '../../common/dto/paginated-response.dto';
+import { errorMessage } from '../../common/errors';
 import {
   AUTOFILL_FREE_PER_MONTH,
   effectiveLimits,
@@ -43,7 +47,7 @@ export type AutofillHold =
   | { kind: 'free'; shopId: number; month: string; leftAfter: number }
   | { kind: 'paid'; hold: CreditHold };
 
-export interface AutofillQuota {
+interface AutofillQuota {
   price: number;
   effectivePrice: number;
   free: boolean;
@@ -90,23 +94,29 @@ export class CreditsService {
   }
 
   async history(shopId: number, query: PaginationQueryDto) {
+    return this.historyPage(shopId, query);
+  }
+
+  async historyForSeller(shopId: number, query: PaginationQueryDto) {
+    const page = await this.historyPage(shopId, query);
+    return {
+      ...page,
+      data: page.data.map((row) => ({
+        ...row,
+        meta: sellerVisibleMeta(row.meta),
+      })),
+    };
+  }
+
+  private async historyPage(
+    shopId: number,
+    query: PaginationQueryDto,
+  ): Promise<PaginatedResult<SellerCreditTxn>> {
     const { data, total, page, limit } = await this.repository.history(
       shopId,
       query,
     );
     return buildPaginatedResult(data, total, page, limit);
-  }
-
-  async historyForSeller(shopId: number, query: PaginationQueryDto) {
-    const { data, total, page, limit } = await this.repository.history(
-      shopId,
-      query,
-    );
-    const safe: SellerCreditTxn[] = data.map((row) => ({
-      ...row,
-      meta: sellerVisibleMeta(row.meta),
-    }));
-    return buildPaginatedResult(safe, total, page, limit);
   }
 
   private async toCredits(usd: number): Promise<number> {
@@ -121,15 +131,6 @@ export class CreditsService {
   ): Promise<CreditHold | null> {
     if (author.isAdmin) return null;
     return this.reserve(author.id, await this.toCredits(estimateUsd), what);
-  }
-
-  async holdFixed(
-    author: { id: number; isAdmin: boolean },
-    credits: number,
-    what: string,
-  ): Promise<CreditHold | null> {
-    if (author.isAdmin) return null;
-    return this.reserve(author.id, credits, what);
   }
 
   private async reserve(
@@ -188,14 +189,20 @@ export class CreditsService {
       return credits;
     } catch (err) {
       this.logger.error(
-        `Не удалось списать кредиты магазина ${hold.shopId}: ${err instanceof Error ? err.message : String(err)}`,
+        `Не удалось списать кредиты магазина ${hold.shopId}: ${errorMessage(err)}`,
       );
-      await this.repository.release(hold.shopId, hold.credits).catch(() => {});
+      await this.repository
+        .release(hold.shopId, hold.credits)
+        .catch((releaseErr: unknown) =>
+          this.logger.error(
+            `Не удалось снять резерв магазина ${hold.shopId}: ${errorMessage(releaseErr)}`,
+          ),
+        );
       return 0;
     }
   }
 
-  async settleFixed(
+  private async settleFixed(
     hold: CreditHold | null,
     usd: number | undefined,
     meta: CreditTxnMeta,
@@ -211,9 +218,15 @@ export class CreditsService {
       return hold.credits;
     } catch (err) {
       this.logger.error(
-        `Не удалось списать кредиты магазина ${hold.shopId}: ${err instanceof Error ? err.message : String(err)}`,
+        `Не удалось списать кредиты магазина ${hold.shopId}: ${errorMessage(err)}`,
       );
-      await this.repository.release(hold.shopId, hold.credits).catch(() => {});
+      await this.repository
+        .release(hold.shopId, hold.credits)
+        .catch((releaseErr: unknown) =>
+          this.logger.error(
+            `Не удалось снять резерв магазина ${hold.shopId}: ${errorMessage(releaseErr)}`,
+          ),
+        );
       return 0;
     }
   }
@@ -224,7 +237,7 @@ export class CreditsService {
       .release(hold.shopId, hold.credits)
       .catch((err: unknown) =>
         this.logger.error(
-          `Не удалось снять резерв магазина ${hold.shopId}: ${err instanceof Error ? err.message : String(err)}`,
+          `Не удалось снять резерв магазина ${hold.shopId}: ${errorMessage(err)}`,
         ),
       );
   }
@@ -293,7 +306,7 @@ export class CreditsService {
         .releaseFreeAutofill(hold.shopId, hold.month)
         .catch((err: unknown) =>
           this.logger.error(
-            `Не удалось вернуть бесплатное автозаполнение магазину ${hold.shopId}: ${err instanceof Error ? err.message : String(err)}`,
+            `Не удалось вернуть бесплатное автозаполнение магазину ${hold.shopId}: ${errorMessage(err)}`,
           ),
         );
     }

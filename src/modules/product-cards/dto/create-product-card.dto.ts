@@ -15,7 +15,7 @@ import {
   MinLength,
   ValidateNested,
 } from 'class-validator';
-import { CharacteristicDto } from '../../shops/dto/characteristics';
+import { CharacteristicDto } from '../../../common/dto/characteristic.dto';
 import { MAX_PHOTOS_PER_PRODUCT } from '../../files/files.constants';
 
 export class CreateProductCardDto {

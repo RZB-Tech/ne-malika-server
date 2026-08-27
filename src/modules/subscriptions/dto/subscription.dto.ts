@@ -1,20 +1,20 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsIn, IsNotEmpty, IsString } from 'class-validator';
-import {
-  paymentProviderEnum,
-  paymentStatusEnum,
-  subscriptionPlanEnum,
-} from '../../../db/schema';
+import { paymentProviderEnum, paymentStatusEnum } from '../../../db/schema';
 import { PaginationMetaDto } from '../../../common/dto/paginated-response.dto';
-import type { PaidPlan, SubscriptionPlanId } from '../subscriptions.constants';
+import {
+  PAID_PLANS,
+  PLAN_VALUES,
+  type PaidPlan,
+  type SubscriptionPlanId,
+} from '../subscriptions.constants';
 
-const PLAN_VALUES = [...subscriptionPlanEnum.enumValues];
 const PAYMENT_STATUS_VALUES = [...paymentStatusEnum.enumValues];
 const PAYMENT_PROVIDER_VALUES = [...paymentProviderEnum.enumValues];
 
 export class SubscriptionPlanDto {
   @ApiProperty({
-    enum: ['start', 'pro', 'max'],
+    enum: PAID_PLANS,
     description:
       'Идентификатор тарифа. `free` не продаётся и в прайс не входит',
   })
@@ -363,8 +363,8 @@ export class PaginatedAdminSubscriptionsDto {
 }
 
 export class CreateInvoiceDto {
-  @ApiProperty({ enum: ['start', 'pro', 'max'] })
-  @IsIn(['start', 'pro', 'max'])
+  @ApiProperty({ enum: PAID_PLANS })
+  @IsIn(PAID_PLANS)
   plan: PaidPlan;
 
   @ApiProperty({
@@ -383,7 +383,7 @@ export class InvoiceDto {
   @ApiProperty({ description: 'Наш номер заказа' })
   orderId: number;
 
-  @ApiProperty({ enum: ['start', 'pro', 'max'] })
+  @ApiProperty({ enum: PAID_PLANS })
   plan: PaidPlan;
 
   @ApiProperty()

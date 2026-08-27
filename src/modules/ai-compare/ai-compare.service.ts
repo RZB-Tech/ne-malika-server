@@ -13,6 +13,7 @@ import { OPENROUTER_CLIENT } from '../openrouter/openrouter-client.provider';
 import { ProductCardsRepository } from '../product-cards/product-cards.repository';
 import { RedisService } from '../redis/redis.service';
 import type { ApiLocale } from '../../common/i18n/locale';
+import { errorMessage } from '../../common/errors';
 import { parseAiCompare, type ComparedProduct } from './ai-compare.parse';
 import {
   AI_COMPARE_MAX,
@@ -150,9 +151,8 @@ export class AiCompareService {
         { timeout: REQUEST_TIMEOUT_MS, maxRetries: MAX_RETRIES },
       );
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
       this.logger.error(
-        `Сравнение товаров ${products.map((p) => p.id).join(',')} не удалось (${model}): ${message}`,
+        `Сравнение товаров ${products.map((p) => p.id).join(',')} не удалось (${model}): ${errorMessage(err)}`,
       );
       throw new BadGatewayException('Модель не ответила — попробуйте позже');
     }

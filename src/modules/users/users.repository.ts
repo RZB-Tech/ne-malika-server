@@ -70,7 +70,7 @@ export class UsersRepository {
     return { data, total: totalRows[0]?.count ?? 0, page, limit };
   }
 
-  findRecentActivity(userId: number, limit = 10) {
+  findRecentActivity(userId: number) {
     return this.db
       .select({
         id: productCards.id,
@@ -85,7 +85,7 @@ export class UsersRepository {
       .innerJoin(shops, eq(productCards.shopId, shops.id))
       .where(eq(shops.owner, userId))
       .orderBy(desc(productCards.updatedAt))
-      .limit(limit);
+      .limit(10);
   }
 
   setRole(id: number, role: UserRole): Promise<User> {
@@ -107,7 +107,7 @@ export class UsersRepository {
 
   updateProfileFromTelegram(
     id: number,
-    data: Pick<NewUser, 'telegramUsername' | 'telegramPhoto' | 'fullname'>,
+    data: Partial<Pick<NewUser, 'telegramUsername' | 'telegramPhoto'>>,
   ): Promise<User> {
     return this.db
       .update(users)

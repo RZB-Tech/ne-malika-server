@@ -203,19 +203,8 @@ const TRANSLATIONS: Record<string, Record<Exclude<ApiLocale, 'ru'>, string>> = {
   },
 };
 
-const NESTED_PREFIX =
-  /^((?:[A-Za-z_$][\w$]*|\d+)(?:\.(?:[A-Za-z_$][\w$]*|\d+))*\.)(?=\S)/;
-
 export function translateMessage(message: string, locale: ApiLocale): string {
   if (locale === 'ru') return message;
 
-  const direct = TRANSLATIONS[message]?.[locale];
-  if (direct) return direct;
-
-  const match = NESTED_PREFIX.exec(message);
-  if (!match) return message;
-
-  const rest = message.slice(match[1].length);
-  const translated = TRANSLATIONS[rest]?.[locale];
-  return translated ? `${match[1]}${translated}` : message;
+  return TRANSLATIONS[message]?.[locale] ?? message;
 }

@@ -212,6 +212,12 @@ class EnvironmentVariables {
   @IsInt()
   @Min(1)
   SUBSCRIPTION_PRICE_MAX_UZS?: number;
+
+  @Transform(optionalInt)
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  SUBSCRIPTION_TEST_PRICE_UZS?: number;
 }
 
 function hasText(value: string | undefined): boolean {

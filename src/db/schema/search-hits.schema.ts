@@ -31,6 +31,3 @@ export const shopSearchHitsDaily = pgTable(
     ),
   }),
 );
-
-export type ShopSearchHitsDaily = typeof shopSearchHitsDaily.$inferSelect;
-export type NewShopSearchHitsDaily = typeof shopSearchHitsDaily.$inferInsert;

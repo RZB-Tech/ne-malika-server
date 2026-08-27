@@ -1,12 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AiUsageRepository } from './ai-usage.repository';
-import { FindAiUsageQueryDto } from './dto/find-ai-usage-query.dto';
+import {
+  FindAiUsageQueryDto,
+  type AiOperation,
+} from './dto/find-ai-usage-query.dto';
 import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
+import { errorMessage } from '../../common/errors';
 
-export interface AiUsageEntry {
+interface AiUsageEntry {
   userId: number;
   shopId: number | null;
-  operation: 'prompt' | 'description' | 'image' | 'autofill';
+  operation: AiOperation;
   model: string;
   images?: number;
   usd?: number;
@@ -35,7 +39,7 @@ export class AiUsageService {
       });
     } catch (err) {
       this.logger.error(
-        `Не удалось записать журнал использования ИИ: ${err instanceof Error ? err.message : String(err)}`,
+        `Не удалось записать журнал использования ИИ: ${errorMessage(err)}`,
       );
     }
   }

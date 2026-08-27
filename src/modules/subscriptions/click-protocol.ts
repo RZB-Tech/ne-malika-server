@@ -8,12 +8,11 @@ export const CLICK_RESPONSE = {
   alreadyPaid: { error: -4, note: 'Already paid' },
   userNotFound: { error: -5, note: 'User does not exist' },
   transactionNotFound: { error: -6, note: 'Transaction does not exist' },
-  updateFailed: { error: -7, note: 'Failed to update user' },
   invalidRequest: { error: -8, note: 'Error in request from click' },
   cancelled: { error: -9, note: 'Transaction cancelled' },
 } as const;
 
-export type ClickAction = 0 | 1;
+type ClickAction = 0 | 1;
 
 export interface ClickCallback {
   clickTransId: string;
@@ -155,7 +154,7 @@ export function createClickMerchantAuth(
   return `${merchantUserId}:${digest}:${timestamp}`;
 }
 
-export const CLICK_PAY_URL = 'https://my.click.uz/services/pay/';
+const CLICK_PAY_URL = 'https://my.click.uz/services/pay/';
 
 export function createClickPaymentUrl(input: {
   serviceId: string;

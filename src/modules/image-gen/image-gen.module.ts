@@ -11,6 +11,5 @@ import { ImageGenController } from './admin-image-gen.controller';
   imports: [OpenrouterModule, FilesModule, CreditsModule, AiUsageModule],
   controllers: [ImageGenController],
   providers: [ImageGenRepository, ImageGenService],
-  exports: [ImageGenService],
 })
 export class ImageGenModule {}

@@ -1,18 +1,15 @@
-import { applyDecorators, SetMetadata, UseGuards } from '@nestjs/common';
+import { SetMetadata } from '@nestjs/common';
 import { UserRole } from '../types/auth.types';
-import { RolesGuard } from '../guards/roles.guard';
 
+// RolesGuard зарегистрирован глобально через APP_GUARD и читает ROLES_KEY —
+// повторный UseGuards здесь заставлял бы guard срабатывать дважды.
 export const ROLES_KEY = 'roles';
 export const Roles = (...roles: UserRole[]) => SetMetadata(ROLES_KEY, roles);
 
-export const AnyRole = () =>
-  applyDecorators(UseGuards(RolesGuard), Roles('user', 'seller', 'admin'));
+export const AnyRole = () => Roles('user', 'seller', 'admin');
 
-export const SellerOnly = () =>
-  applyDecorators(UseGuards(RolesGuard), Roles('seller'));
+export const SellerOnly = () => Roles('seller');
 
-export const SellerOrAdmin = () =>
-  applyDecorators(UseGuards(RolesGuard), Roles('seller', 'admin'));
+export const SellerOrAdmin = () => Roles('seller', 'admin');
 
-export const AdminOnly = () =>
-  applyDecorators(UseGuards(RolesGuard), Roles('admin'));
+export const AdminOnly = () => Roles('admin');

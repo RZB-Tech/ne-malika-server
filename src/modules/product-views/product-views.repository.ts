@@ -26,7 +26,8 @@ export class ProductViewsRepository {
     return filterVisibleProductIds(this.db, ids);
   }
 
-  record(userId: number, productCardId: number, viewedAt = new Date()) {
+  record(userId: number, productCardId: number) {
+    const viewedAt = new Date();
     return this.db
       .insert(productViews)
       .values({ userId, productCardId, viewedAt })

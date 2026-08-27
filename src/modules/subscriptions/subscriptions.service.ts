@@ -35,17 +35,28 @@ import {
   AUTOFILL_FREE_PER_MONTH,
   MANUAL_ACTIVATION_COOLDOWN_SEC,
   ORDER_REUSE_MINUTES,
+  PAID_PLANS,
   TEST_WINDOW_MINUTES,
-  TZ,
   buildPlans,
   effectiveLimits,
+  formatDate,
   isPaidPlan,
   monthStart,
   type PaidPlan,
   type PlanSpec,
   type SubscriptionPlanId,
 } from './subscriptions.constants';
+import { eachDay, shiftDay, today } from '../product-stats/product-stats.util';
+import type {
+  SubscriptionActivePlanDto,
+  SubscriptionPlanSliceDto,
+  SubscriptionProviderSliceDto,
+  SubscriptionReportDto,
+  SubscriptionSalesPointDto,
+  SubscriptionStatusSliceDto,
+} from './dto/subscription-report.dto';
 import type { ActivateSubscriptionDto } from './dto/activate-subscription.dto';
+import { errorMessage } from '../../common/errors';
 import type { FindAdminSubscriptionsQueryDto } from './dto/find-admin-subscriptions-query.dto';
 import type {
   AdminSubscriptionRowDto,
@@ -86,13 +97,13 @@ function sameAmount(left: number, right: number): boolean {
   return Math.round(left * 100) === Math.round(right * 100);
 }
 
-function formatDate(value: Date): string {
-  return new Intl.DateTimeFormat('ru-RU', {
-    timeZone: TZ,
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-  }).format(value);
+function daysLeftUntil(
+  until: Date | null,
+  now: Date,
+  active: boolean,
+): number | null {
+  if (!active || !until) return null;
+  return Math.max(0, Math.ceil((until.getTime() - now.getTime()) / 86_400_000));
 }
 
 @Injectable()
@@ -125,9 +136,7 @@ export class SubscriptionsService implements OnModuleInit {
     try {
       this.specs = buildPlans(prices, this.testPriceUzs);
     } catch (error) {
-      this.logger.error(
-        `Прайс подписки задан неверно: ${error instanceof Error ? error.message : String(error)}`,
-      );
+      this.logger.error(`Прайс подписки задан неверно: ${errorMessage(error)}`);
       throw error;
     }
 
@@ -375,7 +384,7 @@ export class SubscriptionsService implements OnModuleInit {
     if (!/^\d{1,10}$/.test(trimmed)) return undefined;
 
     const billingId = Number(trimmed);
-    if (!Number.isSafeInteger(billingId) || billingId <= 0) return undefined;
+    if (billingId <= 0) return undefined;
 
     return this.repository.findOrderForPayment(billingId);
   }
@@ -696,7 +705,7 @@ export class SubscriptionsService implements OnModuleInit {
     } catch (error) {
       this.logger.error(
         `Не удалось записать отказ Complete (click_trans_id=${input.providerTransactionId}): ` +
-          `${error instanceof Error ? error.message : String(error)}`,
+          `${errorMessage(error)}`,
       );
     }
   }
@@ -741,13 +750,7 @@ export class SubscriptionsService implements OnModuleInit {
       plan: limits.id,
       active,
       until,
-      daysLeft:
-        active && until
-          ? Math.max(
-              0,
-              Math.ceil((until.getTime() - now.getTime()) / 86_400_000),
-            )
-          : null,
+      daysLeft: daysLeftUntil(until, now, active),
       subscriptionCredits: row.subscriptionCredits,
       creditsBalance: row.creditsBalance,
       creditsReserved: row.creditsReserved,
@@ -771,6 +774,112 @@ export class SubscriptionsService implements OnModuleInit {
       query,
     );
     return buildPaginatedResult(data.map(toPaymentDto), total, page, limit);
+  }
+
+  /**
+   * Отчёт по продажам подписок за последние `days` суток.
+   *
+   * Выручка и оплаты считаются по дате оплаты, а разбивка по состояниям счётов —
+   * по дате выставления: счёт, выставленный вчера и оплаченный сегодня, попадёт
+   * в разные сутки этих двух рядов. Иначе доходимость до оплаты не посчитать.
+   */
+  async adminReport(days: number): Promise<SubscriptionReportDto> {
+    const to = today();
+    const from = shiftDay(to, -(days - 1));
+
+    const [
+      byDay,
+      planSlices,
+      providerSlices,
+      statusSlices,
+      totals,
+      top,
+      active,
+    ] = await Promise.all([
+      this.repository.salesByDay(from, to),
+      this.repository.salesByPlan(from, to),
+      this.repository.salesByProvider(from, to),
+      this.repository.invoicesByStatus(from, to),
+      this.repository.salesTotals(from, to),
+      this.repository.topShopsByRevenue(from, to, TOP_SHOPS_LIMIT),
+      this.repository.activeShopsByPlan(),
+    ]);
+
+    const perDay = new Map<string, SubscriptionSalesPointDto>();
+    for (const row of byDay) {
+      const point = perDay.get(row.day) ?? emptySalesPoint(row.day);
+      point.revenue += row.revenue;
+      point.payments += row.payments;
+      if (isPaidPlan(row.plan)) point[row.plan] += row.revenue;
+      perDay.set(row.day, point);
+    }
+
+    const daily = eachDay(from, to).map(
+      (date) => perDay.get(date) ?? emptySalesPoint(date),
+    );
+
+    // Тарифы идут своим порядком start → pro → max: он же порядок градаций
+    // на графике, поэтому сортировать их по выручке нельзя.
+    const byPlan: SubscriptionPlanSliceDto[] = PAID_PLANS.map((plan) => {
+      const slice = planSlices.find((s) => s.key === plan);
+      return {
+        plan,
+        payments: slice?.payments ?? 0,
+        revenue: slice?.revenue ?? 0,
+      };
+    });
+
+    const byProvider: SubscriptionProviderSliceDto[] = providerSlices.map(
+      (slice) => ({
+        provider: slice.key,
+        payments: slice.payments,
+        revenue: slice.revenue,
+      }),
+    );
+
+    const byStatus: SubscriptionStatusSliceDto[] = INVOICE_STATUS_ORDER.map(
+      (status) => ({
+        status,
+        payments:
+          statusSlices.find((slice) => slice.key === status)?.payments ?? 0,
+      }),
+    ).filter((slice) => slice.payments > 0);
+
+    const activeByPlan: SubscriptionActivePlanDto[] = PAID_PLANS.map(
+      (plan) => ({
+        plan,
+        shops: active.find((row) => row.plan === plan)?.shops ?? 0,
+      }),
+    );
+
+    const revenue = sumBy(daily, (point) => point.revenue);
+    const payments = sumBy(daily, (point) => point.payments);
+    const invoices = statusSlices.reduce(
+      (acc, slice) => acc + slice.payments,
+      0,
+    );
+    const paidInvoices =
+      statusSlices.find((slice) => slice.key === 'paid')?.payments ?? 0;
+
+    return {
+      daily,
+      byPlan,
+      byProvider,
+      byStatus,
+      topShops: top,
+      activeByPlan,
+      revenue,
+      payments,
+      avgCheck: payments === 0 ? 0 : Math.round(revenue / payments),
+      payingShops: totals.payingShops,
+      newRevenue: totals.newRevenue,
+      renewalRevenue: totals.renewalRevenue,
+      activeShops: sumBy(activeByPlan, (row) => row.shops),
+      conversion:
+        invoices === 0 ? 0 : Math.round((paidInvoices / invoices) * 100),
+      excludedTest: totals.testPayments,
+      excludedRefunded: totals.refundedPayments,
+    };
   }
 
   async adminList(query: FindAdminSubscriptionsQueryDto) {
@@ -798,13 +907,7 @@ export class SubscriptionsService implements OnModuleInit {
         storedPlan: row.storedPlan,
         active,
         until: row.until,
-        daysLeft:
-          active && row.until
-            ? Math.max(
-                0,
-                Math.ceil((row.until.getTime() - now.getTime()) / 86_400_000),
-              )
-            : null,
+        daysLeft: daysLeftUntil(row.until, now, active),
         subscriptionCredits: row.subscriptionCredits,
         lastPaidAt: row.lastPaidAt,
         stuckPrepared: row.stuckPrepared,
@@ -993,11 +1096,28 @@ export class SubscriptionsService implements OnModuleInit {
 
   private fireAndForget(promise: Promise<unknown>, what: string): void {
     void promise.catch((error: unknown) =>
-      this.logger.error(
-        `Не удалось выполнить ${what}: ${error instanceof Error ? error.message : String(error)}`,
-      ),
+      this.logger.error(`Не удалось выполнить ${what}: ${errorMessage(error)}`),
     );
   }
+}
+
+const TOP_SHOPS_LIMIT = 8;
+
+/** Порядок для чтения: чем кончились счёта — от успеха к провалу. */
+const INVOICE_STATUS_ORDER = [
+  'paid',
+  'prepared',
+  'pending',
+  'cancelled',
+  'failed',
+] as const;
+
+function emptySalesPoint(date: string): SubscriptionSalesPointDto {
+  return { date, revenue: 0, payments: 0, start: 0, pro: 0, max: 0 };
+}
+
+function sumBy<T>(items: T[], pick: (item: T) => number): number {
+  return items.reduce((acc, item) => acc + pick(item), 0);
 }
 
 function toPaymentDto(payment: SubscriptionPayment): SubscriptionPaymentDto {

@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import type OpenAI from 'openai';
 import { OPENROUTER_CLIENT } from '../openrouter/openrouter-client.provider';
 import { describeError, usageCost } from '../openrouter/openrouter.util';
+import { errorMessage } from '../../common/errors';
 import { FilesService } from '../files/files.service';
 import { CategoriesService } from '../categories/categories.service';
 import { ShopsService } from '../shops/shops.service';
@@ -164,14 +165,15 @@ export class ProductAutofillService {
       );
     }
 
+    const outcome = autofillOutcome(hold);
     const credits = await this.settleAndLog(
       hold,
       author,
       usageCost(completion.usage),
       model,
+      outcome,
     );
 
-    const outcome = autofillOutcome(hold);
     return {
       ...filled,
       credits,
@@ -191,12 +193,12 @@ export class ProductAutofillService {
     author: Author,
     usd: number | undefined,
     model: string,
+    outcome: ReturnType<typeof autofillOutcome>,
   ): Promise<number> {
     const credits = await this.credits.settleAutofill(hold, usd, {
       operation: 'autofill',
       model,
     });
-    const outcome = autofillOutcome(hold);
     await this.aiUsage.record({
       userId: author.id,
       shopId: outcome.shopId,
@@ -240,7 +242,7 @@ export class ProductAutofillService {
     const shopId = await this.credits.shopIdOf(author.id);
     if (!shopId) return false;
 
-    const shop = await this.shops.getOrThrowById(shopId);
+    const shop = await this.shops.getOrThrow(shopId);
     return shop.restrictedCategoriesEnabled;
   }
 
@@ -284,8 +286,9 @@ export class ProductAutofillService {
       try {
         attached.push(await this.files.toDataUrl(key));
       } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        this.logger.warn(`Фото ${key} не прочитано из S3: ${message}`);
+        this.logger.warn(
+          `Фото ${key} не прочитано из S3: ${errorMessage(err)}`,
+        );
       }
     }
     if (attached.length === 0) {

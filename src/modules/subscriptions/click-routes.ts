@@ -1,11 +1,8 @@
 export const CLICK_CALLBACK_ACTIONS = ['callback', 'prepare', 'complete'];
 
-export const CLICK_VERSIONED_CONTROLLER_ROUTES = [
-  'subscriptions/click',
-  'click',
-];
+const CLICK_VERSIONED_CONTROLLER_ROUTES = ['subscriptions/click', 'click'];
 
-export const CLICK_UNVERSIONED_CONTROLLER_ROUTES = [
+const CLICK_UNVERSIONED_CONTROLLER_ROUTES = [
   'api/subscriptions/click',
   'api/click',
 ];

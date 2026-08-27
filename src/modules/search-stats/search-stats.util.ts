@@ -1,6 +1,6 @@
 export const SEARCH_QUERY_MAX_LENGTH = 100;
 
-export const SEARCH_QUERY_MIN_LENGTH = 3;
+const SEARCH_QUERY_MIN_LENGTH = 3;
 
 export const SEARCH_DEDUP_WINDOW_SEC = 600;
 

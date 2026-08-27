@@ -21,8 +21,12 @@ export class ReportsRepository {
     return this.db.query.reports.findFirst({ where: eq(reports.id, id) });
   }
 
-  delete(id: number) {
-    return this.db.delete(reports).where(eq(reports.id, id));
+  deleteReturningId(id: number): Promise<number> {
+    return this.db
+      .delete(reports)
+      .where(eq(reports.id, id))
+      .returning({ id: reports.id })
+      .then((r) => r.length);
   }
 
   async findAll(query: FindReportsQueryDto) {
