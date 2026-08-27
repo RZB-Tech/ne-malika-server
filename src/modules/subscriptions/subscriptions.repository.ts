@@ -28,7 +28,7 @@ import {
   resolvePage,
 } from '../../common/dto/pagination-query.dto';
 import type { FindAdminSubscriptionsQueryDto } from './dto/find-admin-subscriptions-query.dto';
-import type { PaidPlan, SubscriptionPlanId } from './subscriptions.constants';
+import type { SubscriptionPlanId } from './subscriptions.constants';
 
 /**
  * Магазин в терминах платежа: кому выдавать период и кого потом уведомлять.
@@ -158,7 +158,13 @@ export class SubscriptionsRepository {
     tx: Tx,
     data: {
       shopId: number;
-      plan: PaidPlan;
+      /**
+       * `free` — тестовая оплата: покупать было нечего, и записать сюда
+       * похожий по цене тариф значило бы соврать журналу. Отличается она от
+       * прочих `free`-строк (несостоявшийся Complete с суммой мимо прайса)
+       * пометкой `meta.test`.
+       */
+      plan: SubscriptionPlanId;
       amount: number;
       providerTransactionId: string;
       providerPaymentId: string;
@@ -229,8 +235,15 @@ export class SubscriptionsRepository {
     tx: Tx,
     id: number,
     data: {
-      activatedFrom: Date;
-      activatedUntil: Date;
+      /**
+       * `null` — у тестовой оплаты: периода она не покупает. Пустые даты здесь
+       * обязательны, а не удобны: по `activated_until` считается инвариант
+       * «`subscription_until` равен максимальному среди оплаченных», и любая
+       * дата на тестовой строке заставила бы её притворяться купленным
+       * периодом в глазах админки и крона напоминаний.
+       */
+      activatedFrom: Date | null;
+      activatedUntil: Date | null;
       grantedCredits: number;
       burnedCredits: number;
       paidAt: Date;
@@ -435,6 +448,66 @@ export class SubscriptionsRepository {
       .limit(1)
       .for('update');
     return rows[0];
+  }
+
+  /**
+   * Взвести окно тестовой оплаты для магазина.
+   *
+   * Присваиванием, а не «продлить, если уже открыто»: администратор, нажавший
+   * кнопку второй раз, ждёт свежие полчаса от этого нажатия, а не остаток от
+   * прошлого. Возвращает магазин, только если он активен, — взводить окно
+   * упразднённому незачем, а молчаливое взведение в никуда выглядело бы как
+   * рабочая кнопка.
+   */
+  async armTestWindow(
+    shopId: number,
+    until: Date,
+  ): Promise<PaymentShop | undefined> {
+    const rows = await this.db
+      .update(shops)
+      .set({ subscriptionTestUntil: until, updatedAt: new Date() })
+      .where(and(eq(shops.id, shopId), eq(shops.status, 'active')))
+      .returning({ id: shops.id, name: shops.name, ownerId: shops.owner });
+
+    const row = rows[0];
+    if (!row) return undefined;
+
+    const owner = await this.db
+      .select({ telegramId: users.telegramId })
+      .from(users)
+      .where(eq(users.id, row.ownerId))
+      .limit(1);
+    if (!owner[0]) return undefined;
+
+    return { ...row, ownerTelegramId: owner[0].telegramId };
+  }
+
+  /**
+   * Открыто ли окно прямо сейчас. Читается на Prepare, когда сумма не совпала
+   * ни с одним тарифом, — то есть редко и по уже найденному магазину.
+   *
+   * Сравнение делает Postgres (`now()`), а не приложение: часы контейнера и
+   * часы базы расходятся, и окно, открытое базой, должно ею же и закрываться.
+   */
+  async isTestWindowOpen(shopId: number): Promise<boolean> {
+    const rows = await this.db
+      .select({ open: sql<boolean>`${shops.subscriptionTestUntil} > now()` })
+      .from(shops)
+      .where(eq(shops.id, shopId))
+      .limit(1);
+    return rows[0]?.open === true;
+  }
+
+  /**
+   * Закрыть окно. Зовётся в транзакции успешного Complete: окно одноразовое,
+   * и оставить его открытым на остаток получаса значило бы разрешить второй
+   * тестовый платёж, которого никто не просил.
+   */
+  async closeTestWindow(tx: Tx, shopId: number): Promise<void> {
+    await tx
+      .update(shops)
+      .set({ subscriptionTestUntil: null, updatedAt: new Date() })
+      .where(eq(shops.id, shopId));
   }
 
   /**

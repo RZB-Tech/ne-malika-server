@@ -143,6 +143,19 @@ export default () => ({
     priceStartUzs: envInt(process.env.SUBSCRIPTION_PRICE_START_UZS, 65_000),
     priceProUzs: envInt(process.env.SUBSCRIPTION_PRICE_PRO_UZS, 130_000),
     priceMaxUzs: envInt(process.env.SUBSCRIPTION_PRICE_MAX_UZS, 260_000),
+    /**
+     * Символическая сумма для проверки кассы живыми деньгами.
+     *
+     * Подписки не даёт вовсе: успешная тестовая оплата доказывает, что подпись
+     * сходится, Prepare и Complete доходят и строка в журнале появляется, — а
+     * кредиты, срок и уведомления не трогает. Поэтому её незачем возвращать и
+     * незачем потом убирать последствия.
+     *
+     * Принимается не всегда, а только пока администратор держит окно открытым
+     * на конкретный магазин (`shops.subscription_test_until`): сумма мимо
+     * прайса, принимаемая безусловно, — это подписка за 1000 сум для всех.
+     */
+    testPriceUzs: envInt(process.env.SUBSCRIPTION_TEST_PRICE_UZS, 1_000),
   },
 
   /**

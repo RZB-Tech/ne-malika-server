@@ -28,6 +28,7 @@ import {
   PaginatedAdminSubscriptionsDto,
   PaginatedSubscriptionPaymentsDto,
   SellerSubscriptionDto,
+  TestPaymentLinkDto,
 } from './dto/subscription.dto';
 
 /**
@@ -103,6 +104,32 @@ export class AdminShopSubscriptionController {
     @Body() dto: ActivateSubscriptionDto,
   ): Promise<SellerSubscriptionDto> {
     return this.subscriptions.adminActivate(shopId, user.id, dto);
+  }
+
+  /**
+   * Проверка кассы живыми деньгами.
+   *
+   * Открывает магазину окно на полчаса и отдаёт ссылку на кассу с
+   * символической суммой. Успешная оплата ничего не выдаёт — она доказывает,
+   * что подпись сходится, Prepare и Complete доходят и строка в журнале
+   * появляется. Ради этого её и заводят: проверять боевой путь ценой тарифа
+   * дорого, а проверять его на стенде без Click — значит не проверять.
+   *
+   * Тот же лимит, что у активации, и по той же причине: каждое нажатие
+   * переоткрывает окно, а окно — это разрешение принять сумму мимо прайса.
+   */
+  @Post('test-checkout')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Открыть окно тестовой оплаты и выдать ссылку' })
+  @ApiResponse({ status: 200, type: TestPaymentLinkDto })
+  @ApiResponse({ status: 400, description: 'Тестовая сумма не задана' })
+  @ApiResponse({ status: 404, description: 'Активный магазин не найден' })
+  @ApiResponse({ status: 503, description: 'Click не настроен' })
+  testCheckout(
+    @Param('shopId', ParseIntPipe) shopId: number,
+  ): Promise<TestPaymentLinkDto> {
+    return this.subscriptions.armTestCheckout(shopId);
   }
 
   /** Тот же лимит: отмена так же меняет деньги и права магазина. */

@@ -439,12 +439,19 @@ export class ClickController {
     }
 
     /**
-     * Тариф определяется по сумме — Click сообщает, сколько заплатили, но не
-     * за что. Сумма мимо прайса означает, что покупать было нечего, и отказ
-     * здесь бесплатен: деньги ещё у покупателя.
+     * За что заплатили — определяется по сумме: Click сообщает, сколько
+     * заплатили, но не за что. Кроме прайса есть символическая сумма проверки
+     * кассы, и принимается она, только пока администратор держит окно открытым
+     * на этот магазин; весь разбор — внутри `resolvePurchase`.
+     *
+     * Сумма, не подошедшая ни подо что, означает, что покупать было нечего.
+     * Отказ здесь бесплатен: на Prepare деньги ещё у покупателя.
      */
-    const plan = this.subscriptions.planByAmount(callback.amount);
-    if (!plan) {
+    const purchase = await this.subscriptions.resolvePurchase(
+      shopId,
+      callback.amount,
+    );
+    if (!purchase) {
       this.logger.warn(
         `Prepare Click с суммой мимо прайса: ${callback.amount}, магазин ${shopId}, ` +
           `click_trans_id=${callback.clickTransId}`,
@@ -452,9 +459,16 @@ export class ClickController {
       return answer(body, CLICK_RESPONSE.invalidAmount);
     }
 
+    if (purchase.kind === 'test') {
+      this.logger.warn(
+        `Prepare Click тестовой суммой ${callback.amount}: магазин ${shopId}, ` +
+          `click_trans_id=${callback.clickTransId}. Подписка выдаваться не будет`,
+      );
+    }
+
     const result = await this.subscriptions.prepare({
       shopId,
-      plan,
+      plan: purchase.kind === 'plan' ? purchase.plan : null,
       amount: callback.amount,
       providerTransactionId: callback.clickTransId,
       providerPaymentId: callback.clickPaydocId,

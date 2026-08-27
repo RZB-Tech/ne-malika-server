@@ -57,12 +57,16 @@ interface Calls {
   reverse: string[];
   failed: Parameters<SubscriptionsService['recordFailedComplete']>[0][];
   prepare: number;
+  /** Тарифы, с которыми звали `prepare`. `null` — проверка кассы. */
+  preparedPlans: (string | null)[];
   complete: number;
 }
 
 interface Stubs {
   shop?: typeof SHOP | undefined;
   plan?: 'start' | 'pro' | 'max' | null;
+  /** Сумма опознана как проверка кассы: тарифа нет, выдавать нечего. */
+  test?: boolean;
   prepare?: PrepareResult | (() => never);
   complete?: CompleteResult | (() => never);
   reversal?: ClickReversalResult;
@@ -71,14 +75,31 @@ interface Stubs {
 }
 
 function build(stubs: Stubs = {}) {
-  const calls: Calls = { reverse: [], failed: [], prepare: 0, complete: 0 };
+  const calls: Calls = {
+    reverse: [],
+    failed: [],
+    prepare: 0,
+    preparedPlans: [],
+    complete: 0,
+  };
 
   const subscriptions = {
     findShopForPayment: () =>
       Promise.resolve('shop' in stubs ? stubs.shop : SHOP),
-    planByAmount: () => ('plan' in stubs ? stubs.plan : 'start'),
-    prepare: () => {
+    /**
+     * Разбор суммы живёт в сервисе целиком: контроллеру приходит готовое
+     * «тариф такой-то», «это проверка кассы» либо «ничего». Подставляем то же,
+     * что вернул бы настоящий `resolvePurchase`: тариф по цене из прайса,
+     * `null` — на сумме мимо него.
+     */
+    resolvePurchase: () => {
+      if (stubs.test) return Promise.resolve({ kind: 'test' as const });
+      const plan = 'plan' in stubs ? stubs.plan : 'start';
+      return Promise.resolve(plan ? { kind: 'plan' as const, plan } : null);
+    },
+    prepare: (input: { plan: string | null }) => {
       calls.prepare += 1;
+      calls.preparedPlans.push(input.plan);
       const result = stubs.prepare ?? {
         kind: 'prepared',
         payment: { merchantBillingId: 55 },
@@ -212,6 +233,32 @@ describe('колбэк Click: Prepare', () => {
 
     assert.equal(answer.error, -2);
     assert.equal(calls.prepare, 0);
+  });
+
+  it('передаёт тариф в prepare как есть', async () => {
+    const { controller, calls } = build({ plan: 'max' });
+
+    await controller.handle(sign(PREPARE));
+
+    assert.deepEqual(calls.preparedPlans, ['max']);
+  });
+
+  /**
+   * Проверка кассы символической суммой. Счёт принимается — иначе проверять
+   * было бы нечего, — но тарифа у него нет: в `prepare` уходит `null`, и это
+   * единственное, чем ветка теста отличается на стадии Prepare. Всё остальное
+   * (подпись, service_id, номер счёта в ответе) обязано работать ровно так же,
+   * иначе тест доказывал бы не тот путь, которым пойдут настоящие деньги.
+   */
+  it('принимает проверку кассы, но без тарифа', async () => {
+    const { controller, calls } = build({ test: true });
+
+    const answer = await controller.handle(sign(PREPARE));
+
+    assert.equal(answer.error, 0);
+    assert.equal(answer.merchant_prepare_id, 55);
+    assert.equal(calls.prepare, 1);
+    assert.deepEqual(calls.preparedPlans, [null]);
   });
 
   it('отбивает неизвестного плательщика кодом -5 без возврата', async () => {

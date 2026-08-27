@@ -30,6 +30,7 @@ import {
 import {
   AUTOFILL_FREE_PER_MONTH,
   MANUAL_ACTIVATION_COOLDOWN_SEC,
+  TEST_WINDOW_MINUTES,
   TZ,
   buildPlans,
   effectiveLimits,
@@ -37,6 +38,7 @@ import {
   monthStart,
   type PaidPlan,
   type PlanSpec,
+  type SubscriptionPlanId,
 } from './subscriptions.constants';
 import type { ActivateSubscriptionDto } from './dto/activate-subscription.dto';
 import type { FindAdminSubscriptionsQueryDto } from './dto/find-admin-subscriptions-query.dto';
@@ -46,6 +48,7 @@ import type {
   SellerSubscriptionDto,
   SubscriptionPaymentDto,
   SubscriptionPlanDto,
+  TestPaymentLinkDto,
 } from './dto/subscription.dto';
 
 /**
@@ -77,6 +80,13 @@ export type CompleteResult =
       payment: SubscriptionPayment;
       ownerId: number;
       shopName: string;
+      /**
+       * Проверка кассы, а не покупка: строка в журнале есть, выдачи нет.
+       * Отдельным полем, а не проверкой `plan === 'free'` у вызывающего:
+       * решение «выдавать или нет» принято внутри транзакции, и повторять его
+       * снаружи по косвенным признакам — способ однажды разойтись.
+       */
+      test?: boolean;
     }
   | { kind: 'already_paid' }
   | { kind: 'cancelled' }
@@ -139,6 +149,8 @@ export class SubscriptionsService implements OnModuleInit {
   /** Прайс, собранный один раз на старте. Дальше только читается. */
   private specs: PlanSpec[] = [];
   private specById = new Map<PaidPlan, PlanSpec>();
+  /** Символическая сумма проверки кассы. Тарифом не является и ничего не даёт. */
+  private testPriceUzs = 0;
 
   constructor(
     private readonly repository: SubscriptionsRepository,
@@ -170,8 +182,11 @@ export class SubscriptionsService implements OnModuleInit {
       max: this.config.get<number>('subscription.priceMaxUzs') ?? 0,
     };
 
+    this.testPriceUzs =
+      this.config.get<number>('subscription.testPriceUzs') ?? 0;
+
     try {
-      this.specs = buildPlans(prices);
+      this.specs = buildPlans(prices, this.testPriceUzs);
     } catch (error) {
       this.logger.error(
         `Прайс подписки задан неверно: ${error instanceof Error ? error.message : String(error)}`,
@@ -227,6 +242,78 @@ export class SubscriptionsService implements OnModuleInit {
     const spec = this.specById.get(plan);
     if (!spec) throw new BadRequestException('Неизвестный тариф');
     return spec;
+  }
+
+  /**
+   * За что заплатили — единственное место, где сумма превращается в решение.
+   *
+   * Сначала прайс, и только потом тест: тарифы не могут быть перехвачены
+   * тестовой веткой ни при каких настройках, а совпадение сумм ловится ещё на
+   * старте (`buildPlans`). Тестовая сумма принимается, лишь пока администратор
+   * держит окно открытым на этот магазин, — иначе она была бы подпиской по
+   * цене в шестьдесят пять раз ниже прайса для всех желающих.
+   *
+   * Обращение в базу здесь только в третьей ветке, и это правильный порядок:
+   * обычная оплата разрешается по памяти, а лишний запрос платит тот, кто
+   * прислал сумму мимо прайса.
+   */
+  async resolvePurchase(
+    shopId: number,
+    amount: number,
+  ): Promise<{ kind: 'plan'; plan: PaidPlan } | { kind: 'test' } | null> {
+    const plan = this.planByAmount(amount);
+    if (plan) return { kind: 'plan', plan };
+
+    if (
+      this.testPriceUzs > 0 &&
+      sameAmount(this.testPriceUzs, amount) &&
+      (await this.repository.isTestWindowOpen(shopId))
+    ) {
+      return { kind: 'test' };
+    }
+
+    return null;
+  }
+
+  /**
+   * Взвести окно тестовой оплаты и выдать ссылку на кассу.
+   *
+   * Проверка настроек — та же, что у обычной кассы: тест проверяет ровно тот
+   * путь, которым пойдут настоящие деньги, и смысл в нём есть только при тех
+   * же реквизитах. `transaction_param` тоже тот же — telegram-id владельца,
+   * иначе тест прошёл бы по другому маршруту разрешения магазина, чем боевая
+   * оплата, и доказывал бы не то.
+   */
+  async armTestCheckout(shopId: number): Promise<TestPaymentLinkDto> {
+    this.requireClickConfigured();
+
+    if (!(this.testPriceUzs > 0)) {
+      throw new BadRequestException(
+        'Тестовая сумма не задана: заполните SUBSCRIPTION_TEST_PRICE_UZS',
+      );
+    }
+
+    const until = new Date(Date.now() + TEST_WINDOW_MINUTES * 60_000);
+    const shop = await this.repository.armTestWindow(shopId, until);
+    if (!shop) {
+      throw new NotFoundException('Активный магазин не найден');
+    }
+
+    this.logger.log(
+      `Открыто окно тестовой оплаты: магазин ${shop.id}, ${this.testPriceUzs} UZS, до ${until.toISOString()}`,
+    );
+
+    return {
+      amountUzs: this.testPriceUzs,
+      armedUntil: until.toISOString(),
+      url: createClickPaymentUrl({
+        serviceId: this.config.get<string>('click.serviceId')!,
+        merchantId: this.config.get<string>('click.merchantId')!,
+        amountUzs: this.testPriceUzs,
+        transactionParam: String(shop.ownerTelegramId),
+        returnUrl: this.config.get<string>('click.returnUrl'),
+      }),
+    };
   }
 
   /* ------------------------------------------------------------------ */
@@ -349,21 +436,29 @@ export class SubscriptionsService implements OnModuleInit {
    */
   async prepare(input: {
     shopId: number;
-    plan: PaidPlan;
+    /** `null` — тестовая оплата: покупать было нечего, и в журнал идёт `free`. */
+    plan: PaidPlan | null;
     amount: number;
     providerTransactionId: string;
     providerPaymentId: string;
     serviceId: string;
     signTime: string;
   }): Promise<PrepareResult> {
+    const test = input.plan === null;
+    const plan: SubscriptionPlanId = input.plan ?? 'free';
+
     return this.repository.transaction<PrepareResult>(async (tx) => {
       let payment = await this.repository.insertPrepared(tx, {
         shopId: input.shopId,
-        plan: input.plan,
+        plan,
         amount: input.amount,
         providerTransactionId: input.providerTransactionId,
         providerPaymentId: input.providerPaymentId,
-        meta: { serviceId: input.serviceId, signTime: input.signTime },
+        meta: {
+          serviceId: input.serviceId,
+          signTime: input.signTime,
+          ...(test ? { test: true } : {}),
+        },
       });
 
       if (!payment) {
@@ -390,7 +485,8 @@ export class SubscriptionsService implements OnModuleInit {
          */
         if (
           payment.shopId !== input.shopId ||
-          payment.plan !== input.plan ||
+          payment.plan !== plan ||
+          Boolean(payment.meta?.test) !== test ||
           payment.providerPaymentId !== input.providerPaymentId ||
           !sameAmount(payment.amount, input.amount)
         ) {
@@ -549,6 +645,40 @@ export class SubscriptionsService implements OnModuleInit {
         }
 
         /**
+         * Тестовая оплата. Деньги настоящие, путь настоящий, выдачи нет —
+         * ветка стоит до всякой выдачи и ничего из неё не зовёт.
+         *
+         * `activated_from`/`activated_until` остаются пустыми намеренно: по
+         * ним считается инвариант «`subscription_until` равен максимальному
+         * `activated_until` среди оплаченных», и проставь мы сюда даты, тест
+         * начал бы притворяться оплаченным периодом в глазах и админки, и
+         * крона напоминаний.
+         *
+         * Окно закрывается здесь же, в той же транзакции: оно одноразовое, и
+         * закрыть его после коммита значило бы оставить щель ровно на время
+         * между коммитом и следующим запросом.
+         */
+        if (payment.meta?.test) {
+          await this.repository.closeTestWindow(tx, shop.id);
+
+          const updated = await this.repository.markPaid(tx, payment.id, {
+            activatedFrom: null,
+            activatedUntil: null,
+            grantedCredits: 0,
+            burnedCredits: 0,
+            paidAt: now,
+          });
+
+          return {
+            kind: 'paid',
+            payment: updated,
+            ownerId: shop.owner,
+            shopName: shop.name,
+            test: true,
+          };
+        }
+
+        /**
          * Тариф читается со строки платежа, а не пересчитывается по сумме
          * заново: покупка состоялась на Prepare, и если прайс успели поменять
          * между стадиями, человек обязан получить то, за что платил.
@@ -599,6 +729,20 @@ export class SubscriptionsService implements OnModuleInit {
     );
 
     if (result.kind === 'paid') {
+      /**
+       * Тестовая оплата не объявляется владельцу ничем: подписки он не
+       * получил, и сообщение «оплата прошла» было бы обещанием, за которым
+       * ничего нет. В журнале приложения она при этом видна — ради неё всё
+       * и затевалось.
+       */
+      if (result.test) {
+        this.logger.log(
+          `Тестовая оплата прошла: магазин ${result.payment.shopId}, платёж ${result.payment.id}, ` +
+            `${result.payment.amount} UZS. Подписка не выдавалась, окно закрыто`,
+        );
+        return result;
+      }
+
       this.logger.log(
         `Подписка ${result.payment.plan.toUpperCase()} оплачена: магазин ${result.payment.shopId}, ` +
           `платёж ${result.payment.id}, до ${result.payment.activatedUntil?.toISOString() ?? '—'}`,
