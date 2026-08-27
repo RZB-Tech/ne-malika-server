@@ -18,6 +18,10 @@ import {
   verifyClickSignature,
 } from './click-protocol';
 import {
+  CLICK_CALLBACK_ACTIONS,
+  CLICK_CONTROLLER_ROUTES,
+} from './click-routes';
+import {
   SubscriptionsService,
   type CompleteResult,
 } from './subscriptions.service';
@@ -214,13 +218,13 @@ function isPaidComplete(body: Record<string, unknown>): boolean {
  * Лишние пути ничего не стоят: обработчик один, гварды одни, а вся проверка
  * начинается с подписи — на любой из них неподписанный запрос уйдёт с `-1`.
  *
- * Глобальный префикс `api/v1` добавляется к обоим (см. `main.ts`), так что
- * наружу это `/api/v1/subscriptions/click/callback` и `/api/v1/click/callback`.
+ * Первые два пути получают глобальный префикс `api/v1`. Ещё два начинаются с
+ * `api/` и исключены из глобального префикса в `main.ts`: это точные адреса
+ * рабочих образцов — `/api/click/callback` и
+ * `/api/subscriptions/click/{prepare,complete}`. Все варианты приходят сюда.
  */
-const CALLBACK_ROUTES = ['subscriptions/click', 'click'];
-
 @ApiExcludeController()
-@Controller(CALLBACK_ROUTES)
+@Controller(CLICK_CONTROLLER_ROUTES)
 export class ClickController {
   private readonly logger = new Logger(ClickController.name);
 
@@ -246,7 +250,7 @@ export class ClickController {
    */
   @Public()
   @SkipThrottle()
-  @Post(['callback', 'prepare', 'complete'])
+  @Post(CLICK_CALLBACK_ACTIONS)
   @HttpCode(HttpStatus.OK)
   async handle(@Body() body: Record<string, unknown>): Promise<ClickAnswer> {
     const context: CallbackContext = {
