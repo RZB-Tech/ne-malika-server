@@ -37,6 +37,16 @@ export interface PaymentShop {
   ownerTelegramId: number;
 }
 
+export interface PaymentOrder {
+  id: number;
+  merchantBillingId: number;
+  shopId: number;
+  shopName: string;
+  shopStatus: string;
+  ownerId: number;
+  ownerTelegramId: number;
+}
+
 export interface LockedShop {
   id: number;
   name: string;
@@ -91,30 +101,87 @@ export class SubscriptionsRepository {
     return sql`coalesce(${subscriptionPayments.meta}, '{}'::jsonb) || ${JSON.stringify(patch)}::jsonb`;
   }
 
-  async insertPrepared(
-    tx: Tx,
-    data: {
-      shopId: number;
-      plan: SubscriptionPlanId;
-      amount: number;
-      providerTransactionId: string;
-      providerPaymentId: string;
-      meta: SubscriptionPaymentMeta;
-    },
-  ): Promise<SubscriptionPayment | undefined> {
-    const rows = await tx
+  async createOrder(data: {
+    shopId: number;
+    plan: SubscriptionPlanId;
+    amount: number;
+    initiatorId: number | null;
+    meta: SubscriptionPaymentMeta;
+  }): Promise<SubscriptionPayment> {
+    const rows = await this.db
       .insert(subscriptionPayments)
       .values({
         shopId: data.shopId,
         provider: 'click',
         plan: data.plan,
         amount: data.amount,
+        status: 'pending',
+        initiatorId: data.initiatorId,
+        meta: data.meta,
+      })
+      .returning();
+    return rows[0];
+  }
+
+  async findReusableOrder(data: {
+    shopId: number;
+    plan: SubscriptionPlanId;
+    amount: number;
+    test: boolean;
+    since: Date;
+  }): Promise<SubscriptionPayment | undefined> {
+    const rows = await this.db
+      .select()
+      .from(subscriptionPayments)
+      .where(
+        and(
+          eq(subscriptionPayments.shopId, data.shopId),
+          eq(subscriptionPayments.provider, 'click'),
+          eq(subscriptionPayments.plan, data.plan),
+          eq(subscriptionPayments.status, 'pending'),
+          sql`${subscriptionPayments.amount} = ${data.amount}`,
+          sql`coalesce((${subscriptionPayments.meta} ->> 'test')::boolean, false) = ${data.test}`,
+          sql`${subscriptionPayments.createdAt} > ${data.since.toISOString()}::timestamptz`,
+        ),
+      )
+      .orderBy(desc(subscriptionPayments.createdAt))
+      .limit(1);
+    return rows[0];
+  }
+
+  async lockByBillingId(
+    tx: Tx,
+    merchantBillingId: number,
+  ): Promise<SubscriptionPayment | undefined> {
+    const rows = await tx
+      .select()
+      .from(subscriptionPayments)
+      .where(eq(subscriptionPayments.merchantBillingId, merchantBillingId))
+      .limit(1)
+      .for('update');
+    return rows[0];
+  }
+
+  async attachClickToOrder(
+    tx: Tx,
+    id: number,
+    data: {
+      providerTransactionId: string;
+      providerPaymentId: string;
+      providerPrepareId: string;
+      meta: SubscriptionPaymentMeta;
+    },
+  ): Promise<SubscriptionPayment> {
+    const rows = await tx
+      .update(subscriptionPayments)
+      .set({
         status: 'prepared',
         providerTransactionId: data.providerTransactionId,
         providerPaymentId: data.providerPaymentId,
-        meta: data.meta,
+        providerPrepareId: data.providerPrepareId,
+        meta: SubscriptionsRepository.mergeMeta(data.meta),
       })
-      .onConflictDoNothing()
+      .where(eq(subscriptionPayments.id, id))
       .returning();
     return rows[0];
   }
@@ -309,48 +376,7 @@ export class SubscriptionsRepository {
     return rows[0];
   }
 
-  async armTestWindow(
-    shopId: number,
-    until: Date,
-  ): Promise<PaymentShop | undefined> {
-    const rows = await this.db
-      .update(shops)
-      .set({ subscriptionTestUntil: until, updatedAt: new Date() })
-      .where(and(eq(shops.id, shopId), eq(shops.status, 'active')))
-      .returning({ id: shops.id, name: shops.name, ownerId: shops.owner });
-
-    const row = rows[0];
-    if (!row) return undefined;
-
-    const owner = await this.db
-      .select({ telegramId: users.telegramId })
-      .from(users)
-      .where(eq(users.id, row.ownerId))
-      .limit(1);
-    if (!owner[0]) return undefined;
-
-    return { ...row, ownerTelegramId: owner[0].telegramId };
-  }
-
-  async isTestWindowOpen(shopId: number): Promise<boolean> {
-    const rows = await this.db
-      .select({ open: sql<boolean>`${shops.subscriptionTestUntil} > now()` })
-      .from(shops)
-      .where(eq(shops.id, shopId))
-      .limit(1);
-    return rows[0]?.open === true;
-  }
-
-  async closeTestWindow(tx: Tx, shopId: number): Promise<void> {
-    await tx
-      .update(shops)
-      .set({ subscriptionTestUntil: null, updatedAt: new Date() })
-      .where(eq(shops.id, shopId));
-  }
-
-  async findShopByOwnerTelegramId(
-    telegramId: number,
-  ): Promise<PaymentShop | undefined> {
+  async findShopById(shopId: number): Promise<PaymentShop | undefined> {
     const rows = await this.db
       .select({
         id: shops.id,
@@ -360,7 +386,28 @@ export class SubscriptionsRepository {
       })
       .from(shops)
       .innerJoin(users, eq(shops.owner, users.id))
-      .where(and(eq(users.telegramId, telegramId), eq(shops.status, 'active')))
+      .where(and(eq(shops.id, shopId), eq(shops.status, 'active')))
+      .limit(1);
+    return rows[0];
+  }
+
+  async findOrderForPayment(
+    merchantBillingId: number,
+  ): Promise<PaymentOrder | undefined> {
+    const rows = await this.db
+      .select({
+        id: subscriptionPayments.id,
+        merchantBillingId: subscriptionPayments.merchantBillingId,
+        shopId: subscriptionPayments.shopId,
+        shopName: shops.name,
+        shopStatus: shops.status,
+        ownerId: users.id,
+        ownerTelegramId: users.telegramId,
+      })
+      .from(subscriptionPayments)
+      .innerJoin(shops, eq(subscriptionPayments.shopId, shops.id))
+      .innerJoin(users, eq(shops.owner, users.id))
+      .where(eq(subscriptionPayments.merchantBillingId, merchantBillingId))
       .limit(1);
     return rows[0];
   }

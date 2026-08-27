@@ -25,11 +25,13 @@ import { createClickPaymentUrl } from './click-protocol';
 import { ClickMerchantService } from './click-merchant.service';
 import {
   SubscriptionsRepository,
+  type PaymentOrder,
   type PaymentShop,
 } from './subscriptions.repository';
 import {
   AUTOFILL_FREE_PER_MONTH,
   MANUAL_ACTIVATION_COOLDOWN_SEC,
+  ORDER_REUSE_MINUTES,
   TEST_WINDOW_MINUTES,
   TZ,
   buildPlans,
@@ -55,6 +57,10 @@ export type PrepareResult =
   | { kind: 'prepared'; payment: SubscriptionPayment }
   | { kind: 'already_paid' }
   | { kind: 'cancelled' }
+  | { kind: 'not_found' }
+  | { kind: 'invalid_amount' }
+  | { kind: 'shop_gone' }
+  | { kind: 'expired' }
   | { kind: 'conflict' };
 
 export type CompleteResult =
@@ -142,36 +148,16 @@ export class SubscriptionsService implements OnModuleInit {
     }));
   }
 
-  planByAmount(amount: number): PaidPlan | null {
-    const spec = this.specs.find((item) => sameAmount(item.priceUzs, amount));
-    return spec ? spec.id : null;
-  }
-
   private specOf(plan: PaidPlan): PlanSpec {
     const spec = this.specById.get(plan);
     if (!spec) throw new BadRequestException('Неизвестный тариф');
     return spec;
   }
 
-  async resolvePurchase(
+  async createTestCheckout(
     shopId: number,
-    amount: number,
-  ): Promise<{ kind: 'plan'; plan: PaidPlan } | { kind: 'test' } | null> {
-    const plan = this.planByAmount(amount);
-    if (plan) return { kind: 'plan', plan };
-
-    if (
-      this.testPriceUzs > 0 &&
-      sameAmount(this.testPriceUzs, amount) &&
-      (await this.repository.isTestWindowOpen(shopId))
-    ) {
-      return { kind: 'test' };
-    }
-
-    return null;
-  }
-
-  async armTestCheckout(shopId: number): Promise<TestPaymentLinkDto> {
+    adminId: number,
+  ): Promise<TestPaymentLinkDto> {
     this.requireClickConfigured();
 
     if (!(this.testPriceUzs > 0)) {
@@ -180,26 +166,63 @@ export class SubscriptionsService implements OnModuleInit {
       );
     }
 
-    const until = new Date(Date.now() + TEST_WINDOW_MINUTES * 60_000);
-    const shop = await this.repository.armTestWindow(shopId, until);
-    if (!shop) {
-      throw new NotFoundException('Активный магазин не найден');
-    }
+    const shop = await this.repository.findShopById(shopId);
+    if (!shop) throw new NotFoundException('Активный магазин не найден');
+
+    const order = await this.openOrder({
+      shopId: shop.id,
+      plan: 'free',
+      amount: this.testPriceUzs,
+      initiatorId: adminId,
+      test: true,
+    });
 
     this.logger.log(
-      `Открыто окно тестовой оплаты: магазин ${shop.id}, ${this.testPriceUzs} UZS, до ${until.toISOString()}`,
+      `Заведён счёт проверки кассы ${order.merchantBillingId}: магазин ${shop.id}, ${this.testPriceUzs} UZS`,
     );
 
     return {
       amountUzs: this.testPriceUzs,
-      armedUntil: until.toISOString(),
-      url: createClickPaymentUrl({
-        serviceId: this.config.get<string>('click.serviceId')!,
-        merchantId: this.config.get<string>('click.merchantId')!,
-        amountUzs: this.testPriceUzs,
-        transactionParam: String(shop.ownerTelegramId),
-      }),
+      armedUntil: new Date(
+        order.createdAt.getTime() + TEST_WINDOW_MINUTES * 60_000,
+      ).toISOString(),
+      url: this.payUrl(this.testPriceUzs, order.merchantBillingId),
     };
+  }
+
+  private payUrl(amountUzs: number, merchantBillingId: number): string {
+    return createClickPaymentUrl({
+      serviceId: this.config.get<string>('click.serviceId')!,
+      merchantId: this.config.get<string>('click.merchantId')!,
+      amountUzs,
+      transactionParam: String(merchantBillingId),
+    });
+  }
+
+  private async openOrder(input: {
+    shopId: number;
+    plan: SubscriptionPlanId;
+    amount: number;
+    initiatorId: number | null;
+    test: boolean;
+  }): Promise<SubscriptionPayment> {
+    const since = new Date(Date.now() - ORDER_REUSE_MINUTES * 60_000);
+    const existing = await this.repository.findReusableOrder({
+      shopId: input.shopId,
+      plan: input.plan,
+      amount: input.amount,
+      test: input.test,
+      since,
+    });
+    if (existing) return existing;
+
+    return this.repository.createOrder({
+      shopId: input.shopId,
+      plan: input.plan,
+      amount: input.amount,
+      initiatorId: input.initiatorId,
+      meta: input.test ? { test: true } : {},
+    });
   }
 
   private requireClickConfigured(): void {
@@ -237,96 +260,93 @@ export class SubscriptionsService implements OnModuleInit {
 
     const shop = await this.shopOfOwner(ownerId);
 
+    const order = await this.openOrder({
+      shopId: shop.id,
+      plan: spec.id,
+      amount: spec.priceUzs,
+      initiatorId: ownerId,
+      test: false,
+    });
+
     return {
       provider: 'click',
       plan: spec.id,
       amountUzs: spec.priceUzs,
-      url: createClickPaymentUrl({
-        serviceId: this.config.get<string>('click.serviceId')!,
-        merchantId: this.config.get<string>('click.merchantId')!,
-        amountUzs: spec.priceUzs,
-        transactionParam: String(shop.ownerTelegramId),
-      }),
+      url: this.payUrl(spec.priceUzs, order.merchantBillingId),
     };
   }
 
-  async findShopForPayment(
+  async findOrderForPayment(
     merchantTransId: string,
-  ): Promise<PaymentShop | undefined> {
+  ): Promise<PaymentOrder | undefined> {
     const trimmed = merchantTransId.trim();
-    if (!/^\d{5,18}$/.test(trimmed)) return undefined;
+    if (!/^\d{1,10}$/.test(trimmed)) return undefined;
 
-    const telegramId = Number(trimmed);
-    if (!Number.isSafeInteger(telegramId) || telegramId <= 0) return undefined;
+    const billingId = Number(trimmed);
+    if (!Number.isSafeInteger(billingId) || billingId <= 0) return undefined;
 
-    return this.repository.findShopByOwnerTelegramId(telegramId);
+    return this.repository.findOrderForPayment(billingId);
   }
 
   async prepare(input: {
-    shopId: number;
-    plan: PaidPlan | null;
+    orderId: number;
     amount: number;
     providerTransactionId: string;
     providerPaymentId: string;
     serviceId: string;
     signTime: string;
   }): Promise<PrepareResult> {
-    const test = input.plan === null;
-    const plan: SubscriptionPlanId = input.plan ?? 'free';
-
     return this.repository.transaction<PrepareResult>(async (tx) => {
-      let payment = await this.repository.insertPrepared(tx, {
-        shopId: input.shopId,
-        plan,
-        amount: input.amount,
-        providerTransactionId: input.providerTransactionId,
-        providerPaymentId: input.providerPaymentId,
-        meta: {
-          serviceId: input.serviceId,
-          signTime: input.signTime,
-          ...(test ? { test: true } : {}),
-        },
-      });
+      const payment = await this.repository.lockByBillingId(tx, input.orderId);
+      if (!payment) return { kind: 'not_found' };
 
-      if (!payment) {
-        payment = await this.repository.lockByProviderTransaction(
-          tx,
-          input.providerTransactionId,
+      if (!sameAmount(payment.amount, input.amount)) {
+        this.logger.warn(
+          `Prepare Click с суммой не по счёту ${input.orderId}: ожидалось ${payment.amount}, пришло ${input.amount}`,
         );
+        return { kind: 'invalid_amount' };
+      }
 
-        if (!payment) {
-          this.logger.error(
-            `Click: платёжный документ ${input.providerPaymentId} уже учтён под другим номером транзакции ` +
-              `(click_trans_id=${input.providerTransactionId}, магазин ${input.shopId})`,
-          );
-          throw new ConflictException(
-            'Платёжный документ уже учтён другим платежом',
-          );
-        }
+      const shop = await this.repository.lockShop(tx, payment.shopId);
+      if (!shop || shop.status !== 'active') return { kind: 'shop_gone' };
 
-        if (
-          payment.shopId !== input.shopId ||
-          payment.plan !== plan ||
-          Boolean(payment.meta?.test) !== test ||
-          payment.providerPaymentId !== input.providerPaymentId ||
-          !sameAmount(payment.amount, input.amount)
-        ) {
+      if (payment.status === 'paid') return { kind: 'already_paid' };
+      if (payment.status === 'cancelled') return { kind: 'cancelled' };
+
+      if (payment.meta?.test) {
+        const deadline =
+          payment.createdAt.getTime() + TEST_WINDOW_MINUTES * 60_000;
+        if (Date.now() > deadline) {
           this.logger.warn(
-            `Click: повторный Prepare не сошёлся с сохранённым (click_trans_id=${input.providerTransactionId})`,
+            `Prepare Click по просроченному счёту проверки кассы ${input.orderId}`,
+          );
+          return { kind: 'expired' };
+        }
+      }
+
+      if (payment.status === 'prepared') {
+        if (payment.providerTransactionId !== input.providerTransactionId) {
+          this.logger.warn(
+            `Prepare Click по уже занятому счёту ${input.orderId}: ` +
+              `он ждёт транзакцию ${payment.providerTransactionId ?? '—'}, пришла ${input.providerTransactionId}`,
           );
           return { kind: 'conflict' };
         }
-
-        if (payment.status === 'paid') return { kind: 'already_paid' };
-        if (payment.status === 'cancelled') return { kind: 'cancelled' };
+        return { kind: 'prepared', payment };
       }
 
-      const prepareId = String(payment.merchantBillingId);
-      if (payment.providerPrepareId !== prepareId) {
-        payment = await this.repository.setPrepareId(tx, payment.id, prepareId);
-      }
+      const attached = await this.repository.attachClickToOrder(
+        tx,
+        payment.id,
+        {
+          providerTransactionId: input.providerTransactionId,
+          providerPaymentId: input.providerPaymentId,
+          providerPrepareId: String(payment.merchantBillingId),
+          meta: { serviceId: input.serviceId, signTime: input.signTime },
+        },
+      );
 
-      return { kind: 'prepared', payment };
+      return { kind: 'prepared', payment: attached };
     });
   }
 
@@ -412,8 +432,6 @@ export class SubscriptionsService implements OnModuleInit {
         }
 
         if (payment.meta?.test) {
-          await this.repository.closeTestWindow(tx, shop.id);
-
           const updated = await this.repository.markPaid(tx, payment.id, {
             activatedFrom: null,
             activatedUntil: null,
@@ -548,7 +566,7 @@ export class SubscriptionsService implements OnModuleInit {
 
         const inserted = await this.repository.insertCancelled(tx, {
           shopId: input.shopId,
-          plan: this.planByAmount(input.amount) ?? 'free',
+          plan: 'free',
           amount: input.amount,
           providerTransactionId: input.providerTransactionId,
           providerPaymentId: input.providerPaymentId,

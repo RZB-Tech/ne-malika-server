@@ -1,0 +1,1 @@
+ALTER TABLE "shops" DROP COLUMN "subscription_test_until";

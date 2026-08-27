@@ -203,12 +203,12 @@ export class ClickController {
       return answer(body, CLICK_RESPONSE.invalidRequest);
     }
 
-    const shop = await this.subscriptions.findShopForPayment(
+    const order = await this.subscriptions.findOrderForPayment(
       callback.merchantTransId,
     );
-    if (!shop) {
+    if (!order) {
       this.logger.warn(
-        `Колбэк Click по неизвестному плательщику: merchant_trans_id=${callback.merchantTransId}, ` +
+        `Колбэк Click по неизвестному счёту: merchant_trans_id=${callback.merchantTransId}, ` +
           `click_trans_id=${callback.clickTransId}`,
       );
 
@@ -216,51 +216,31 @@ export class ClickController {
         return this.failComplete(
           body,
           context,
-          `Плательщик Complete не разрешился в магазин (merchant_trans_id=${callback.merchantTransId})`,
+          `Complete по несуществующему счёту (merchant_trans_id=${callback.merchantTransId})`,
         );
       }
 
       return answer(body, CLICK_RESPONSE.userNotFound);
     }
-    context.shopId = shop.id;
+    context.shopId = order.shopId;
 
     if (callback.action === 0) {
-      return this.prepare(body, callback, shop.id);
+      return this.prepare(body, callback, order.merchantBillingId);
     }
-    return this.complete(body, callback, context, shop.id);
+    return this.complete(body, callback, context, order.shopId);
   }
 
   private async prepare(
     body: Record<string, unknown>,
     callback: NonNullable<ReturnType<typeof parseClickCallback>>,
-    shopId: number,
+    orderId: number,
   ): Promise<ClickAnswer> {
     if (callback.clickError < 0) {
       return answer(body, CLICK_RESPONSE.cancelled);
     }
 
-    const purchase = await this.subscriptions.resolvePurchase(
-      shopId,
-      callback.amount,
-    );
-    if (!purchase) {
-      this.logger.warn(
-        `Prepare Click с суммой мимо прайса: ${callback.amount}, магазин ${shopId}, ` +
-          `click_trans_id=${callback.clickTransId}`,
-      );
-      return answer(body, CLICK_RESPONSE.invalidAmount);
-    }
-
-    if (purchase.kind === 'test') {
-      this.logger.warn(
-        `Prepare Click тестовой суммой ${callback.amount}: магазин ${shopId}, ` +
-          `click_trans_id=${callback.clickTransId}. Подписка выдаваться не будет`,
-      );
-    }
-
     const result = await this.subscriptions.prepare({
-      shopId,
-      plan: purchase.kind === 'plan' ? purchase.plan : null,
+      orderId,
       amount: callback.amount,
       providerTransactionId: callback.clickTransId,
       providerPaymentId: callback.clickPaydocId,
@@ -277,6 +257,12 @@ export class ClickController {
         return answer(body, CLICK_RESPONSE.alreadyPaid);
       case 'cancelled':
         return answer(body, CLICK_RESPONSE.cancelled);
+      case 'invalid_amount':
+        return answer(body, CLICK_RESPONSE.invalidAmount);
+      case 'not_found':
+      case 'expired':
+        return answer(body, CLICK_RESPONSE.userNotFound);
+      case 'shop_gone':
       case 'conflict':
         return answer(body, CLICK_RESPONSE.invalidRequest);
     }

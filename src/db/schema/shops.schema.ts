@@ -63,10 +63,6 @@ export const shops = pgTable(
 
     autofillPeriodMonth: date('autofill_period_month'),
 
-    subscriptionTestUntil: timestamp('subscription_test_until', {
-      withTimezone: true,
-    }),
-
     ratingAvg: doublePrecision('rating_avg').notNull().default(0),
     ratingCount: integer('rating_count').notNull().default(0),
 

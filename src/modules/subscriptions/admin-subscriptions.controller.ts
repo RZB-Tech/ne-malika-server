@@ -93,9 +93,10 @@ export class AdminShopSubscriptionController {
   @ApiResponse({ status: 404, description: 'Активный магазин не найден' })
   @ApiResponse({ status: 503, description: 'Click не настроен' })
   testCheckout(
+    @CurrentUser() user: AuthenticatedUser,
     @Param('shopId', ParseIntPipe) shopId: number,
   ): Promise<TestPaymentLinkDto> {
-    return this.subscriptions.armTestCheckout(shopId);
+    return this.subscriptions.createTestCheckout(shopId, user.id);
   }
 
   @Post('cancel')

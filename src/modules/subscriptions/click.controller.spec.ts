@@ -40,18 +40,27 @@ function sign(body: Record<string, string>): Record<string, string> {
   return { ...body, sign_string: createClickSignature(body, SECRET) };
 }
 
+const ORDER = {
+  id: 11,
+  merchantBillingId: 100055,
+  shopId: SHOP.id,
+  shopName: SHOP.name,
+  shopStatus: 'active',
+  ownerId: SHOP.ownerId,
+  ownerTelegramId: SHOP.ownerTelegramId,
+};
+
 interface Calls {
   reverse: string[];
   failed: Parameters<SubscriptionsService['recordFailedComplete']>[0][];
   prepare: number;
-  preparedPlans: (string | null)[];
+  preparedOrders: number[];
   complete: number;
 }
 
 interface Stubs {
   shop?: typeof SHOP | undefined;
-  plan?: 'start' | 'pro' | 'max' | null;
-  test?: boolean;
+  order?: typeof ORDER | undefined;
   prepare?: PrepareResult | (() => never);
   complete?: CompleteResult | (() => never);
   reversal?: ClickReversalResult;
@@ -64,21 +73,16 @@ function build(stubs: Stubs = {}) {
     reverse: [],
     failed: [],
     prepare: 0,
-    preparedPlans: [],
+    preparedOrders: [],
     complete: 0,
   };
 
   const subscriptions = {
-    findShopForPayment: () =>
-      Promise.resolve('shop' in stubs ? stubs.shop : SHOP),
-    resolvePurchase: () => {
-      if (stubs.test) return Promise.resolve({ kind: 'test' as const });
-      const plan = 'plan' in stubs ? stubs.plan : 'start';
-      return Promise.resolve(plan ? { kind: 'plan' as const, plan } : null);
-    },
-    prepare: (input: { plan: string | null }) => {
+    findOrderForPayment: () =>
+      Promise.resolve('order' in stubs ? stubs.order : ORDER),
+    prepare: (input: { orderId: number }) => {
       calls.prepare += 1;
-      calls.preparedPlans.push(input.plan);
+      calls.preparedOrders.push(input.orderId);
       const result = stubs.prepare ?? {
         kind: 'prepared',
         payment: { merchantBillingId: 55 },
@@ -214,41 +218,38 @@ describe('колбэк Click: Prepare', () => {
     assert.equal(answer.merchant_prepare_id, 55);
   });
 
-  it('отбивает сумму мимо прайса кодом -2, не заводя платежа', async () => {
-    const { controller, calls } = build({ plan: null });
+  it('отбивает сумму не по счёту кодом -2', async () => {
+    const { controller } = build({ prepare: { kind: 'invalid_amount' } });
 
     const answer = await controller.handle(sign(PREPARE));
 
     assert.equal(answer.error, -2);
-    assert.equal(calls.prepare, 0);
   });
 
-  it('передаёт тариф в prepare как есть', async () => {
-    const { controller, calls } = build({ plan: 'max' });
+  it('передаёт в prepare номер счёта из merchant_trans_id', async () => {
+    const { controller, calls } = build();
 
     await controller.handle(sign(PREPARE));
 
-    assert.deepEqual(calls.preparedPlans, ['max']);
+    assert.deepEqual(calls.preparedOrders, [ORDER.merchantBillingId]);
   });
 
-  it('принимает проверку кассы, но без тарифа', async () => {
-    const { controller, calls } = build({ test: true });
+  it('отбивает просроченный счёт проверки кассы кодом -5', async () => {
+    const { controller } = build({ prepare: { kind: 'expired' } });
 
     const answer = await controller.handle(sign(PREPARE));
 
-    assert.equal(answer.error, 0);
-    assert.equal(answer.merchant_prepare_id, 55);
-    assert.equal(calls.prepare, 1);
-    assert.deepEqual(calls.preparedPlans, [null]);
+    assert.equal(answer.error, -5);
   });
 
-  it('отбивает неизвестного плательщика кодом -5 без возврата', async () => {
-    const { controller, calls } = build({ shop: undefined });
+  it('отбивает неизвестный счёт кодом -5 без возврата', async () => {
+    const { controller, calls } = build({ order: undefined });
 
     const answer = await controller.handle(sign(PREPARE));
 
     assert.equal(answer.error, -5);
     assert.deepEqual(calls.reverse, []);
+    assert.equal(calls.prepare, 0);
   });
 
   it('отвечает -8 на конфликт платёжного документа и не возвращает денег', async () => {
@@ -353,8 +354,8 @@ describe('колбэк Click: Complete', () => {
     assert.match(calls.failed[0].errorNote, /база не ответила/);
   });
 
-  it('возвращает деньги, если плательщик Complete не разрешился в магазин', async () => {
-    const { controller, calls } = build({ shop: undefined });
+  it('возвращает деньги, если Complete пришёл по несуществующему счёту', async () => {
+    const { controller, calls } = build({ order: undefined });
 
     const answer = await controller.handle(sign(COMPLETE));
 

@@ -139,6 +139,8 @@ export const REMINDER_LEAD_DAYS = 3;
 
 export const TEST_WINDOW_MINUTES = 30;
 
+export const ORDER_REUSE_MINUTES = 30;
+
 export const MANUAL_ACTIVATION_MAX_MONTHS = 12;
 
 export const MANUAL_ACTIVATION_COOLDOWN_SEC = 60;

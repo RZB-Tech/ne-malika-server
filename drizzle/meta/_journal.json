@@ -288,6 +288,13 @@
       "when": 1787808342630,
       "tag": "0041_subscription_test_window",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1787819148461,
+      "tag": "0042_drop_subscription_test_window",
+      "breakpoints": true
     }
   ]
 }
