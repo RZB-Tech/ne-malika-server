@@ -3,33 +3,21 @@ import { describe, it } from 'node:test';
 import type { ConfigService } from '@nestjs/config';
 import { ClickController } from './click.controller';
 import { createClickSignature } from './click-protocol';
-import type { ClickMerchantService, ClickReversalResult } from './click-merchant.service';
+import type {
+  ClickMerchantService,
+  ClickReversalResult,
+} from './click-merchant.service';
 import type {
   CompleteResult,
   PrepareResult,
   SubscriptionsService,
 } from './subscriptions.service';
 
-/**
- * Таблица ветвлений колбэка Click.
- *
- * Проверяется не разбор тела (он закрыт `click-protocol.spec.ts`), а решения
- * контроллера: каким кодом он отвечает и — главное — в каких случаях трогает
- * деньги. Именно эта таблица ломается при любой правке «для порядка», а цена
- * поломки несимметрична: лишний возврат виден сразу, пропущенный обнаруживается
- * обращением продавца через неделю.
- *
- * Зависимости подменены вручную, без контейнера Nest: контроллер ничего не
- * знает ни про базу, ни про сеть, и поднимать ради семнадцати проверок целое
- * приложение значило бы проверять DI вместо ветвлений.
- */
-
 const SECRET = 'secret';
 const SERVICE_ID = '42';
 
 const SHOP = { id: 7, name: 'Магазин', ownerId: 3, ownerTelegramId: 123456789 };
 
-/** Тело Prepare без подписи. Подпись приписывает `sign`. */
 const PREPARE = {
   click_trans_id: '1000',
   click_paydoc_id: '2000',
@@ -41,7 +29,6 @@ const PREPARE = {
   sign_time: '2026-08-27 09:00:00',
 };
 
-/** Тело Complete: та же транзакция, плюс выданный нами номер счёта. */
 const COMPLETE = {
   ...PREPARE,
   merchant_prepare_id: '55',
@@ -57,7 +44,6 @@ interface Calls {
   reverse: string[];
   failed: Parameters<SubscriptionsService['recordFailedComplete']>[0][];
   prepare: number;
-  /** Тарифы, с которыми звали `prepare`. `null` — проверка кассы. */
   preparedPlans: (string | null)[];
   complete: number;
 }
@@ -65,7 +51,6 @@ interface Calls {
 interface Stubs {
   shop?: typeof SHOP | undefined;
   plan?: 'start' | 'pro' | 'max' | null;
-  /** Сумма опознана как проверка кассы: тарифа нет, выдавать нечего. */
   test?: boolean;
   prepare?: PrepareResult | (() => never);
   complete?: CompleteResult | (() => never);
@@ -86,12 +71,6 @@ function build(stubs: Stubs = {}) {
   const subscriptions = {
     findShopForPayment: () =>
       Promise.resolve('shop' in stubs ? stubs.shop : SHOP),
-    /**
-     * Разбор суммы живёт в сервисе целиком: контроллеру приходит готовое
-     * «тариф такой-то», «это проверка кассы» либо «ничего». Подставляем то же,
-     * что вернул бы настоящий `resolvePurchase`: тариф по цене из прайса,
-     * `null` — на сумме мимо него.
-     */
     resolvePurchase: () => {
       if (stubs.test) return Promise.resolve({ kind: 'test' as const });
       const plan = 'plan' in stubs ? stubs.plan : 'start';
@@ -160,12 +139,6 @@ describe('колбэк Click: подлинность запроса', () => {
     assert.deepEqual(calls.reverse, []);
   });
 
-  /**
-   * Главная проверка файла. Неподписанный запрос, выглядящий как оплаченный
-   * Complete, не имеет права запустить возврат: Merchant API отменяет платежи в
-   * границах нашей услуги, и работающая ветка означала бы, что любой желающий
-   * отменяет оплаты наших продавцов, зная только номер платёжного документа.
-   */
   it('не запускает возврат по неподписанному «оплаченному» Complete', async () => {
     const { controller, calls } = build();
 
@@ -226,6 +199,21 @@ describe('колбэк Click: Prepare', () => {
     assert.equal(answer.merchant_confirm_id, undefined);
   });
 
+  it('возвращает transaction_param как merchant_trans_id, когда поле Click пустое', async () => {
+    const { controller } = build();
+    const body = {
+      ...PREPARE,
+      merchant_trans_id: '',
+      transaction_param: PREPARE.merchant_trans_id,
+    };
+
+    const answer = await controller.handle(sign(body));
+
+    assert.equal(answer.error, 0);
+    assert.equal(answer.merchant_trans_id, PREPARE.merchant_trans_id);
+    assert.equal(answer.merchant_prepare_id, 55);
+  });
+
   it('отбивает сумму мимо прайса кодом -2, не заводя платежа', async () => {
     const { controller, calls } = build({ plan: null });
 
@@ -243,13 +231,6 @@ describe('колбэк Click: Prepare', () => {
     assert.deepEqual(calls.preparedPlans, ['max']);
   });
 
-  /**
-   * Проверка кассы символической суммой. Счёт принимается — иначе проверять
-   * было бы нечего, — но тарифа у него нет: в `prepare` уходит `null`, и это
-   * единственное, чем ветка теста отличается на стадии Prepare. Всё остальное
-   * (подпись, service_id, номер счёта в ответе) обязано работать ровно так же,
-   * иначе тест доказывал бы не тот путь, которым пойдут настоящие деньги.
-   */
   it('принимает проверку кассы, но без тарифа', async () => {
     const { controller, calls } = build({ test: true });
 
@@ -270,10 +251,6 @@ describe('колбэк Click: Prepare', () => {
     assert.deepEqual(calls.reverse, []);
   });
 
-  /**
-   * V1: платёжный документ уже учтён под другим номером транзакции. Сервис
-   * бросает, и до списания это стоит одного кода `-8` — возвращать нечего.
-   */
   it('отвечает -8 на конфликт платёжного документа и не возвращает денег', async () => {
     const { controller, calls } = build({
       prepare: () => {
@@ -312,11 +289,6 @@ describe('колбэк Click: Complete', () => {
     assert.deepEqual(calls.reverse, []);
   });
 
-  /**
-   * Законные повторы. Провайдер переспрашивает про транзакцию, с которой мы
-   * уже всё решили; возврат по ним отменял бы оплаченную подписку на каждом
-   * повторном колбэке.
-   */
   it('не возвращает денег по повторам already_paid и cancelled', async () => {
     for (const [kind, code] of [
       ['already_paid', -4],
@@ -331,7 +303,6 @@ describe('колбэк Click: Complete', () => {
     }
   });
 
-  /** B3: отказ по списанным деньгам — возврат, строка в журнале и код -9. */
   it('возвращает деньги на каждом отказе выдачи и отвечает -9', async () => {
     for (const kind of [
       'not_found',
@@ -361,7 +332,10 @@ describe('колбэк Click: Complete', () => {
 
     assert.equal(answer.error, -7);
     assert.equal(calls.failed[0].reversed, false);
-    assert.match(calls.failed[0].reversalNote ?? '', /request_failed: HTTP 500/);
+    assert.match(
+      calls.failed[0].reversalNote ?? '',
+      /request_failed: HTTP 500/,
+    );
   });
 
   it('возвращает деньги и после исключения из сервиса', async () => {
@@ -378,12 +352,6 @@ describe('колбэк Click: Complete', () => {
     assert.match(calls.failed[0].errorNote, /база не ответила/);
   });
 
-  /**
-   * Магазин упразднён между стадиями: `findShopForPayment` фильтрует
-   * `status = 'active'`, поэтому до ветки `shop_gone` внутри `complete()` дело
-   * не доходит вовсе. Ответить одним `-5`, как на Prepare, значило бы потерять
-   * уже списанные деньги молча.
-   */
   it('возвращает деньги, если плательщик Complete не разрешился в магазин', async () => {
     const { controller, calls } = build({ shop: undefined });
 
@@ -395,16 +363,10 @@ describe('колбэк Click: Complete', () => {
     assert.equal(calls.complete, 0);
   });
 
-  /**
-   * Complete с отрицательным кодом — уведомление об отмене на стороне Click:
-   * деньги по нему не списывались, и возвращать нечего.
-   */
   it('не возвращает денег по отказу на отменённом Complete', async () => {
     const { controller, calls } = build({ complete: { kind: 'not_found' } });
 
-    const answer = await controller.handle(
-      sign({ ...COMPLETE, error: '-5' }),
-    );
+    const answer = await controller.handle(sign({ ...COMPLETE, error: '-5' }));
 
     assert.equal(answer.error, -6);
     assert.deepEqual(calls.reverse, []);
