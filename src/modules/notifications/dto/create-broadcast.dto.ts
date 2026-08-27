@@ -12,17 +12,8 @@ import {
 export const BROADCAST_AUDIENCES = ['all', 'sellers', 'buyers'] as const;
 export type BroadcastAudience = (typeof BROADCAST_AUDIENCES)[number];
 
-/**
- * Потолок взят у Telegram: sendMessage не принимает текст длиннее 4096
- * символов, и обрезать чужую рассылку молча было бы хуже, чем не принять её.
- */
 export const BROADCAST_MAX_LENGTH = 4096;
 
-/**
- * Теги, которые Telegram понимает при parse_mode=HTML. Всё остальное («<br>»,
- * «<div>», да и просто «<» в тексте вроде «Скидки <50%») он считает ошибкой
- * разметки и отвечает 400 — одинаково по каждому адресату.
- */
 const ALLOWED_TAGS = [
   'b',
   'strong',
@@ -43,13 +34,6 @@ const ALLOWED_TAGS = [
 
 const TAG_RE = /<\/?([a-zA-Z-]+)(\s[^<>]*)?>/g;
 
-/**
- * Проверка разметки до отправки.
- *
- * Без неё сломанный тег означал ноль доставленных при полном проходе по всей
- * базе: 400 не отписывает адресата и не прерывает цикл, поэтому рассылка
- * молча «уходила» всем и не доходила ни до кого.
- */
 @ValidatorConstraint({ name: 'telegramHtml' })
 export class TelegramHtmlConstraint implements ValidatorConstraintInterface {
   private problem = 'разметка не по правилам Telegram';

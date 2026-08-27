@@ -34,11 +34,6 @@ export class CreateProductCardDto {
   @MaxLength(10_000)
   description?: string;
 
-  /**
-   * Категория каталога. Необязательна ради товаров, заведённых до появления
-   * каталога: делать её обязательной сейчас — значит ломать правку старых
-   * карточек, у которых категории нет.
-   */
   @ApiPropertyOptional({
     example: 12,
     description: 'id категории из GET /categories, обычно лист дерева',
@@ -55,13 +50,6 @@ export class CreateProductCardDto {
   @IsUUID('4', { each: true })
   photos: string[];
 
-  /**
-   * Цена в сумах. Пусто — «цена договорная»: часть техники на рынке продают по
-   * договорённости, и раньше продавцу приходилось выдумывать число.
-   *
-   * Приводим через Transform, а не Type: `@Type(() => Number)` превратил бы
-   * присланный null в ноль, и «договорная» стала бы товаром за 0 сум.
-   */
   @ApiPropertyOptional({
     type: Number,
     nullable: true,

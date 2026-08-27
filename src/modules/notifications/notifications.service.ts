@@ -11,27 +11,14 @@ import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
 import { clampMessage } from '../bot/telegram-html';
 import { PushService } from './push.service';
 
-/**
- * Пауза между сообщениями массовой отправки. Telegram разрешает боту около 30
- * сообщений в секунду на всех получателей; берём вдвое меньше — запас на то,
- * что параллельно уходят одиночные уведомления, а 429 стоит дороже задержки.
- */
 const BULK_DELAY_MS = 70;
 
-/** Заголовок уведомления в браузере: у него нет отправителя, как в Telegram. */
 const PUSH_TITLE = 'НеМалика';
 
-/** Сколько подряд отказов «неверный запрос» считаем сломанным текстом. */
 const MAX_BAD_REQUESTS = 3;
 
-/** Сколько ждать, если Telegram всё же ответил 429 без указания времени. */
 const FALLBACK_RETRY_SEC = 3;
 
-/**
- * Метка в ссылке на бота. Обработчику /start она не нужна — он привязывает чат
- * при любом запуске, — но в журнале Telegram по ней видно, что человек пришёл
- * именно за уведомлениями, а не из поиска.
- */
 const BOT_START_PAYLOAD = 'notify';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -40,17 +27,9 @@ export interface DeliveryCounters {
   recipients: number;
   delivered: number;
   failed: number;
-  /** Кому реально дошло — нужно тем, кто отмечает факт отправки в БД. */
   deliveredIds: number[];
 }
 
-/**
- * Отправка уведомлений в Telegram.
- *
- * Писать боту можно только тем, кто сам нажал /start: до этого чата не
- * существует и Telegram отвечает 403. Поэтому адресатов даёт репозиторий —
- * он и хранит признак «чат открыт», и гасит подписку, когда бот заблокирован.
- */
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
@@ -61,11 +40,6 @@ export class NotificationsService {
     private readonly push: PushService,
   ) {}
 
-  /**
-   * Уведомление администраторам. Ошибку наружу не пробрасываем: уведомление —
-   * это побочный эффект, и падение Telegram не должно ронять создание жалобы
-   * или проверку товара.
-   */
   async notifyAdmins(text: string): Promise<void> {
     try {
       const admins = await this.repository.admins();
@@ -77,11 +51,6 @@ export class NotificationsService {
     }
   }
 
-  /**
-   * Уведомление одному человеку: автору отзыва о решении модератора, продавцу
-   * о новом отзыве. Если чат с ботом не открыт, молча ничего не делает —
-   * первым бот написать не вправе, и это не ошибка вызывающего.
-   */
   async notifyUser(userId: number, text: string): Promise<void> {
     try {
       const recipient = await this.repository.recipient(userId);
@@ -94,12 +63,6 @@ export class NotificationsService {
     }
   }
 
-  /**
-   * Уведомление в браузер одному человеку — параллельно телеграму, а не вместо
-   * него: у продавца может не быть открытого чата с ботом, зато вкладка сайта
-   * открыта, и наоборот. Дубль на двух устройствах — меньшее зло, чем
-   * пропущенный вопрос покупателя.
-   */
   async pushToUser(
     userId: number,
     payload: { title: string; body: string; url?: string; tag?: string },
@@ -113,31 +76,10 @@ export class NotificationsService {
     }
   }
 
-  /**
-   * Кто из перечисленных достижим в Telegram (V9).
-   *
-   * Нужен тем, кто зовёт `deliver` со своим списком адресатов. Подавать туда
-   * всех подряд нельзя: `deliver` прерывает пачку целиком после трёх подряд
-   * ответов 400, а отправка в `chat_id = null` даёт ровно 400 — три подряд
-   * непривязанных чата, и остальные напоминания не уйдут вовсе. Push при этом
-   * получает полный список: у браузерной подписки своё условие достижимости, и
-   * открытый чат с ботом ей не нужен.
-   *
-   * Прокси к репозиторию, а не экспорт самого репозитория: модуль отдаёт
-   * наружу только сервис. Повод практический — иначе рядом с `deliver`
-   * появился бы второй способ выбрать адресатов, мимо условия `REACHABLE`.
-   */
   recipientsByIds(userIds: number[]): Promise<Recipient[]> {
     return this.repository.recipientsByIds(userIds);
   }
 
-  /**
-   * Состояние обоих каналов для кабинета.
-   *
-   * Отдаём одним ответом, потому что решение у человека одно: получать
-   * уведомления или нет. Раздельные запросы заставили бы интерфейс мигать —
-   * сперва «включите в браузере», а через мгновение «у вас уже есть Telegram».
-   */
   async channels(userId: number): Promise<NotificationChannelsDto> {
     const [subscribed, telegram, botUsername] = await Promise.all([
       this.push.hasSubscription(userId),
@@ -162,14 +104,6 @@ export class NotificationsService {
     };
   }
 
-  /**
-   * Переключатель Telegram из кабинета.
-   *
-   * Включить можно только когда чат с ботом уже открыт: пока человек не нажал
-   * /start, Telegram не даёт боту написать первым, и поднятый флаг был бы
-   * обещанием, которое некому исполнить. Выключить — всегда и без условий:
-   * отписка не должна упираться ни во что.
-   */
   async setTelegram(userId: number, enabled: boolean): Promise<void> {
     if (enabled) {
       const { linked } = await this.repository.telegramState(userId);
@@ -183,11 +117,6 @@ export class NotificationsService {
     await this.repository.setTelegramEnabled(userId, enabled);
   }
 
-  /**
-   * Рассылка из админки. Запись в журнале создаётся до отправки, а счётчики
-   * дописываются после: если процесс упадёт на середине, в истории останется
-   * след того, что рассылка вообще запускалась.
-   */
   async broadcast(
     authorId: number,
     audience: BroadcastAudience,
@@ -206,7 +135,6 @@ export class NotificationsService {
     return { id: record.id, recipients: recipients.length };
   }
 
-  /** Фоновая часть рассылки: считает и дописывает результат в журнал. */
   private async runBroadcast(
     id: number,
     recipients: Recipient[],
@@ -265,15 +193,6 @@ export class NotificationsService {
     return buildPaginatedResult(data, total, page, limit);
   }
 
-  /**
-   * Последовательная отправка с паузой. Именно последовательная: параллельные
-   * запросы к Telegram упираются в лимит и возвращаются пачкой 429, после чего
-   * ждать приходится дольше, чем заняла бы аккуратная очередь.
-   *
-   * Текст можно задать функцией — тогда каждому уходит своё сообщение, но
-   * пауза остаётся общей. Это важно для напоминаний: там текст у всех разный,
-   * и вызывать deliver по одному адресату означало бы слать без задержки.
-   */
   async deliver(
     recipients: Recipient[],
     text: string | ((recipient: Recipient) => string),

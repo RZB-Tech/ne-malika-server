@@ -11,22 +11,6 @@ import {
 import { PLAN_LIMITS } from '../subscriptions/subscriptions.constants';
 import type { FindProductCardsQueryDto } from './dto/find-product-cards-query.dto';
 
-/**
- * Продвижение живёт целиком в `ORDER BY`, а `EXPLAIN` по нему прогнать негде:
- * базы в наборе тестов нет и не будет. Поэтому проверяется то, что проверить
- * можно без неё, — сам текст запроса.
- *
- * Драйвер подменён заглушкой: drizzle обращается к `pool.query(config, params)`
- * и больше ни к чему, так что запрос собирается целиком, а вместо отправки
- * попадает в массив. Ни соединения, ни контейнера, ни сети.
- *
- * Закрыты три вещи, каждая из которых стоит дорого при поломке:
- * 1. граница включения — фильтрованная или отсортированная выдача не должна
- *    подменяться оплаченной;
- * 2. отсутствие нового join — вес берётся из уже приджойненного `shops`;
- * 3. неприкосновенность счётного запроса — продвижение меняет порядок, а не
- *    состав, и `total` с пагинацией обязаны остаться прежними.
- */
 function captureRepository() {
   const captured: { text: string; params: unknown[] }[] = [];
 
@@ -41,7 +25,6 @@ function captureRepository() {
   return { repository: new ProductCardsRepository(db), captured };
 }
 
-/** Запрос выдачи — тот из пары, что не считает строки. */
 async function listSql(
   query: FindProductCardsQueryDto,
   categoryIds?: number[],
@@ -83,7 +66,6 @@ describe('граница включения продвижения', () => {
     assert.match(text, /"shops"\."subscription_until" >/);
     assert.match(text, /"shops"\."subscription_plan" =/);
 
-    /** Веса и планы приходят параметрами — сверяем с таблицей тарифов, а не с числами в тексте. */
     assert.ok(params.includes(PLAN_LIMITS.max.promoWeight));
     assert.ok(params.includes(PLAN_LIMITS.pro.promoWeight));
     assert.ok(params.includes('max'));
@@ -158,9 +140,7 @@ describe('магазины выдачи для счётчика поисковы
     assert.match(captured[0].text, /"product_cards"\."shop_id"/);
     assert.ok(captured[0].params.includes(200));
 
-    /** Тот же join, что у выдачи: `shops` нужен и статусу магазина, и поиску по его названию. */
     assert.match(captured[0].text, /inner join "shops"/);
-    /** А `categories` не нужен: к нему обращается только проекция, которой здесь нет. */
     assert.doesNotMatch(captured[0].text, /join "categories"/);
   });
 });

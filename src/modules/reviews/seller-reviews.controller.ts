@@ -6,11 +6,6 @@ import type { AuthenticatedUser } from '../../common/types/auth.types';
 import { ReviewsService } from './reviews.service';
 import { FindReviewsQueryDto } from './dto/find-reviews-query.dto';
 
-/**
- * Отзывы глазами продавца — ровно те, что видит покупатель. Непроверенные сюда
- * не попадают: продавцу нечего с ними делать, а увидев отзыв до модерации, он
- * начнёт спорить о том, что может и не быть опубликовано.
- */
 @ApiTags('reviews-seller')
 @ApiBearerAuth('access-token')
 @SellerOnly()

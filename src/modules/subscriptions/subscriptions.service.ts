@@ -51,41 +51,18 @@ import type {
   TestPaymentLinkDto,
 } from './dto/subscription.dto';
 
-/**
- * Чем кончился Prepare. Размеченное объединение, а не исключения: контроллер
- * колбэка обязан ответить провайдеру кодом протокола, а не HTTP-ошибкой, и
- * каждый вид отказа имеет свой код. Исключение здесь означало бы 500 в ответ
- * Click — то есть повтор запроса вместо разбора причины.
- */
 export type PrepareResult =
   | { kind: 'prepared'; payment: SubscriptionPayment }
   | { kind: 'already_paid' }
   | { kind: 'cancelled' }
   | { kind: 'conflict' };
 
-/**
- * Чем кончился Complete.
- *
- * `mismatch` и `shop_gone` добавлены к списку из проекта намеренно (B2, V3).
- * Оба означают «деньги списаны, а выдать нечего», но по разным причинам:
- * первое — реквизиты не сошлись с сохранённым Prepare, второе — магазина к
- * моменту подтверждения не стало. Свести их к `not_found` нельзя: `not_found`
- * отвечает провайдеру «такой транзакции не существует», а транзакция как раз
- * существует, и вести себя дальше нужно по-разному — на `not_found` возврат
- * денег и разбор, на `mismatch` тоже возврат, но с другим кодом ответа.
- */
 export type CompleteResult =
   | {
       kind: 'paid';
       payment: SubscriptionPayment;
       ownerId: number;
       shopName: string;
-      /**
-       * Проверка кассы, а не покупка: строка в журнале есть, выдачи нет.
-       * Отдельным полем, а не проверкой `plan === 'free'` у вызывающего:
-       * решение «выдавать или нет» принято внутри транзакции, и повторять его
-       * снаружи по косвенным признакам — способ однажды разойтись.
-       */
       test?: boolean;
     }
   | { kind: 'already_paid' }
@@ -95,25 +72,10 @@ export type CompleteResult =
   | { kind: 'invalid_amount' }
   | { kind: 'shop_gone' };
 
-/**
- * Совпадают ли суммы с точностью до копейки.
- *
- * Через целые копейки, а не `===` над числами с плавающей точкой: Click
- * присылает сумму текстом с двумя знаками, из базы она приходит числом (колонка
- * объявлена `numeric(..., mode: 'number')`), и `65000.00 === 65000` истинно
- * только потому, что оба представимы точно. На суммах вроде `130000.10`
- * равенство уже зависело бы от порядка арифметики.
- *
- * `Math.round`, а не `toFixed`: последний возвращает строку и на строке из базы
- * (что и было бы без `mode: 'number'`) упал бы вовсе — ровно тот блокер, из-за
- * которого каждый успешный платёж получал бы `invalid_amount (-2)` после
- * списания денег.
- */
 function sameAmount(left: number, right: number): boolean {
   return Math.round(left * 100) === Math.round(right * 100);
 }
 
-/** Дата для человека — в поясе площадки, а не в UTC контейнера. */
 function formatDate(value: Date): string {
   return new Intl.DateTimeFormat('ru-RU', {
     timeZone: TZ,
@@ -123,33 +85,12 @@ function formatDate(value: Date): string {
   }).format(value);
 }
 
-/**
- * Подписка магазина: прайс, приём оплаты, выдача периода и его отмена.
- *
- * Денежный путь целиком. Два правила, которым здесь подчинено всё остальное:
- *
- * 1. **Деньги и состояние подписки меняются одним коммитом.** Строка платежа,
- *    колонки `shops.subscription_*` и обе записи в журнале кредитов пишутся в
- *    одной транзакции. Подписка, выданная без записи о платеже, неотличима от
- *    подарка; платёж без подписки — от кражи.
- * 2. **Действующий тариф спрашивается только у `effectiveLimits` (B4).**
- *    `shops.subscription_plan` после истечения намеренно сохраняет купленный
- *    когда-то `max`, и прямое сравнение с ним раздавало бы права магазинам,
- *    переставшим платить полгода назад.
- *
- * Сеть наружу здесь ровно одна — сборка ссылки на кассу, и та без запроса.
- * Возврат денег живёт в `ClickMerchantService`, отправка уведомлений — в
- * `NotificationsService`: сервис подписок можно проверить, не подняв ни одного
- * сокета.
- */
 @Injectable()
 export class SubscriptionsService implements OnModuleInit {
   private readonly logger = new Logger(SubscriptionsService.name);
 
-  /** Прайс, собранный один раз на старте. Дальше только читается. */
   private specs: PlanSpec[] = [];
   private specById = new Map<PaidPlan, PlanSpec>();
-  /** Символическая сумма проверки кассы. Тарифом не является и ничего не даёт. */
   private testPriceUzs = 0;
 
   constructor(
@@ -161,20 +102,6 @@ export class SubscriptionsService implements OnModuleInit {
     private readonly config: ConfigService,
   ) {}
 
-  /**
-   * Собрать прайс и проверить его пригодность к работе.
-   *
-   * Проверка обязана быть на старте, а не при первой оплате. Click в колбэке
-   * не сообщает, за что заплатили: приходит только сумма, и тариф определяется
-   * сопоставлением с прайсом. Две одинаковые цены означают, что купивший MAX
-   * получит PRO, а ноль или `NaN` — что не купит никто; узнали бы мы об этом
-   * из жалобы. Упавший при запуске контейнер чинится за минуту, молча сломанный
-   * прайс — неделями.
-   *
-   * Сами проверки живут в `buildPlans` рядом с таблицей тарифов; здесь только
-   * запись в журнал перед падением: без неё в логе останется голый стектрейс
-   * фабрики Nest, по которому неочевидно, что чинить надо переменные окружения.
-   */
   onModuleInit(): void {
     const prices: Record<PaidPlan, number> = {
       start: this.config.get<number>('subscription.priceStartUzs') ?? 0,
@@ -202,11 +129,6 @@ export class SubscriptionsService implements OnModuleInit {
     );
   }
 
-  /* ------------------------------------------------------------------ */
-  /* Прайс                                                               */
-  /* ------------------------------------------------------------------ */
-
-  /** Публичная витрина тарифов. */
   plans(): SubscriptionPlanDto[] {
     return this.specs.map((spec) => ({
       id: spec.id,
@@ -214,25 +136,12 @@ export class SubscriptionsService implements OnModuleInit {
       months: spec.months,
       credits: spec.credits,
       freeAutofills: spec.freeAutofills,
-      /**
-       * Наружу отдаётся «поднимает ли тариф в выдаче», а не сам вес: число
-       * веса — устройство сортировки витрины, и обещать по нему «в два раза
-       * выше» мы не можем и не хотим.
-       */
       promoted: spec.promoWeight > 1,
       bannerSlots: spec.bannerSlots,
       analyticsDays: spec.analyticsDays,
     }));
   }
 
-  /**
-   * Тариф по сумме платежа — единственный способ узнать, что купили.
-   *
-   * Click передаёт только сумму. Сверка идёт по копейкам (`sameAmount`), а не
-   * по строгому равенству: касса присылает `65000.00`, в конфигурации лежит
-   * `65000`, и на числах с плавающей точкой это одно и то же лишь до первой
-   * цены с копейками.
-   */
   planByAmount(amount: number): PaidPlan | null {
     const spec = this.specs.find((item) => sameAmount(item.priceUzs, amount));
     return spec ? spec.id : null;
@@ -244,19 +153,6 @@ export class SubscriptionsService implements OnModuleInit {
     return spec;
   }
 
-  /**
-   * За что заплатили — единственное место, где сумма превращается в решение.
-   *
-   * Сначала прайс, и только потом тест: тарифы не могут быть перехвачены
-   * тестовой веткой ни при каких настройках, а совпадение сумм ловится ещё на
-   * старте (`buildPlans`). Тестовая сумма принимается, лишь пока администратор
-   * держит окно открытым на этот магазин, — иначе она была бы подпиской по
-   * цене в шестьдесят пять раз ниже прайса для всех желающих.
-   *
-   * Обращение в базу здесь только в третьей ветке, и это правильный порядок:
-   * обычная оплата разрешается по памяти, а лишний запрос платит тот, кто
-   * прислал сумму мимо прайса.
-   */
   async resolvePurchase(
     shopId: number,
     amount: number,
@@ -275,15 +171,6 @@ export class SubscriptionsService implements OnModuleInit {
     return null;
   }
 
-  /**
-   * Взвести окно тестовой оплаты и выдать ссылку на кассу.
-   *
-   * Проверка настроек — та же, что у обычной кассы: тест проверяет ровно тот
-   * путь, которым пойдут настоящие деньги, и смысл в нём есть только при тех
-   * же реквизитах. `transaction_param` тоже тот же — telegram-id владельца,
-   * иначе тест прошёл бы по другому маршруту разрешения магазина, чем боевая
-   * оплата, и доказывал бы не то.
-   */
   async armTestCheckout(shopId: number): Promise<TestPaymentLinkDto> {
     this.requireClickConfigured();
 
@@ -306,7 +193,6 @@ export class SubscriptionsService implements OnModuleInit {
     return {
       amountUzs: this.testPriceUzs,
       armedUntil: until.toISOString(),
-      /** Без `return_url` — тем же составом, что и боевая касса выше. */
       url: createClickPaymentUrl({
         serviceId: this.config.get<string>('click.serviceId')!,
         merchantId: this.config.get<string>('click.merchantId')!,
@@ -316,22 +202,6 @@ export class SubscriptionsService implements OnModuleInit {
     };
   }
 
-  /* ------------------------------------------------------------------ */
-  /* Касса                                                               */
-  /* ------------------------------------------------------------------ */
-
-  /**
-   * Настроен ли приём оплаты — проверка перед выдачей ссылки на кассу.
-   *
-   * В production дополнительно требуется настроенный возврат. Это не
-   * перестраховка: если выдать подписку не удастся (магазин упразднили между
-   * Prepare и Complete, база не ответила), единственный способ не оставить
-   * человека без денег и без подписки — вернуть платёж через Merchant API.
-   * Брать деньги, не имея возможности их вернуть, нельзя. Вне production
-   * ограничение снято намеренно — на стенде касса проверяется символическими
-   * суммами, и требовать там реквизиты Merchant API значило бы заставить
-   * разработчика держать боевые ключи.
-   */
   private requireClickConfigured(): void {
     const configured = Boolean(
       this.config.get<string>('click.serviceId') &&
@@ -361,17 +231,6 @@ export class SubscriptionsService implements OnModuleInit {
     }
   }
 
-  /**
-   * Ссылка на кассу.
-   *
-   * `transaction_param` — telegram-id владельца, а не `shops.id` (V4).
-   * `shops.id` — `bigserial` с единицы, и при оплате из приложения Click, где
-   * номер человек вводит руками, опечатка в двузначном числе с высокой
-   * вероятностью попадёт в существующий магазин: деньги спишутся, а подписку
-   * получит кто-то посторонний. Telegram-id — девять-десять знаков, и
-   * случайная опечатка в нём почти наверняка не соответствует ни одному
-   * пользователю, то есть отобьётся на Prepare, где деньги ещё не тронуты.
-   */
   async checkout(ownerId: number, plan: PaidPlan): Promise<PaymentLinkDto> {
     const spec = this.specOf(plan);
     this.requireClickConfigured();
@@ -382,14 +241,6 @@ export class SubscriptionsService implements OnModuleInit {
       provider: 'click',
       plan: spec.id,
       amountUzs: spec.priceUzs,
-      /**
-       * `return_url` не передаётся намеренно — ровно как в рабочем образце
-       * (save-up собирает ссылку из четырёх параметров и только). Click
-       * принимает его не у всякой услуги, а лишний параметр в адресе кассы —
-       * первое, на что думаешь при отказе «недостаточно информации от
-       * поставщика». Плательщик возвращается сам: касса открывается в той же
-       * вкладке, и кнопка «назад» ведёт на страницу подписки.
-       */
       url: createClickPaymentUrl({
         serviceId: this.config.get<string>('click.serviceId')!,
         merchantId: this.config.get<string>('click.merchantId')!,
@@ -399,17 +250,6 @@ export class SubscriptionsService implements OnModuleInit {
     };
   }
 
-  /**
-   * Разрешить `merchant_trans_id` в магазин (V4).
-   *
-   * Одна ветка и только telegram-id. Запасной поиск по `shops.id` для чисел,
-   * которые под telegram-id не подходят, выглядит удобным, но означает два
-   * способа истолковать одно число — и однажды они истолкуют его по-разному.
-   *
-   * Формат проверяется до похода в базу: `merchant_trans_id` приходит снаружи,
-   * а `Number('1e9')` или `Number(' 12 ')` дали бы правдоподобное число из
-   * строки, которая telegram-id не является.
-   */
   async findShopForPayment(
     merchantTransId: string,
   ): Promise<PaymentShop | undefined> {
@@ -422,28 +262,8 @@ export class SubscriptionsService implements OnModuleInit {
     return this.repository.findShopByOwnerTelegramId(telegramId);
   }
 
-  /* ------------------------------------------------------------------ */
-  /* Двухфазный протокол                                                 */
-  /* ------------------------------------------------------------------ */
-
-  /**
-   * Сохранить Prepare прежде, чем ответить провайдеру «счёт принят».
-   *
-   * `INSERT … ON CONFLICT DO NOTHING` плюс повторное чтение `FOR UPDATE`, а не
-   * проверка «есть ли такой click_trans_id» перед вставкой: между проверкой и
-   * вставкой помещается второй такой же колбэк, и разрешить эту гонку может
-   * только сама база. Вернувшаяся строка — либо наша, либо чужая попытка того
-   * же платежа, и во втором случае мы отвечаем тем же номером счёта, что и в
-   * первый раз.
-   *
-   * Пустой результат обоих запросов означает не «не нашли», а «конфликт был по
-   * другому индексу» (V1): один и тот же `click_paydoc_id` пришёл под новым
-   * номером транзакции. Это единственный случай, когда метод бросает, и бросить
-   * он обязан — иначе одно списание оплатило бы два периода.
-   */
   async prepare(input: {
     shopId: number;
-    /** `null` — тестовая оплата: покупать было нечего, и в журнал идёт `free`. */
     plan: PaidPlan | null;
     amount: number;
     providerTransactionId: string;
@@ -484,12 +304,6 @@ export class SubscriptionsService implements OnModuleInit {
           );
         }
 
-        /**
-         * Реквизиты повторного Prepare обязаны совпасть с сохранёнными. Иначе
-         * это не повтор, а другой платёж под тем же номером транзакции: либо
-         * ошибка на стороне провайдера, либо попытка оплатить чужой магазин
-         * дешёвым тарифом. Отказ здесь ничего не стоит — деньги ещё не тронуты.
-         */
         if (
           payment.shopId !== input.shopId ||
           payment.plan !== plan ||
@@ -507,13 +321,6 @@ export class SubscriptionsService implements OnModuleInit {
         if (payment.status === 'cancelled') return { kind: 'cancelled' };
       }
 
-      /**
-       * Номер счёта выдаёт база (`merchant_billing_id`), поэтому до вставки его
-       * не существует. Складываем его же в `provider_prepare_id`: по этой
-       * колонке потом сверяется Complete, и хранить рядом то, что мы
-       * действительно ответили провайдеру, дешевле, чем каждый раз выводить это
-       * заново.
-       */
       const prepareId = String(payment.merchantBillingId);
       if (payment.providerPrepareId !== prepareId) {
         payment = await this.repository.setPrepareId(tx, payment.id, prepareId);
@@ -523,30 +330,6 @@ export class SubscriptionsService implements OnModuleInit {
     });
   }
 
-  /**
-   * Подтвердить или отменить ранее сохранённый Prepare.
-   *
-   * Поиск строго по `click_trans_id` (B2) — это единственный документированный
-   * ключ идемпотентности. Искать сразу по трём реквизитам заманчиво, но тогда
-   * расхождение любого из них означало бы ответ «транзакции не существует»
-   * (`-6`) при уже списанной карте, и следа об этом не осталось бы нигде.
-   * Реквизиты проверяются отдельными ветками над найденной строкой, и каждая
-   * отвечает своим кодом.
-   *
-   * Порядок веток внутри транзакции важен и выбран так:
-   * реквизиты → сумма → **отмена провайдером** → статус → магазин → выдача.
-   * Ветка `clickError < 0` стоит до проверок статуса (V2): Complete с
-   * отрицательным кодом по уже оплаченной транзакции — это уведомление о
-   * возврате, и ответить на него `already_paid` значило бы не заметить, что
-   * деньги ушли обратно. А вот до проверки реквизитов её поднимать нельзя:
-   * отменять платёж по запросу, реквизиты которого не сошлись с нашими,
-   * означало бы отдать управление чужой стороне.
-   *
-   * Обе строки — платёж и магазин — блокируются `FOR UPDATE`. Без блокировки
-   * магазина два платежа, пришедшие одновременно (продавец нажал «оплатить» в
-   * двух вкладках), прочитали бы один и тот же `subscription_until`, и второй
-   * затёр бы период первого: оплаченный месяц просто исчез бы.
-   */
   async complete(input: {
     shopId: number;
     providerTransactionId: string;
@@ -567,13 +350,6 @@ export class SubscriptionsService implements OnModuleInit {
         );
         if (!payment) return { kind: 'not_found' };
 
-        /**
-         * Номер счёта, который мы вернули провайдеру на Prepare. Источник
-         * правды — `merchant_billing_id`: `provider_prepare_id` лишь его копия,
-         * и на строке, пережившей сбой между вставкой и проставлением копии,
-         * он окажется пустым. Сверять при этом нужно именно с тем, что было
-         * отправлено, а не с тем, что успело записаться.
-         */
         const expectedPrepareId =
           payment.providerPrepareId ?? String(payment.merchantBillingId);
 
@@ -605,15 +381,6 @@ export class SubscriptionsService implements OnModuleInit {
             signTime: input.signTime,
           };
 
-          /**
-           * Д3. Провайдер вернул уже оплаченный платёж. Период автоматически
-           * НЕ отзывается: за прошедшее время магазин мог потратить выданные
-           * кредиты, поднялся в выдаче и, возможно, показал баннер, — отобрать
-           * это одной строкой в колбэке нельзя, а «отнять сколько получится»
-           * хуже, чем не отнимать ничего. Строка помечается как требующая
-           * разбора, и решение принимает человек: отменить подписку кнопкой в
-           * админке либо оставить и разбираться с провайдером.
-           */
           if (payment.status === 'paid') {
             await this.repository.patchMeta(tx, payment.id, {
               ...patch,
@@ -635,13 +402,6 @@ export class SubscriptionsService implements OnModuleInit {
         if (payment.status === 'paid') return { kind: 'already_paid' };
         if (payment.status === 'cancelled') return { kind: 'cancelled' };
 
-        /**
-         * V3. Статус магазина перепроверяется уже под взятой блокировкой.
-         * Между разрешением `merchant_trans_id` в начале колбэка и этим
-         * моментом помещается упразднение магазина администратором, а выдавать
-         * подписку витрине, которой больше нет, нельзя. Ответ уходит в ветку
-         * возврата денег: на Complete они уже списаны.
-         */
         const shop = await this.repository.lockShop(tx, payment.shopId);
         if (!shop || shop.status !== 'active') {
           this.logger.error(
@@ -651,20 +411,6 @@ export class SubscriptionsService implements OnModuleInit {
           return { kind: 'shop_gone' };
         }
 
-        /**
-         * Тестовая оплата. Деньги настоящие, путь настоящий, выдачи нет —
-         * ветка стоит до всякой выдачи и ничего из неё не зовёт.
-         *
-         * `activated_from`/`activated_until` остаются пустыми намеренно: по
-         * ним считается инвариант «`subscription_until` равен максимальному
-         * `activated_until` среди оплаченных», и проставь мы сюда даты, тест
-         * начал бы притворяться оплаченным периодом в глазах и админки, и
-         * крона напоминаний.
-         *
-         * Окно закрывается здесь же, в той же транзакции: оно одноразовое, и
-         * закрыть его после коммита значило бы оставить щель ровно на время
-         * между коммитом и следующим запросом.
-         */
         if (payment.meta?.test) {
           await this.repository.closeTestWindow(tx, shop.id);
 
@@ -685,11 +431,6 @@ export class SubscriptionsService implements OnModuleInit {
           };
         }
 
-        /**
-         * Тариф читается со строки платежа, а не пересчитывается по сумме
-         * заново: покупка состоялась на Prepare, и если прайс успели поменять
-         * между стадиями, человек обязан получить то, за что платил.
-         */
         if (!isPaidPlan(payment.plan)) {
           this.logger.error(
             `Платёж ${payment.id} записан с непокупаемым тарифом «${payment.plan}» — выдавать нечего`,
@@ -698,14 +439,6 @@ export class SubscriptionsService implements OnModuleInit {
         }
         const spec = this.specOf(payment.plan);
 
-        /**
-         * Выдача кредитов и продление периода — в этой же транзакции. Здесь же
-         * считается и сам период: начало берётся как максимум из «сейчас» и
-         * конца прежнего срока (Д1, оплата заранее не съедает оплаченные дни),
-         * а норма кредитов при живой подписке прибавляется и присваивается со
-         * сжиганием остатка при истёкшей. Считать это до `FOR UPDATE` нельзя —
-         * правильного ответа там ещё не существует.
-         */
         const grant = await this.credits.grantSubscriptionCredits(
           {
             shopId: shop.id,
@@ -736,12 +469,6 @@ export class SubscriptionsService implements OnModuleInit {
     );
 
     if (result.kind === 'paid') {
-      /**
-       * Тестовая оплата не объявляется владельцу ничем: подписки он не
-       * получил, и сообщение «оплата прошла» было бы обещанием, за которым
-       * ничего нет. В журнале приложения она при этом видна — ради неё всё
-       * и затевалось.
-       */
       if (result.test) {
         this.logger.log(
           `Тестовая оплата прошла: магазин ${result.payment.shopId}, платёж ${result.payment.id}, ` +
@@ -760,22 +487,6 @@ export class SubscriptionsService implements OnModuleInit {
     return result;
   }
 
-  /**
-   * Записать провалившийся Complete (B3).
-   *
-   * Зовётся из общей ветки контроллера, когда Complete отказал при уже
-   * списанных деньгах: `not_found`, `invalid_amount`, `mismatch`, `shop_gone`
-   * и любое исключение. К этому моменту деньги либо возвращены через Merchant
-   * API, либо вернуть их не удалось, — и то и другое обязано остаться в
-   * журнале, иначе разбирать обращение «списали и ничего не дали» будет нечем.
-   *
-   * Метод обязан переживать отсутствие строки платежа: до Complete дело могло
-   * дойти без Prepare вовсе (перезапуск разбора на стороне провайдера,
-   * потерянный первый колбэк). Тогда строка заводится здесь.
-   *
-   * Метод не бросает никогда: его вызывают из `catch` обработчика колбэка, и
-   * исключение оттуда ушло бы к Click пятисоткой вместо кода протокола.
-   */
   async recordFailedComplete(input: {
     shopId: number | null;
     providerTransactionId: string;
@@ -786,13 +497,6 @@ export class SubscriptionsService implements OnModuleInit {
     reversed: boolean;
     reversalNote?: string;
   }): Promise<void> {
-    /**
-     * «Требует разбора» ставится только при неудавшемся возврате. Удавшийся
-     * возврат — это уже разобранный случай: деньги у человека, подписки нет,
-     * ничьё вмешательство не нужно. Пометить такие строки тоже значило бы
-     * завалить вкладку разбора событиями, с которыми делать нечего, — и
-     * потерять среди них те несколько, где деньги действительно застряли.
-     */
     const meta: SubscriptionPaymentMeta = {
       error: input.clickError,
       errorNote: excerpt(input.errorNote, 500),
@@ -809,13 +513,6 @@ export class SubscriptionsService implements OnModuleInit {
         );
 
         if (existing) {
-          /**
-           * Оплаченную строку не переводим в «отменена» ни при каких условиях.
-           * Сюда можно попасть уже после успешной выдачи — например, если
-           * исключение случилось после коммита, — и статус `cancelled` над
-           * выданной подпиской означал бы, что журнал платежей противоречит
-           * колонкам магазина. Пишем только мету и зовём человека.
-           */
           if (existing.status === 'paid') {
             await this.repository.patchMeta(tx, existing.id, {
               ...meta,
@@ -832,13 +529,6 @@ export class SubscriptionsService implements OnModuleInit {
           return;
         }
 
-        /**
-         * Магазин не разрешился — писать строку некуда: `shop_id` в журнале
-         * платежей `NOT NULL` и ссылается на магазин. Отвязывать её от
-         * магазина ради этого случая нельзя: тогда журнал перестал бы быть
-         * журналом магазина, а найти такой платёж всё равно можно только по
-         * номеру транзакции, который уже есть в логе.
-         */
         if (input.shopId === null) {
           this.logger.error(
             `Отказ Complete без разрешённого магазина: click_trans_id=${input.providerTransactionId}, ` +
@@ -847,19 +537,6 @@ export class SubscriptionsService implements OnModuleInit {
           return;
         }
 
-        /**
-         * Сумму разобрать не удалось — новой строки не заводим.
-         *
-         * На `amount` в журнале стоит check `> 0`, и вставка нуля откатила бы
-         * транзакцию: наружу ушла бы ошибка Postgres вместо адресного лога, а
-         * сам случай — потерянные деньги — оказался бы описан хуже, чем без
-         * записи вовсе. Проверкой, а не исключением, ровно поэтому: исход
-         * известен заранее и объясним.
-         *
-         * Терять при этом нечего: `click_trans_id` и `click_paydoc_id` уже
-         * записаны в лог веткой `failComplete`, а деньги к этому моменту либо
-         * возвращены, либо помечены к возврату руками.
-         */
         if (!(input.amount > 0)) {
           this.logger.error(
             `Отказ Complete с неразобранной суммой: click_trans_id=${input.providerTransactionId}, ` +
@@ -871,12 +548,6 @@ export class SubscriptionsService implements OnModuleInit {
 
         const inserted = await this.repository.insertCancelled(tx, {
           shopId: input.shopId,
-          /**
-           * Тариф выводим по сумме, а не по строке платежа — её нет. `free`
-           * означает здесь «сумма не совпала ни с одним тарифом», то есть
-           * куплено не было ничего: это честнее, чем записать ближайший
-           * похожий тариф в журнал несостоявшейся покупки.
-           */
           plan: this.planByAmount(input.amount) ?? 'free',
           amount: input.amount,
           providerTransactionId: input.providerTransactionId,
@@ -899,22 +570,6 @@ export class SubscriptionsService implements OnModuleInit {
     }
   }
 
-  /* ------------------------------------------------------------------ */
-  /* Кабинет продавца                                                    */
-  /* ------------------------------------------------------------------ */
-
-  /**
-   * Магазин продавца.
-   *
-   * Через собственный запрос, а не через `ShopsService.getActiveOwnShopOrThrow`
-   * (V13), по двум причинам, и обе существенные. Первая: подписке нужен
-   * telegram-id владельца — он уходит в кассу как `merchant_trans_id`, — а тот
-   * метод отдаёт только магазин. Вторая: он отвечает `404 Магазин не найден`, а
-   * здесь нужен именно `403` с текстом про владельца активного магазина —
-   * продавец, чей магазин упразднён, спрашивает не «где мой магазин», а
-   * «почему мне не продают подписку». Фильтр `status = 'active'` дословно тот
-   * же, и разъехаться им нельзя.
-   */
   private async shopOfOwner(ownerId: number): Promise<PaymentShop> {
     const shop = await this.repository.findShopByOwner(ownerId);
     if (!shop) {
@@ -925,30 +580,16 @@ export class SubscriptionsService implements OnModuleInit {
     return shop;
   }
 
-  /** Состояние подписки магазина продавца. */
   async stateForOwner(ownerId: number): Promise<SellerSubscriptionDto> {
     const shop = await this.shopOfOwner(ownerId);
     return this.stateOf(shop.id);
   }
 
-  /** Журнал платежей магазина продавца. */
   async paymentsForOwner(ownerId: number, query: PaginationQueryDto) {
     const shop = await this.shopOfOwner(ownerId);
     return this.payments(shop.id, query);
   }
 
-  /**
-   * Что показать на странице подписки.
-   *
-   * Тариф — исключительно через `effectiveLimits` (B4): просроченный `max` в
-   * колонке магазина обязан выглядеть здесь как `free`, иначе продавец увидит
-   * тариф, которого у него нет, и не поймёт, почему заблокированы баннер и
-   * аналитика.
-   *
-   * Все числа приходят из SQL уже приведёнными к `int` (V5): выражения над
-   * `bigint` node-postgres отдаёт строкой, и `available` вида `"2900"` дальше
-   * либо складывался бы склейкой, либо сравнивался бы с числом как `false`.
-   */
   async stateOf(shopId: number): Promise<SellerSubscriptionDto> {
     const month = monthStart();
     const row = await this.repository.stateOf(shopId, month);
@@ -959,11 +600,6 @@ export class SubscriptionsService implements OnModuleInit {
     const active = limits.id !== 'free';
     const until = row.subscriptionUntil;
 
-    /**
-     * Счётчик есть только у тарифа с конечной нормой. У безлимитных и у
-     * магазина без подписки остатка не существует — `null`, а не ноль: ноль
-     * читается как «попытки кончились», что для владельца PRO прямо неверно.
-     */
     const hasCounter =
       limits.freeAutofills !== null && limits.freeAutofills > 0;
     const left = hasCounter
@@ -989,12 +625,6 @@ export class SubscriptionsService implements OnModuleInit {
         free: limits.freeAutofills === null || (left ?? 0) > 0,
         unlimited: limits.freeAutofills === null,
         left,
-        /**
-         * Всегда норма START, а не норма действующего тарифа: это не остаток,
-         * а ответ на вопрос «сколько бесплатных даёт подписка». У безлимитных
-         * тарифов и у магазина без подписки собственного числа тут нет, а ноль
-         * на странице тарифов увидели бы ровно те, кого мы зовём подписаться.
-         */
         limit: AUTOFILL_FREE_PER_MONTH,
         resetsAt: nextMonthStart(month),
       },
@@ -1004,7 +634,6 @@ export class SubscriptionsService implements OnModuleInit {
     };
   }
 
-  /** Журнал платежей магазина. */
   async payments(shopId: number, query: PaginationQueryDto) {
     const { data, total, page, limit } = await this.repository.paymentsOf(
       shopId,
@@ -1013,11 +642,6 @@ export class SubscriptionsService implements OnModuleInit {
     return buildPaginatedResult(data.map(toPaymentDto), total, page, limit);
   }
 
-  /* ------------------------------------------------------------------ */
-  /* Админка                                                             */
-  /* ------------------------------------------------------------------ */
-
-  /** Список подписок с флагами разбора. */
   async adminList(query: FindAdminSubscriptionsQueryDto) {
     const { data, total, page, limit } = await this.repository.adminList(query);
     const now = new Date();
@@ -1060,23 +684,6 @@ export class SubscriptionsService implements OnModuleInit {
     return buildPaginatedResult(rows, total, page, limit);
   }
 
-  /**
-   * Ручная активация подписки администратором (Д2).
-   *
-   * Начисление `кредиты × месяцы` одной строкой не противоречит правилу
-   * «норма обнуляется при каждой оплате»: правило про то, что остаток прошлого
-   * периода не копится бесконечно, а здесь один период длиной в несколько
-   * месяцев, а не несколько периодов подряд. Выдать три месяца тремя вызовами
-   * было бы формально ближе к букве, но дало бы три строки в журнале за одно
-   * решение человека и три пересчёта срока — то есть тот же результат более
-   * запутанным путём.
-   *
-   * Идемпотентность — по времени: у ручной активации нет идентификатора, по
-   * которому отличают повтор от нового намерения, а двойное нажатие в админке
-   * стоило бы магазину лишнего месяца и лишней нормы кредитов. Минута заведомо
-   * больше задержки ответа и заведомо меньше времени, за которое человек
-   * осознанно решит продлить магазин ещё раз.
-   */
   async adminActivate(
     shopId: number,
     adminId: number,
@@ -1110,14 +717,6 @@ export class SubscriptionsService implements OnModuleInit {
       const payment = await this.repository.insertManual(tx, {
         shopId,
         plan: spec.id,
-        /**
-         * Денег по этой строке не двигалось, но колонка объявлена `NOT NULL` с
-         * проверкой «больше нуля» — она защищает журнал от чужих колбэков с
-         * пустой суммой. Пишем прайс, умноженный на срок: это единственное
-         * осмысленное число, а отличить ручную выдачу от настоящей оплаты
-         * позволяет `provider = 'manual'`, по которому и отсекаются такие
-         * строки в любом денежном отчёте.
-         */
         amount: spec.priceUzs * months,
         initiatorId: adminId,
         paidAt: now,
@@ -1155,29 +754,6 @@ export class SubscriptionsService implements OnModuleInit {
     return this.stateOf(shopId);
   }
 
-  /**
-   * Отменить подписку досрочно.
-   *
-   * `subscription_until = now()` — то же самое, что естественное истечение, и
-   * второй ветки поведения не появляется: подписочные кредиты не сгорают, а
-   * запираются предикатом и вернутся при новой оплате.
-   *
-   * Компенсирующая строка в журнале обязательна: без неё журнал утверждал бы,
-   * что подписка действует до конца оплаченного месяца, тогда как в магазине
-   * она уже оборвана, и разбирать обращение «почему пропал тариф, я же платил»
-   * было бы нечем — оплата видна, отмена нет.
-   *
-   * Оговорка для всех, кто будет читать журнал. Инвариант из схемы —
-   * «`shops.subscription_until` равен максимальному `activated_until` среди
-   * строк `paid`» — этой строкой **не восстанавливается**: у оборванного
-   * платежа `activated_until` остаётся в будущем, и максимум по-прежнему
-   * больше нового срока. Подправлять его мы не будем — он записывает, что
-   * человек оплатил, а не что ему в итоге досталось, и переписывать оплату
-   * задним числом при разборе спора о деньгах нельзя. Отсюда правило:
-   * действующий срок берётся из `shops.subscription_until` (так и делает
-   * выборка напоминаний), а по журналу восстанавливается **последней** строкой
-   * `paid`, а не максимумом.
-   */
   async adminCancel(
     shopId: number,
     adminId: number,
@@ -1197,12 +773,6 @@ export class SubscriptionsService implements OnModuleInit {
       await this.repository.insertManual(tx, {
         shopId,
         plan: shop.subscriptionPlan,
-        /**
-         * Единица, а не цена тарифа: по этой строке не заплачено ничего, а
-         * `subscription_payments_amount_positive` не разрешает ноль. Из двух
-         * неправд — «стоила столько же, сколько тариф» и «стоила один сум» —
-         * вторая безобиднее: её невозможно принять за настоящую оплату.
-         */
         amount: 1,
         initiatorId: adminId,
         paidAt: now,
@@ -1230,23 +800,6 @@ export class SubscriptionsService implements OnModuleInit {
     return this.stateOf(shopId);
   }
 
-  /* ------------------------------------------------------------------ */
-  /* Побочные эффекты                                                    */
-  /* ------------------------------------------------------------------ */
-
-  /**
-   * Сбросить кэш витрины и сообщить владельцу об оплаченной подписке.
-   *
-   * **Ничего из этого не имеет права повлиять на результат.** Метод не
-   * возвращает промис и глотает все ошибки: он вызывается после коммита
-   * успешного Complete, и упавший Telegram или недоступный Redis не должны
-   * превращать оплаченную подписку в ошибку — а тем более запускать возврат
-   * денег по платежу, который прошёл целиком.
-   *
-   * Кэш каталога сбрасывается потому, что продвижение обязано стать видно
-   * сразу: продавец, купивший PRO, пойдёт проверять выдачу через минуту, а
-   * ключи списков живут дольше.
-   */
   private announceGranted(ownerId: number, payment: SubscriptionPayment): void {
     const shopId = payment.shopId;
     const until = payment.activatedUntil;
@@ -1282,7 +835,6 @@ export class SubscriptionsService implements OnModuleInit {
     );
   }
 
-  /** То же самое для ручных действий администратора. */
   private announceManual(
     shopId: number,
     ownerId: number,
@@ -1300,7 +852,6 @@ export class SubscriptionsService implements OnModuleInit {
     this.fireAndForget(
       this.notifications.pushToUser(ownerId, {
         title: pushTitle,
-        /** Разметку Telegram в push отдавать нельзя — там она просто текст. */
         body: text.replaceAll(/<\/?b>/g, ''),
         url: '/seller/subscription',
         tag: `subscription-${shopId}`,
@@ -1309,14 +860,6 @@ export class SubscriptionsService implements OnModuleInit {
     );
   }
 
-  /**
-   * Отпустить побочный эффект, оставив от него только строчку в журнале.
-   *
-   * `void` перед промисом — не косметика: без него отказ уйдёт в
-   * `unhandledRejection`, а с `await` вызывающий начал бы ждать сеть в
-   * обработчике колбэка, у которого есть считаные секунды до повтора запроса
-   * от провайдера.
-   */
   private fireAndForget(promise: Promise<unknown>, what: string): void {
     void promise.catch((error: unknown) =>
       this.logger.error(
@@ -1326,14 +869,6 @@ export class SubscriptionsService implements OnModuleInit {
   }
 }
 
-/**
- * Строка журнала в том виде, в каком её можно показать.
- *
- * `meta` целиком наружу не уходит: там лежат `service_id`, `sign_time` и
- * идентификатор администратора — ничего из этого в разборе «за что списали» не
- * помогает, а первые два ещё и описывают наши настройки у провайдера.
- * Вытаскиваем ровно то, что объясняет судьбу денег.
- */
 function toPaymentDto(payment: SubscriptionPayment): SubscriptionPaymentDto {
   const meta = payment.meta ?? {};
   return {

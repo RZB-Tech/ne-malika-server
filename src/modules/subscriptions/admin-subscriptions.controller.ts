@@ -31,15 +31,6 @@ import {
   TestPaymentLinkDto,
 } from './dto/subscription.dto';
 
-/**
- * Список подписок для администратора.
- *
- * Отдельным путём `admin/subscriptions`, а не разделом внутри `admin/shops`:
- * это другой предмет разговора. В магазинах администратор ищет магазин, здесь —
- * состояние оплаты: кто истекает на неделе, у кого платёж застрял, кого нужно
- * разобрать руками. Смешав их, пришлось бы либо тащить в список магазинов
- * четыре платёжных фильтра, либо заводить в нём режимы.
- */
 @ApiTags('subscriptions-admin')
 @ApiBearerAuth('access-token')
 @AdminOnly()
@@ -59,14 +50,6 @@ export class AdminSubscriptionsController {
   }
 }
 
-/**
- * Действия над подпиской конкретного магазина.
- *
- * Второй контроллер, а не ещё несколько методов в первом: путь другой
- * (`admin/shops/:shopId/subscription`), и он намеренно повторяет уже
- * существующий `admin/shops/:shopId/credits` — администратор работает с
- * магазином, а подписка и кредиты у него рядом.
- */
 @ApiTags('subscriptions-admin')
 @ApiBearerAuth('access-token')
 @AdminOnly()
@@ -84,11 +67,6 @@ export class AdminShopSubscriptionController {
     return this.subscriptions.payments(shopId, query);
   }
 
-  /**
-   * Лимит здесь не от злоупотребления, а от двойного нажатия: каждая активация
-   * выдаёт магазину месяц и норму кредитов. От повтора защищает ещё и минутное
-   * окно в самом сервисе — лимит лишь не даёт добраться до него сотней запросов.
-   */
   @Post('activate')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
@@ -106,18 +84,6 @@ export class AdminShopSubscriptionController {
     return this.subscriptions.adminActivate(shopId, user.id, dto);
   }
 
-  /**
-   * Проверка кассы живыми деньгами.
-   *
-   * Открывает магазину окно на полчаса и отдаёт ссылку на кассу с
-   * символической суммой. Успешная оплата ничего не выдаёт — она доказывает,
-   * что подпись сходится, Prepare и Complete доходят и строка в журнале
-   * появляется. Ради этого её и заводят: проверять боевой путь ценой тарифа
-   * дорого, а проверять его на стенде без Click — значит не проверять.
-   *
-   * Тот же лимит, что у активации, и по той же причине: каждое нажатие
-   * переоткрывает окно, а окно — это разрешение принять сумму мимо прайса.
-   */
   @Post('test-checkout')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
@@ -132,7 +98,6 @@ export class AdminShopSubscriptionController {
     return this.subscriptions.armTestCheckout(shopId);
   }
 
-  /** Тот же лимит: отмена так же меняет деньги и права магазина. */
   @Post('cancel')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })

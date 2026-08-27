@@ -29,11 +29,6 @@ export const shopsRelations = relations(shops, ({ one, many }) => ({
   banners: many(banners),
 }));
 
-/**
- * Платёж и магазин связаны в обе стороны: разбор спора начинается то с
- * магазина («что он оплачивал»), то с номера транзакции провайдера («чей это
- * платёж»), и обе дороги должны быть короткими.
- */
 export const subscriptionPaymentsRelations = relations(
   subscriptionPayments,
   ({ one }) => ({
@@ -48,10 +43,6 @@ export const subscriptionPaymentsRelations = relations(
   }),
 );
 
-/**
- * У баннера две ссылки на людей и магазины, и обе необязательные: площадочный
- * баннер живёт без магазина, непроверенный — без модератора.
- */
 export const bannersRelations = relations(banners, ({ one }) => ({
   shop: one(shops, {
     fields: [banners.shopId],

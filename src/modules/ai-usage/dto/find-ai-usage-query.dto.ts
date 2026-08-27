@@ -31,16 +31,6 @@ export class FindAiUsageQueryDto extends PaginationQueryDto {
   @IsIn(AI_OPERATIONS)
   operation?: AiOperation;
 
-  /**
-   * Разбираем строку вручную: `@Type(() => Boolean)` превратил бы `'false'` в
-   * `true`, потому что `Boolean('false')` — это `true`. Тот же приём, что в
-   * `FindAdminProductCardsQueryDto.uncategorized`.
-   *
-   * Фильтр отвечает на вопрос, который появился вместе с подписками: строки с
-   * `credits = 0` при непустом магазине теперь бывают двух видов — норма
-   * тарифа и сбой списания, — и разбирать жалобу «за что списали» без такого
-   * разделения пришлось бы глазами по всей ленте.
-   */
   @ApiPropertyOptional({
     type: Boolean,
     example: true,

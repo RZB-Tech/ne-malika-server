@@ -14,11 +14,6 @@ export class ImageGenRepository {
     return this.db.insert(generatedImages).values(rows).returning();
   }
 
-  /**
-   * Раньше нарисованное по этому же фото. Ограничение по автору намеренное:
-   * ключ фотографии — это просто uuid, и без него чужую галерею открыл бы
-   * любой, кто его подобрал.
-   */
   history(userId: number, sourceKey: string, limit: number) {
     return this.db
       .select({

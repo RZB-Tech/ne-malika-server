@@ -24,12 +24,6 @@ import { AddFavoriteDto } from './dto/add-favorite.dto';
 import { SyncFavoritesDto } from './dto/sync-favorites.dto';
 import { PaginatedFavoritesDto } from './dto/favorite.dto';
 
-/**
- * Личный кабинет покупателя: избранные товары.
- *
- * Роль не проверяется — избранное есть у любого вошедшего. Аноним хранит его
- * в браузере, при входе список переезжает сюда через /sync.
- */
 @ApiTags('me-favorites')
 @ApiBearerAuth('access-token')
 @Controller('me/favorites')

@@ -8,23 +8,13 @@ export interface TelegramUserPayload {
   photo_url?: string;
 }
 
-/** Полезная нагрузка Telegram Login Widget: поля пользователя + время и подпись. */
 export interface TelegramWidgetPayload extends TelegramUserPayload {
   auth_date: number;
   hash: string;
 }
 
-/** Telegram and the application server may disagree by a few seconds. */
 const MAX_FUTURE_CLOCK_SKEW_SEC = 30;
 
-/**
- * Mini App и Login Widget подписываются одним алгоритмом, но разными ключами:
- *   Mini App: secret = HMAC_SHA256(key="WebAppData", data=bot_token)
- *   Widget:   secret = SHA256(bot_token)
- * В обоих случаях hash = HMAC_SHA256(key=secret, data=data_check_string).
- * https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
- * https://core.telegram.org/widgets/login#checking-authorization
- */
 function assertSignature(
   dataCheckString: string,
   hash: string,
@@ -63,7 +53,6 @@ function assertFresh(authDate: number, ttlSec: number): void {
   }
 }
 
-/** `key=value`, отсортировано по ключу, через перевод строки. */
 function dataCheckString(entries: [string, string][]): string {
   return entries
     .sort(([a], [b]) => a.localeCompare(b))
@@ -71,7 +60,6 @@ function dataCheckString(entries: [string, string][]): string {
     .join('\n');
 }
 
-/** Валидирует initData Telegram Mini App и возвращает пользователя. */
 export function validateTelegramInitData(
   initData: string,
   botToken: string,
@@ -110,7 +98,6 @@ export function validateTelegramInitData(
   return user;
 }
 
-/** Валидирует ответ Telegram Login Widget (браузерный вход) и возвращает пользователя. */
 export function validateTelegramWidgetData(
   payload: TelegramWidgetPayload,
   botToken: string,

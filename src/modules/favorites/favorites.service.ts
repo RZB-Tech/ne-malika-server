@@ -18,11 +18,6 @@ export class FavoritesService {
     return { success: true };
   }
 
-  /**
-   * Перенос локального избранного после входа. Недоступные товары молча
-   * отбрасываются: список копился месяцами, и упразднённая за это время
-   * карточка — не повод отклонить весь запрос.
-   */
   async sync(userId: number, dto: SyncFavoritesDto) {
     const earliest = new Map<number, Date>();
     for (const item of dto.items) {

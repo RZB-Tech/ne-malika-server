@@ -15,17 +15,6 @@ import { shops } from './shops.schema';
 import { productCards } from './product-cards.schema';
 import { aiVerdictEnum, reviewStatusEnum } from './enums';
 
-/**
- * Отзывы о товарах и магазинах.
- *
- * Одна таблица на оба случая, а не две: поля совпадают полностью, модерация
- * одна и та же, и админской очереди удобнее видеть общий список. Различает их
- * `product_card_id`: пусто — отзыв о самом магазине.
- *
- * `shop_id` заполнен всегда, даже у отзыва о товаре. Так рейтинг продавца
- * считается одним запросом, без похода в product_cards, и переживает удаление
- * товара — оценка магазина от этого не должна прыгать.
- */
 export const reviews = pgTable(
   'reviews',
   {
@@ -39,7 +28,6 @@ export const reviews = pgTable(
       .notNull()
       .references(() => shops.id, { onDelete: 'cascade' }),
 
-    /** Пусто — отзыв о магазине целиком. */
     productCardId: bigint('product_card_id', { mode: 'number' }).references(
       () => productCards.id,
       { onDelete: 'cascade' },
@@ -47,25 +35,16 @@ export const reviews = pgTable(
 
     rating: integer('rating').notNull(),
 
-    /** Текст необязателен: оценка звёздами без слов — тоже отзыв. */
     text: text('text'),
 
     status: reviewStatusEnum('status').notNull().default('pending'),
 
-    /** Причина отклонения — её видит автор, поэтому пишется человеческим языком. */
     moderationNote: text('moderation_note'),
 
-    /**
-     * Решение ИИ-модератора. `pass` — опубликован сразу, `fail` — отклонён,
-     * `warn` — оставлен человеку. Пусто — проверка ещё не отработала или
-     * сервис был недоступен: такой отзыв тоже ждёт человека, публиковать
-     * непроверенное нельзя.
-     */
     aiVerdict: aiVerdictEnum('ai_verdict'),
     aiNote: text('ai_note'),
     aiCheckedAt: timestamp('ai_checked_at', { withTimezone: true }),
 
-    /** Кто решил. `set null`: увольнение администратора не должно стирать отзыв. */
     moderatedBy: bigint('moderated_by', { mode: 'number' }).references(
       () => users.id,
       { onDelete: 'set null' },
@@ -80,11 +59,6 @@ export const reviews = pgTable(
       .defaultNow(),
   },
   (table) => ({
-    /**
-     * Один отзыв на товар от одного человека. Ограничение частичное, потому
-     * что в SQL NULL не равен NULL: без условия обычный уникальный индекс
-     * пропустил бы сколько угодно отзывов о магазине от одного автора.
-     */
     authorProductIdx: uniqueIndex('reviews_author_product_idx')
       .on(table.authorId, table.productCardId)
       .where(sql`${table.productCardId} IS NOT NULL`),
@@ -99,14 +73,8 @@ export const reviews = pgTable(
     ),
     shopIdx: index('reviews_shop_idx').on(table.shopId, table.status),
 
-    /** Очередь модерации: свежие непроверенные сверху. */
     statusIdx: index('reviews_status_idx').on(table.status, table.createdAt),
 
-    /**
-     * Проверка в базе, а не только в DTO: оценку пишет и модерация, и будущие
-     * пересчёты, и ноль звёзд из-за случайной правки испортил бы весь рейтинг
-     * магазина молча.
-     */
     ratingRange: check(
       'reviews_rating_range',
       sql`${table.rating} BETWEEN 1 AND 5`,

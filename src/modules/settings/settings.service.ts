@@ -20,10 +20,6 @@ export class SettingsService {
     private readonly redis: RedisService,
   ) {}
 
-  /**
-   * Читается на каждое сохранение товара, меняется раз в месяц — держим в Redis.
-   * Источник правды всё равно БД: настройка должна переживать перезапуск кэша.
-   */
   async isAiChecksEnabled(): Promise<boolean> {
     const cached = await this.redis.get<boolean>(CACHE_KEY);
     if (cached !== null) return cached;
@@ -34,13 +30,6 @@ export class SettingsService {
     return value;
   }
 
-  /**
-   * Множитель наценки на кредиты. Читается на каждую выдачу и на предпросмотр
-   * суммы, меняется редко — кэшируется так же, как флаг ИИ-проверки.
-   *
-   * Меньше единицы не бывает: множитель 0.5 означал бы, что площадка дарит
-   * вдвое больше, чем получила, а ноль — деление на ноль при начислении.
-   */
   async getCreditMarkup(): Promise<number> {
     const cached = await this.redis.get<number>(MARKUP_CACHE_KEY);
     if (cached !== null) return cached;
@@ -55,7 +44,6 @@ export class SettingsService {
   }
 
   async getAll(): Promise<AppSettingsDto> {
-    /** Настройки независимы — читаем разом, а не по очереди. */
     const [aiChecksEnabled, creditMarkup] = await Promise.all([
       this.isAiChecksEnabled(),
       this.getCreditMarkup(),

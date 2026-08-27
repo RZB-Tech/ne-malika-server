@@ -20,12 +20,6 @@ export class AdminAiUsageController {
     return this.aiUsage.list(query);
   }
 
-  /**
-   * Расход в ответе разложен на три кармана — платный, подписочный и
-   * площадочный, — и `usd` теперь означает только первый из них. Маржа на ИИ
-   * считается как `usd` против `credits`; весь расход у OpenRouter — как сумма
-   * трёх. Разбор — в докблоке `AiUsageRepository.totals`.
-   */
   @Get('totals')
   @ApiOperation({
     summary:

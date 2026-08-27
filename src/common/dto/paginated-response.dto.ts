@@ -1,6 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-/** Та же структура, что и в `PaginatedResult.meta`, но видимая Swagger'у. */
 export class PaginationMetaDto {
   @ApiProperty({ example: 1 })
   page: number;

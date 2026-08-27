@@ -31,7 +31,6 @@ export class AdminReviewsController {
     return this.reviewsService.listForAdmin(query);
   }
 
-  /** Объявлено до `:id`, иначе «stats» попало бы в ParseIntPipe. */
   @Get('stats')
   @ApiOperation({
     summary: 'Сколько отзывов ждёт проверки, принято и отклонено',

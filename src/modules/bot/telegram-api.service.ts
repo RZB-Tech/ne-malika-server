@@ -1,19 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-/**
- * Чем закончилась отправка. Раньше метод возвращал void и глотал ошибку — для
- * одиночного сообщения это терпимо, но рассылке нужно знать судьбу каждого:
- * 403 означает «бот заблокирован, больше не пишем», 429 — «подожди столько-то».
- */
 export interface TelegramSendResult {
   ok: boolean;
-  /** Код ошибки Telegram: 403 — бот заблокирован или чат не начат, 429 — лимит. */
   errorCode?: number;
   description?: string;
-  /** Сколько секунд просит подождать Telegram при 429. */
   retryAfter?: number;
-  /** Тело ответа Telegram. Нужно вызовам, которые спрашивают, а не отправляют. */
   payload?: unknown;
 }
 
@@ -52,7 +44,6 @@ export class TelegramApiService {
     });
   }
 
-  /** Отправляет сообщение с кнопкой запроса контакта (request_contact). */
   requestContact(chatId: number, text: string): Promise<TelegramSendResult> {
     return this.sendMessage(chatId, text, {
       replyMarkup: {
@@ -65,18 +56,12 @@ export class TelegramApiService {
     });
   }
 
-  /** Убирает кастомную клавиатуру после успешного получения контакта. */
   removeKeyboard(chatId: number, text: string): Promise<TelegramSendResult> {
     return this.sendMessage(chatId, text, {
       replyMarkup: { remove_keyboard: true },
     });
   }
 
-  /**
-   * Результат возвращается наружу: раньше отказ Telegram здесь терялся, и
-   * приложение писало в журнал «вебхук зарегистрирован» даже когда токен был
-   * неверным, а бот не получал ни одного апдейта.
-   */
   setWebhook(url: string, secretToken?: string): Promise<TelegramSendResult> {
     return this.call('setWebhook', {
       url,
@@ -85,16 +70,6 @@ export class TelegramApiService {
     });
   }
 
-  /**
-   * Username бота — из него собирается ссылка t.me/<bot>, по которой человек
-   * включает уведомления, не вводя ничего руками.
-   *
-   * Спрашиваем у Telegram, а не держим в переменной окружения: токен уже есть,
-   * а лишняя настройка — лишний способ разъехаться с реальностью после смены
-   * бота. Удачный ответ кэшируем навсегда: username живёт столько же, сколько
-   * сам бот. Неудачу не кэшируем — иначе разовый сбой сети погасил бы канал до
-   * перезапуска.
-   */
   async username(): Promise<string | null> {
     if (this.cachedUsername) return this.cachedUsername;
 

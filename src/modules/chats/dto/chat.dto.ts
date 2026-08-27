@@ -12,23 +12,11 @@ import {
 import { PaginationQueryDto } from '../../../common/dto/pagination-query.dto';
 import { PaginationMetaDto } from '../../../common/dto/paginated-response.dto';
 
-/**
- * Столько влезает в сообщение, которое ещё читают. Длиннее — это уже не вопрос
- * продавцу, а простыня, и почти всегда попытка вставить рекламу.
- */
 export const MESSAGE_MAX = 2000;
 
-/** С какой стороны смотрит запрашивающий: своя переписка или переписка магазина. */
 export const CHAT_ROLES = ['buyer', 'seller'] as const;
 export type ChatRole = (typeof CHAT_ROLES)[number];
 
-/**
- * Обрезаем пробелы до проверки длины.
- *
- * Иначе сообщение из одних пробелов проходит `@MinLength(1)`, а сервис отвергает
- * его уже после того, как «написать продавцу» завело переписку, — в списках
- * обеих сторон оставался пустой разговор, которого никто не начинал.
- */
 const trimmed = Transform(({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value,
 );

@@ -18,12 +18,6 @@ import { AiCompareQueryDto, AiCompareResultDto } from './dto/ai-compare.dto';
 export class AiCompareController {
   constructor(private readonly aiCompareService: AiCompareService) {}
 
-  /**
-   * Открыто и без входа — сравнение живёт в браузере покупателя и до регистрации
-   * ему предлагать нечего. Расплата за это одна: строгий лимит частоты. Каждый
-   * непопавший в кэш запрос уходит в платную модель, а сравнить одни и те же
-   * товары можно сколько угодно раз — за счёт кэша это бесплатно.
-   */
   @Get()
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @ApiOperation({

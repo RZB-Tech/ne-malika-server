@@ -17,15 +17,6 @@ async function bootstrap() {
   const isProd = config.get<string>('env') === 'production';
   const corsOrigins = config.get<string[]>('corsOrigins')!;
 
-  /**
-   * Обычный REST API остаётся под `api/v1`. Для Click дополнительно открыты
-   * точные unversioned-пути двух рабочих интеграций: `/api/click/callback` из
-   * save-up и `/api/subscriptions/click/{prepare,complete}` из billiard_booking.
-   *
-   * Без исключения Nest добавил бы к ним ещё `api/v1`, и адрес, уже записанный
-   * в кабинете поставщика, получил бы 404. Click показывает такой 404 как
-   * «Недостаточно информации от поставщика», хотя сама подпись исправна.
-   */
   app.setGlobalPrefix(apiPrefix, {
     exclude: CLICK_UNVERSIONED_CALLBACK_ROUTES,
   });

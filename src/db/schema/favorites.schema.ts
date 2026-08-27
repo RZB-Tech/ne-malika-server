@@ -9,17 +9,6 @@ import { pgTable } from 'drizzle-orm/pg-core';
 import { users } from './users.schema';
 import { productCards } from './product-cards.schema';
 
-/**
- * Избранные товары покупателя.
- *
- * Устроено как product_views: одна строка на пару «пользователь + товар»,
- * повторное добавление ничего не ломает благодаря уникальному индексу. Разница
- * в смысле — сюда товар кладут осознанно, поэтому дата не обновляется при
- * повторном нажатии: список отсортирован по тому, когда его добавили.
- *
- * Аноним держит избранное в localStorage, оно переезжает сюда после входа
- * (POST /me/favorites/sync).
- */
 export const favorites = pgTable(
   'favorites',
   {

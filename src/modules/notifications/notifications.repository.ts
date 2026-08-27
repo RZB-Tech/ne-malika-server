@@ -24,17 +24,11 @@ import {
 } from '../../common/dto/pagination-query.dto';
 import type { BroadcastAudience } from './dto/create-broadcast.dto';
 
-/** Адресат: id нужен, чтобы отметить отписку, chatId — чтобы отправить. */
 export interface Recipient {
   id: number;
   chatId: number;
 }
 
-/**
- * Кому бот вправе писать. Условие одно и то же во всех выборках, поэтому
- * собрано в одном месте: есть чат (значит, был /start), уведомления не
- * выключены, аккаунт не заблокирован.
- */
 const REACHABLE = and(
   isNotNull(users.telegramChatId),
   eq(users.telegramNotificationsEnabled, true),
@@ -45,7 +39,6 @@ const REACHABLE = and(
 export class NotificationsRepository {
   constructor(@Inject(DRIZZLE) private readonly db: DrizzleDb) {}
 
-  /** Администраторы — им уходят жалобы и сбои проверки. */
   admins(): Promise<Recipient[]> {
     return this.db
       .select({ id: users.id, chatId: sql<number>`${users.telegramChatId}` })
@@ -53,11 +46,6 @@ export class NotificationsRepository {
       .where(and(REACHABLE, eq(users.role, 'admin')));
   }
 
-  /**
-   * Один адресат. `undefined` — писать некому: чат не открыт, уведомления
-   * выключены или аккаунт заблокирован. Условие то же, что и у рассылки,
-   * поэтому одиночное уведомление не проходит мимо отписки.
-   */
   recipient(userId: number): Promise<Recipient | undefined> {
     return this.db
       .select({ id: users.id, chatId: sql<number>`${users.telegramChatId}` })
@@ -67,20 +55,6 @@ export class NotificationsRepository {
       .then((rows) => rows[0]);
   }
 
-  /**
-   * Адресаты по готовому списку id — для рассылок, которые собирают
-   * получателей сами: напоминание об истечении подписки берёт их из своей
-   * выборки магазинов, а не из роли или аудитории.
-   *
-   * Отдельный метод, а не `recipient()` в цикле: запросов вышло бы столько же,
-   * сколько магазинов с истекающей подпиской. И не «выбрать всех и отсеять в
-   * приложении»: условие достижимости `REACHABLE` обязано остаться
-   * единственным — повторённое вручную, оно однажды забудет про `blocked_at`.
-   *
-   * `inArray`, а не `= ANY(...)` в шаблоне: drizzle разворачивает JS-массив в
-   * список через запятую, и `= ANY(($1, $2))` Postgres отвергает — тот же
-   * случай, что описан у `markNudged`.
-   */
   recipientsByIds(userIds: number[]): Promise<Recipient[]> {
     if (userIds.length === 0) return Promise.resolve([]);
     return this.db
@@ -89,11 +63,6 @@ export class NotificationsRepository {
       .where(and(REACHABLE, inArray(users.id, userIds)));
   }
 
-  /**
-   * Условие выборки для аудитории. Одно на всех: раньше тот же тернарник был
-   * скопирован в audience() и countAudience(), и правка в одной копии дала бы
-   * «показали N, отправили M» — а при потере роли рассылка ушла бы всей базе.
-   */
   private audienceWhere(audience: BroadcastAudience) {
     const byRole =
       audience === 'sellers'
@@ -112,13 +81,6 @@ export class NotificationsRepository {
       .where(this.audienceWhere(audience));
   }
 
-  /**
-   * Продавцы, которых пора подтолкнуть: с активным магазином, давно не
-   * добавлявшие товар и давно не получавшие напоминание.
-   *
-   * `productCount` отличает «магазин пустой» от «магазин есть, но заглох» —
-   * тексты для этих двух случаев разные.
-   */
   staleSellers(staleBefore: Date, nudgedBefore: Date) {
     return this.db
       .select({
@@ -147,13 +109,6 @@ export class NotificationsRepository {
       );
   }
 
-  /**
-   * inArray, а не `= ANY(...)`: drizzle разворачивает JS-массив в sql-шаблоне
-   * не в массивный литерал, а в список через запятую — получался
-   * `id = ANY(($1, $2))`, что Postgres отвергает. UPDATE не проходил, отметка
-   * не писалась, и напоминание повторялось каждые сутки вместо раза в две
-   * недели.
-   */
   markNudged(userIds: number[]): Promise<unknown> {
     if (userIds.length === 0) return Promise.resolve(null);
     return this.db
@@ -162,7 +117,6 @@ export class NotificationsRepository {
       .where(inArray(users.id, userIds));
   }
 
-  /** Бот заблокирован пользователем — больше не пишем, пока не вернётся сам. */
   disableNotifications(userId: number): Promise<unknown> {
     return this.db
       .update(users)
@@ -170,13 +124,6 @@ export class NotificationsRepository {
       .where(eq(users.id, userId));
   }
 
-  /**
-   * Состояние Telegram-канала одного человека для личного кабинета.
-   *
-   * `linked` и `enabled` разделены намеренно: без чата предлагать переключатель
-   * бессмысленно — включать нечего, нужно сперва открыть бота. С чатом, но
-   * выключенными уведомлениями хватит переключателя на самом сайте.
-   */
   async telegramState(
     userId: number,
   ): Promise<{ linked: boolean; enabled: boolean }> {
@@ -194,7 +141,6 @@ export class NotificationsRepository {
     return { linked, enabled: linked && row?.enabled === true };
   }
 
-  /** Переключатель из кабинета — зеркало команд /start и /stop в самом боте. */
   setTelegramEnabled(userId: number, enabled: boolean): Promise<unknown> {
     return this.db
       .update(users)
@@ -262,7 +208,6 @@ export class NotificationsRepository {
     return { data, total, page, limit };
   }
 
-  /** Сколько адресатов получит рассылка — показываем до отправки. */
   countAudience(audience: BroadcastAudience): Promise<number> {
     return this.db
       .select({ count: sql<number>`count(*)::int` })

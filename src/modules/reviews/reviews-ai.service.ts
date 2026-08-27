@@ -4,13 +4,10 @@ import type OpenAI from 'openai';
 import { OPENROUTER_CLIENT } from '../openrouter/openrouter-client.provider';
 import type { AiVerdict } from '../ai/ai-check.types';
 
-/** Отзыв — это несколько строк текста, дольше минуты модели тут делать нечего. */
 const REQUEST_TIMEOUT_MS = 45_000;
 
-/** 429 по лимиту — штатная ситуация, SDK разведёт повторы по экспоненте. */
 const MAX_RETRIES = 2;
 
-/** Причину видит автор отзыва, и простыня в уведомлении ему не нужна. */
 const MAX_NOTE_LENGTH = 300;
 
 const SYSTEM_PROMPT = `Ты модератор отзывов на маркетплейсе компьютерной техники. Тебе дают отзыв покупателя. Верни строго JSON без пояснений:
@@ -42,7 +39,6 @@ export interface ReviewAiResult {
   note: string;
 }
 
-/** Что показать модели: сам отзыв и то, о чём он. */
 export interface ReviewForCheck {
   rating: number;
   text: string | null;
@@ -50,13 +46,6 @@ export interface ReviewForCheck {
   shopName: string;
 }
 
-/**
- * ИИ-модерация отзывов.
- *
- * Отдельный сервис, а не часть проверки товаров: там вердикт решает судьбу
- * карточки продавца и смотрит на фотографии, здесь — короткий текст покупателя
- * и совсем другие правила. Общее у них только имя вердиктов.
- */
 @Injectable()
 export class ReviewsAiService {
   private readonly logger = new Logger(ReviewsAiService.name);
@@ -66,11 +55,6 @@ export class ReviewsAiService {
     private readonly config: ConfigService,
   ) {}
 
-  /**
-   * `null` — проверка не состоялась: ключа нет или модель не ответила. Отзыв в
-   * этом случае остаётся человеку. Молча публиковать непроверенное нельзя, а
-   * молча отклонять — тем более.
-   */
   async check(review: ReviewForCheck): Promise<ReviewAiResult | null> {
     if (!this.ai) return null;
 
@@ -108,11 +92,6 @@ function describe(review: ReviewForCheck): string {
   ].join('\n');
 }
 
-/**
- * Разбор ответа. Форме доверять нельзя: что не распозналось — становится
- * `warn`, то есть уходит человеку. Ошибка разбора не должна ни публиковать
- * отзыв, ни отклонять его от имени модели.
- */
 function parseResult(raw: string | null | undefined): ReviewAiResult {
   let parsed: Record<string, unknown> = {};
   try {

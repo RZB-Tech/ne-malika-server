@@ -11,13 +11,6 @@ import { type AuthenticatedUser } from '../../common/types/auth.types';
 import { ProductStatsService } from './product-stats.service';
 import { ProductStatsDto, StatsRangeQueryDto } from './dto/product-stats.dto';
 
-/**
- * Статистика карточки в кабинете продавца.
- *
- * Владение проверяется через `getOwnOrThrow`, а не по переданному магазину:
- * иначе продавец, подставив чужой id товара со своим shopId, увидел бы
- * чужие цифры.
- */
 @ApiTags('product-stats-seller')
 @ApiBearerAuth('access-token')
 @SellerOnly()

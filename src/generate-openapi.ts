@@ -1,10 +1,3 @@
-/**
- * Выгружает OpenAPI-спеку в файл без запуска сервера и без подключения к БД.
- * Нужен, чтобы клиентская спека (ne-malika-client/openapi/nemalika.json) не
- * расходилась с кодом: `pnpm gen:openapi` → скопировать → `pnpm gen:api` на клиенте.
- *
- *   pnpm gen:openapi [путь]     по умолчанию openapi/nemalika.json
- */
 import { writeFile, mkdir } from 'fs/promises';
 import { dirname, resolve } from 'path';
 import { NestFactory } from '@nestjs/core';

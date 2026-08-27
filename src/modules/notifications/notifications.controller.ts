@@ -21,12 +21,6 @@ import {
   SetTelegramNotificationsDto,
 } from './dto/notification-channels.dto';
 
-/**
- * Каналы уведомлений глазами их получателя.
- *
- * Отдельно от `/push`: тот отвечает за подписку конкретного браузера, а здесь
- * человек выбирает, куда вообще получать — в браузер или в Telegram.
- */
 @ApiTags('notifications')
 @Controller('notifications')
 export class NotificationsController {

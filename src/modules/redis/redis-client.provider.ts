@@ -6,10 +6,6 @@ export const REDIS_CLIENT = Symbol('REDIS_CLIENT');
 
 const logger = new Logger('RedisClient');
 
-/**
- * Клиент опционален: без REDIS_URL провайдер отдаёт null, а RedisService
- * молча работает вхолостую. Кэш — ускорение, а не условие работы приложения.
- */
 export const redisClientProvider: Provider = {
   provide: REDIS_CLIENT,
   inject: [ConfigService],

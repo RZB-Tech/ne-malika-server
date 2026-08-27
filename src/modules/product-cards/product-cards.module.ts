@@ -10,12 +10,6 @@ import { SellerProductCardsController } from './seller-product-cards.controller'
 import { SellerAiChecksController } from './seller-ai-checks.controller';
 import { AdminProductCardsController } from './admin-product-cards.controller';
 
-/**
- * `SearchStatsModule` импортируется в одну сторону и колец не создаёт: счётчик
- * поисковых запросов зависит только от соединения с базой и ничего не знает про
- * каталог. Обратное направление (счётчик, сам ходящий за выдачей) замкнуло бы
- * зависимость и заодно означало бы второй такой же поиск ради статистики.
- */
 @Module({
   imports: [ShopsModule, AiModule, CategoriesModule, SearchStatsModule],
   controllers: [

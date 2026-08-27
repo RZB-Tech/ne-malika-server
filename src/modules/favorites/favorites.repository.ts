@@ -12,7 +12,6 @@ import {
 } from '../../db/public-products';
 import { favorites, productCards, shops } from '../../db/schema';
 
-/** Публичная проекция карточки + когда её добавили в избранное. */
 const FAVORITE_FIELDS = {
   ...PUBLIC_PRODUCT_SUMMARY,
   addedAt: favorites.addedAt,
@@ -22,15 +21,10 @@ const FAVORITE_FIELDS = {
 export class FavoritesRepository {
   constructor(@Inject(DRIZZLE) private readonly db: DrizzleDb) {}
 
-  /** Из присланных id — только те, что видны покупателю. */
   filterPublicIds(ids: number[]): Promise<Set<number>> {
     return filterVisibleProductIds(this.db, ids);
   }
 
-  /**
-   * Повторное добавление не меняет дату: список отсортирован по тому, когда
-   * товар положили в избранное, и «обновление» гоняло бы его наверх без причины.
-   */
   add(userId: number, productCardId: number, addedAt = new Date()) {
     return this.db
       .insert(favorites)
@@ -42,7 +36,6 @@ export class FavoritesRepository {
       .then((r) => r[0]);
   }
 
-  /** Слияние избранного устройства после входа. Уже сохранённое не трогаем. */
   async merge(
     userId: number,
     items: { productCardId: number; addedAt: Date }[],
@@ -60,11 +53,6 @@ export class FavoritesRepository {
     return rows.length;
   }
 
-  /**
-   * Избранное пользователя, недавно добавленные сверху. Скрытые и упразднённые
-   * товары отфильтрованы так же, как в каталоге: ссылка на 404 в кабинете хуже,
-   * чем её отсутствие.
-   */
   async findByUser(userId: number, query: PaginationQueryDto) {
     const { page, limit, offset } = resolvePage(query);
     const where = and(eq(favorites.userId, userId), ...VISIBLE_PRODUCT);

@@ -1,6 +1,5 @@
 import { DocumentBuilder } from '@nestjs/swagger';
 
-/** Общий для рантайма (`/docs`) и для скрипта выгрузки спеки (`gen:openapi`). */
 export const swaggerConfig = new DocumentBuilder()
   .setTitle('НеМалика API')
   .setDescription(

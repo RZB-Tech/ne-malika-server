@@ -27,7 +27,6 @@ export class SyncFavoriteItemDto {
   added_at?: string;
 }
 
-/** Перенос избранного, накопленного до входа. Шлётся один раз после авторизации. */
 export class SyncFavoritesDto {
   @ApiProperty({
     type: [SyncFavoriteItemDto],

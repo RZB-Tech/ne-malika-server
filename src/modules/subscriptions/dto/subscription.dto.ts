@@ -7,21 +7,10 @@ import {
 import { PaginationMetaDto } from '../../../common/dto/paginated-response.dto';
 import type { PaidPlan, SubscriptionPlanId } from '../subscriptions.constants';
 
-/**
- * Ответы подписки: витрина тарифов, состояние магазина, ссылка на кассу и
- * журнал платежей.
- *
- * Списки допустимых значений берутся из `pgEnum`, а не переписываются
- * литералами. Те же четыре слова уже объявлены в базе и выведены в
- * `SubscriptionPlanId`; третий их экземпляр в декораторе Swagger разошёлся бы с
- * остальными при первом же добавлении тарифа — и разошёлся бы молча, потому что
- * `@ApiProperty` ничего не проверяет, а только описывает.
- */
 const PLAN_VALUES = [...subscriptionPlanEnum.enumValues];
 const PAYMENT_STATUS_VALUES = [...paymentStatusEnum.enumValues];
 const PAYMENT_PROVIDER_VALUES = [...paymentProviderEnum.enumValues];
 
-/** Одна строка публичного прайса. */
 export class SubscriptionPlanDto {
   @ApiProperty({
     enum: ['start', 'pro', 'max'],
@@ -64,14 +53,6 @@ export class SubscriptionPlanDto {
   analyticsDays: number;
 }
 
-/**
- * Автозаполнение глазами продавца.
- *
- * Отдельным вложенным объектом, а не пятью полями в корне: на странице
- * подписки это один блок, и клиенту удобнее получить его целиком, чем
- * собирать из `autofillFree`, `autofillLeft`, `autofillLimit` и далее по
- * списку.
- */
 export class SubscriptionAutofillDto {
   @ApiProperty({
     description: 'Следующее нажатие бесплатно — по норме либо по безлимиту',
@@ -104,7 +85,6 @@ export class SubscriptionAutofillDto {
   resetsAt: string;
 }
 
-/** Состояние подписки магазина — то, из чего собрана страница «Подписка». */
 export class SellerSubscriptionDto {
   @ApiProperty({
     enum: PLAN_VALUES,
@@ -166,7 +146,6 @@ export class SellerSubscriptionDto {
   promoted: boolean;
 }
 
-/** Куда отправить продавца платить. */
 export class PaymentLinkDto {
   @ApiProperty({ enum: PAYMENT_PROVIDER_VALUES, example: 'click' })
   provider: string;
@@ -184,15 +163,6 @@ export class PaymentLinkDto {
   url: string;
 }
 
-/**
- * Ссылка на тестовую оплату и срок жизни открытого под неё окна.
- *
- * Отдельный тип, а не `PaymentLinkDto` с необязательным тарифом: тарифа здесь
- * нет и быть не может — тестовая оплата ничего не покупает, — зато есть
- * `armedUntil`, которого нет у обычной кассы. Склеив их в один тип, мы получили
- * бы DTO, у которого половина полей всегда пуста, и вопрос «что придёт в этом
- * случае» решался бы чтением кода.
- */
 export class TestPaymentLinkDto {
   @ApiProperty({ description: 'Сумма проверки в сумах', example: 1000 })
   amountUzs: number;
@@ -211,17 +181,6 @@ export class TestPaymentLinkDto {
   url: string;
 }
 
-/**
- * Строка журнала платежей.
- *
- * Одна и та же для продавца и для администратора, и поля выбраны по мерке
- * продавца: `meta` целиком не отдаётся никому. Внутри неё лежат `service_id`,
- * `sign_time` и идентификатор администратора, сделавшего ручную активацию, —
- * ничего из этого в споре «за что списали» не помогает, а первые два ещё и
- * описывают наши настройки у провайдера. Наружу вынесено ровно то, что
- * объясняет судьбу денег: причина отказа, признак возврата и отметка «ждёт
- * разбора человеком».
- */
 export class SubscriptionPaymentDto {
   @ApiProperty()
   id: number;
@@ -326,7 +285,6 @@ export class PaginatedSubscriptionPaymentsDto {
   meta: PaginationMetaDto;
 }
 
-/** Строка админского списка подписок. */
 export class AdminSubscriptionRowDto {
   @ApiProperty()
   shopId: number;

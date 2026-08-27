@@ -26,17 +26,12 @@ export class AuthService {
     private readonly configService: ConfigService,
   ) {}
 
-  /** Telegram Mini App: подписанная строка initData из window.Telegram.WebApp. */
   authenticateWithTelegram(initData: string) {
     return this.login((token, ttl) =>
       validateTelegramInitData(initData, token, ttl),
     );
   }
 
-  /**
-   * Браузерный вход: ответ Telegram Login Widget уже подписан Telegram —
-   * проверяем подпись здесь, токен бота на клиент не уезжает.
-   */
   authenticateWithWidget(dto: TelegramWidgetDto) {
     return this.login((token, ttl) =>
       validateTelegramWidgetData(dto, token, ttl),
@@ -92,11 +87,6 @@ export class AuthService {
     return this.issueTokens(user);
   }
 
-  /**
-   * Проверяем при входе и обновлении токена, а не в guard'е: иначе каждый
-   * запрос к API тянул бы за собой чтение пользователя из БД. Уже выданный
-   * access-токен доживает свой недолгий срок — это осознанный размен.
-   */
   private assertNotBlocked(user: User) {
     if (user.blockedAt) {
       throw new ForbiddenException(

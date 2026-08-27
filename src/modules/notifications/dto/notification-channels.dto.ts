@@ -44,7 +44,6 @@ export class TelegramChannelDto {
   url: string | null;
 }
 
-/** Состояние обоих каналов сразу — кабинету нужно предложить выбор, а не один. */
 export class NotificationChannelsDto {
   @ApiProperty({ type: PushChannelDto })
   push: PushChannelDto;

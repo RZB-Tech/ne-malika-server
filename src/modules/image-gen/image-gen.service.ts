@@ -26,36 +26,21 @@ import {
   RewriteDescriptionDto,
 } from './dto/generate-images.dto';
 
-/** Образец для правки: Images API принимает и ссылку, и data-URL. */
 interface ImageReference {
   type: 'image_url';
   image_url: { url: string };
 }
 
-/**
- * Ответ /images: картинки приходят байтами в base64, а не ссылками.
- * `usage.cost` — фактическая стоимость в долларах, по ней и списываем.
- */
 interface OpenRouterImagesResponse {
   data?: { b64_json?: string; media_type?: string }[];
   usage?: { cost?: number };
 }
 
-/** Сколько прошлых вариантов показывать в галерее диалога. */
 const HISTORY_LIMIT = 24;
 
-/** Картинки идут дольше текста, а их может быть до четырёх за запрос. */
 const IMAGE_TIMEOUT_MS = 180_000;
 const PROMPT_TIMEOUT_MS = 60_000;
 
-/**
- * Промпт для карточки-инфографики — то, что продаётся на Wildberries и Ozon:
- * товар на оформленном фоне, крупный заголовок и выноски с характеристиками.
- *
- * Промпт пишем по-английски: генераторы изображений обучены на английских
- * описаниях. Русские надписи — исключение: их модель должна нарисовать дословно,
- * поэтому они идут в кавычках прямо внутри английского текста.
- */
 const PROMPT_SYSTEM_CARD = `You write prompts for an image generator. The result must be a vertical marketplace listing card in the style of Wildberries or Ozon: a photoreal product composited onto a designed background with Russian marketing text over it. Not a bare studio photo, not a lifestyle scene.
 
 Reply with the prompt itself only: plain English text, no JSON, no quotes around the whole answer, no preamble like "Here is the prompt:".
@@ -74,17 +59,6 @@ Only state specs that are visible in the photo or printed on the product. When a
 
 Keep it under 130 words.`;
 
-/**
- * Правка описания товара по фотографии.
- *
- * Задание по-русски, в отличие от промптов для рисования: тут модель не рисует,
- * а пишет для покупателя, и примеры формулировок должны быть на том же языке,
- * что и результат.
- *
- * Главный запрет — придумывать характеристики. Продавец нажимает кнопку ради
- * грамотного текста, а получив приписанные «16 ГБ» и «гарантия 2 года», он
- * отправит покупателю обещание, которого не давал.
- */
 const DESCRIPTION_SYSTEM = `Ты редактор объявлений на маркетплейсе компьютерной техники. Тебе дают текст продавца и фотографию товара. Верни готовое описание — и ничего больше: без вступлений вроде «Вот описание:» и без кавычек вокруг ответа.
 
 Что делать:
@@ -108,10 +82,6 @@ const DESCRIPTION_SYSTEM = `Ты редактор объявлений на ма
 
 Объём: до 700 символов вместе с разметкой. Если фактов мало — короткий текст лучше выдуманного длинного, а список можно и не делать.`;
 
-/**
- * Промпт для обычной студийной съёмки — режим «фото на белом». Здесь надписи и
- * фон, наоборот, запрещены: карточка получится из самого товара.
- */
 const PROMPT_SYSTEM_PHOTO = `You write prompts for an image generator. The result must look like a marketplace product listing photo (like Amazon or Ozon), not an advertisement or a lifestyle scene.
 
 Reply with the prompt itself only: plain English text, no JSON, no quotes around it, no preamble like "Here is the prompt:".
@@ -124,12 +94,6 @@ Do not invent specs you cannot see in the photo. If the model is unrecognizable,
 
 Keep it under 60 words.`;
 
-/**
- * Задание для того же составителя промпта, когда админ приложил референс. Без
- * этого текста модель смотрит на две картинки как на два фото товара и пишет
- * описание по первой — вёрстка образца в промпт не попадает, а значит и в
- * рисунок тоже.
- */
 const PROMPT_WITH_REFERENCE = [
   'IMAGE 1 is the product photo. IMAGE 2 is a finished card whose design must be copied.',
   'Describe the product from IMAGE 1 placed into the layout of IMAGE 2:',
@@ -138,11 +102,6 @@ const PROMPT_WITH_REFERENCE = [
   'Never describe the product or reuse the wording from IMAGE 2.',
 ].join(' ');
 
-/**
- * Роли картинок при генерации. Модель получает два образца и без пояснения
- * считает оба товаром: берёт за основу первый, второй игнорирует — снаружи это
- * выглядит как «референс не работает».
- */
 const REFERENCE_ROLES = [
   'Two images are provided.',
   'IMAGE 1 is the product: reproduce its exact model, shape, colour, ports, buttons and markings.',
@@ -150,20 +109,11 @@ const REFERENCE_ROLES = [
   'Take only the design from IMAGE 2 — never its product and never its wording.',
 ].join(' ');
 
-/**
- * Хвост при генерации по референсу. Он намеренно короткий: подачу задаёт
- * образец, и любое своё описание фона или вёрстки с ним спорит. Остаются
- * требования, которые по картинке не считываются.
- */
 const REFERENCE_STYLE = [
   'Render every Russian word in correct, sharp Cyrillic — no invented letters, no misspellings, no Latin transliteration.',
   'No watermark, no marketplace logo, no placeholder text.',
 ].join(' ');
 
-/**
- * Хвост для карточки без референса. Промпт пишет человек и про формат забывает,
- * а модель по умолчанию рисует товар на белом — для карточки это брак.
- */
 const CARD_STYLE = [
   'Vertical marketplace listing card, Wildberries / Ozon style infographic.',
   'Photoreal product composited on a designed background: glow and rim light behind the product, realistic contact shadow.',
@@ -172,17 +122,6 @@ const CARD_STYLE = [
   'Clean commercial layout, generous margins, high contrast, no watermark, no marketplace logo, no placeholder text.',
 ].join(' ');
 
-/**
- * Художественные решения карточки — палитра, свет и раскладка текста.
- *
- * Без них всё приезжает в одной и той же сине-белой гамме: и составитель
- * промпта, и рисующая модель по умолчанию тянутся к «технологичному синему»,
- * а компьютерная техника только усиливает этот перекос. Поэтому цвет фона в
- * промпте больше не называется вовсе — он приходит отсюда.
- *
- * Решение выбирается на каждый вариант отдельно, поэтому за один запрос
- * приезжают разные карточки, а не четыре копии одной.
- */
 const CARD_DIRECTIONS = [
   'Art direction: charcoal-to-black gradient background with a warm amber glow behind the product; headline block in the top-left corner; callout badges outlined in amber.',
   'Art direction: graphite background with a magenta-to-violet neon rim and a faint tech grid; headline in the top-right corner; callouts in dark rounded pills.',
@@ -196,7 +135,6 @@ const CARD_DIRECTIONS = [
   'Art direction: near-monochrome scene with a single saturated accent colour taken from the product itself; oversized headline; minimal thin-line callouts with leader lines.',
 ];
 
-/** Хвост для режима «фото на белом»: ни фона, ни надписей, только товар. */
 const PHOTO_STYLE = [
   'Marketplace product listing photo.',
   'The bare product only — no box, no packaging, no props, no people, no room.',
@@ -218,13 +156,6 @@ export class ImageGenService {
     private readonly aiUsage: AiUsageService,
   ) {}
 
-  /**
-   * Списать деньги и записать, кто именно ходил к модели.
-   *
-   * Двумя записями, а не одной: журнал денег ведётся по магазину и не знает,
-   * чьи руки нажали кнопку, а у администратора списания нет вовсе — его
-   * запросы оплачивает площадка, и без этого журнала они не видны нигде.
-   */
   private async settleAndLog(
     hold: CreditHold | null,
     author: { id: number; isAdmin: boolean },
@@ -247,19 +178,6 @@ export class ImageGenService {
     });
   }
 
-  /**
-   * Остаток кредитов. Отдаётся клиенту, чтобы продавец видел его до нажатия
-   * кнопки, а не узнавал об отказе после.
-   *
-   * `allowed` — это выключатель диалога генерации фотографий на клиенте, и
-   * считать его своей формулой нельзя (B5). Прежняя строка
-   * `balance − reserved` знала только про купленные кредиты: подписчик PRO,
-   * у которого шесть тысяч подписочных и ноль купленных, получал `allowed:
-   * false` — то есть неактивную кнопку в день оплаты тарифа, за который
-   * генерация как раз и оплачена. Остаток по обоим карманам считает
-   * `CreditsService.available`, и он же стоит в резерве, — значит показанное
-   * число и решение занять кредиты приняты по одному правилу.
-   */
   async balance(
     userId: number,
     isAdmin: boolean,
@@ -273,7 +191,6 @@ export class ImageGenService {
     return { allowed: available > 0, credits: available };
   }
 
-  /** Ранее нарисованное по этому же фото — галерея в диалоге. */
   async history(userId: number, sourceKey: string) {
     const rows = await this.repository.history(
       userId,
@@ -288,12 +205,6 @@ export class ImageGenService {
     }));
   }
 
-  /**
-   * Промпт по фотографии — кнопка «составить промпт» в админке. Смотрит фото
-   * модель из OpenRouter: она дешевле рисующей, а работа тут простая. Если админ
-   * приложил референс, тот уходит вторым изображением — иначе описание вёрстки
-   * взять неоткуда и образец на результат не влияет.
-   */
   async describePrompt(
     dto: DescribePromptDto,
     author: { id: number; isAdmin: boolean },
@@ -353,11 +264,6 @@ export class ImageGenService {
 
       const choice = completion.choices[0];
       const prompt = cleanPrompt(choice?.message?.content);
-      /**
-       * Проверяем ответ до списания: `settle` уже снял резерв, и повторный
-       * `cancel` из ловушки освободил бы сверх него чужой — тот, что занят
-       * соседним запросом того же магазина.
-       */
       if (!prompt) {
         throw new Error(
           `модель вернула пустой промпт (finish_reason: ${choice?.finish_reason ?? '—'}, ` +
@@ -388,13 +294,6 @@ export class ImageGenService {
     }
   }
 
-  /**
-   * Приводит в порядок описание, написанное продавцом, сверяясь с фотографией.
-   *
-   * Отдельная операция, а не часть ИИ-проверки: проверка выносит вердикт и
-   * прячет карточку, а здесь продавец сам просит помощи и сам решает, оставить
-   * ли результат. Поэтому и списывается как обычный запрос к модели.
-   */
   async rewriteDescription(
     dto: RewriteDescriptionDto,
     author: { id: number; isAdmin: boolean },
@@ -453,7 +352,6 @@ export class ImageGenService {
         0,
         DESCRIPTION_MAX,
       );
-      /** Как и в промпте: списываем только то, что дошло до продавца. */
       if (!text) {
         throw new Error(
           `модель вернула пустой текст (finish_reason: ${choice?.finish_reason ?? '—'})`,
@@ -483,10 +381,6 @@ export class ImageGenService {
     }
   }
 
-  /**
-   * Перерисовывает фотографию товара. Исходник уходит модели как образец,
-   * поэтому на выходе тот же товар, а не похожий: для карточки это принципиально.
-   */
   async generate(
     dto: GenerateImagesDto,
     author: { id: number; isAdmin: boolean },
@@ -500,11 +394,6 @@ export class ImageGenService {
     const count = Math.min(dto.count ?? 2, MAX_GENERATED_IMAGES);
     const size = dto.size ?? '960x1280';
 
-    /**
-     * Резерв считаем по прайсу модели с учётом качества: high при том же
-     * размере дороже medium вчетверо, и одна оценка на оба тарифа означала бы,
-     * что разницу оплачивает площадка.
-     */
     const hold = await this.credits.hold(
       author,
       estimateImagesUsd(size, dto.quality, count, dto.referenceKey ? 2 : 1),
@@ -519,7 +408,6 @@ export class ImageGenService {
     }
   }
 
-  /** Собственно генерация. Вынесена, чтобы резерв снимался в одном месте. */
   private async run(
     dto: GenerateImagesDto,
     count: number,
@@ -613,15 +501,6 @@ export class ImageGenService {
     return saved;
   }
 
-  /**
-   * Один вариант за запрос. Идёт не в chat/completions, а в отдельный
-   * /images — только там есть размер, качество и правка по образцу.
-   * SDK такого эндпоинта не знает, поэтому дёргаем его через client.post:
-   * так сохраняются базовый адрес, ключ, keep-alive и повторы.
-   *
-   * `direction` — художественное решение именно этого варианта. Без него все
-   * запросы уходят с одинаковым текстом и возвращают одинаковые картинки.
-   */
   private async requestOne(
     model: string,
     references: ImageReference[],
@@ -660,14 +539,6 @@ export class ImageGenService {
   }
 }
 
-/**
- * Что дописать к промпту админа. С референсом подачу диктует образец, поэтому
- * ни своего стиля, ни художественного решения не добавляем: раньше хвост
- * требовал белый фон и запрещал надписи — и перебивал любую картинку-образец.
- *
- * Оговорка «если фон уже описан выше» нужна для случая, когда админ написал
- * промпт руками и указал фон сам: его слово должно быть последним.
- */
 function styleTail(
   referenceCount: number,
   dto: GenerateImagesDto,
@@ -681,11 +552,6 @@ function styleTail(
   ];
 }
 
-/**
- * Художественные решения для одной пачки вариантов: берём подряд со случайного
- * места по кругу. Внутри запроса они не повторяются, а между запросами набор
- * каждый раз другой — иначе первая карточка всегда выходила бы одинаковой.
- */
 function pickDirections(count: number): string[] {
   const start = Math.floor(Math.random() * CARD_DIRECTIONS.length);
   return Array.from(
@@ -694,10 +560,6 @@ function pickDirections(count: number): string[] {
   );
 }
 
-/**
- * Модель просили ответить голым текстом, но она может обернуть его в кавычки
- * или блок кода — снимаем обёртку, чтобы админ не правил это руками.
- */
 function cleanPrompt(raw: string | null | undefined): string {
   let text = (raw ?? '').trim();
   text = text.replace(/^```[a-z]*\s*/i, '').replace(/```$/, '');

@@ -31,10 +31,6 @@ export const productCards = pgTable(
       .notNull()
       .references(() => shops.id, { onDelete: 'cascade' }),
 
-    /**
-     * Категория каталога. Nullable: товары, заведённые до появления категорий,
-     * остаются без неё, а удаление категории не должно уносить чужой товар.
-     */
     categoryId: bigint('category_id', { mode: 'number' }).references(
       () => categories.id,
       { onDelete: 'set null' },
@@ -45,11 +41,6 @@ export const productCards = pgTable(
 
     photos: uuid('photos').array().notNull().default([]),
 
-    /**
-     * Пусто — «цена договорная». Отдельного флага нет намеренно: цена либо
-     * названа, либо нет, и два поля позволили бы им разойтись — «договорная»
-     * с числом рядом.
-     */
     price: numeric('price', { precision: 14, scale: 2 }),
     state: productStateEnum('state').notNull(),
 
@@ -57,13 +48,6 @@ export const productCards = pgTable(
 
     embedding: vector('embedding', { dimensions: 1536 }),
 
-    /**
-     * Оценка по опубликованным отзывам. Хранится готовой, а не считается на
-     * лету: она нужна каждой плитке каталога, и подзапрос на строку выдачи
-     * превратил бы список из двадцати товаров в двадцать агрегатов.
-     * Пересчитывается целиком при каждом изменении статуса отзыва — накопление
-     * приращениями рано или поздно разъезжается с фактом.
-     */
     ratingAvg: doublePrecision('rating_avg').notNull().default(0),
     ratingCount: integer('rating_count').notNull().default(0),
 

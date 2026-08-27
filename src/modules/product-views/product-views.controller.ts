@@ -24,14 +24,6 @@ import { RecordProductViewDto } from './dto/record-product-view.dto';
 import { SyncProductViewsDto } from './dto/sync-product-views.dto';
 import { PaginatedProductViewsDto } from './dto/product-view.dto';
 
-/**
- * Личный кабинет покупателя: история просмотренных товаров.
- *
- * Роль не проверяется намеренно — история есть у любого авторизованного
- * пользователя, продавец и администратор тоже ходят по витрине. Аноним сюда не
- * попадает вовсе: его история лежит в браузере и переезжает сюда через /sync
- * сразу после входа.
- */
 @ApiTags('me-product-views')
 @ApiBearerAuth('access-token')
 @Controller('me/product-views')

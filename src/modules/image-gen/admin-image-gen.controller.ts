@@ -29,10 +29,6 @@ import {
   StoredImageDto,
 } from './dto/generate-images.dto';
 
-/**
- * Генерация карточек. Раздел админский по истории, но пользуются им и
- * продавцы — за счёт кредитов своего магазина.
- */
 @ApiTags('image-gen')
 @ApiBearerAuth('access-token')
 @SellerOrAdmin()
@@ -90,7 +86,6 @@ export class ImageGenController {
     });
   }
 
-  /** Лимит жёстче обычного: каждый запрос — до четырёх платных картинок. */
   @Post('generate')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })

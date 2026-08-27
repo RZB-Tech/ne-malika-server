@@ -4,19 +4,6 @@ import type {
   AiCompareRowDto,
 } from './dto/ai-compare.dto';
 
-/**
- * Разбор ответа модели.
- *
- * Модель отвечает индексами (0, 1, 2…), а не id: короткое число она путает
- * реже, чем шестизначное, и подставить чужой товар в ответ таким образом уже не
- * получится — индекс вне диапазона просто отбрасывается. Наружу же уходят id:
- * клиент раскладывает ответ по своим столбцам и порядок ему знать неоткуда.
- *
- * Форме ответа не доверяем ни в одном поле. Всё, что не распозналось, тихо
- * выпадает: половина таблицы полезнее, чем пятисотая ошибка на пустом месте.
- */
-
-/** Больше и не покажешь: столбцов четыре, а строк с прочерками никто не читает. */
 const MAX_ROWS = 14;
 const MAX_POINTS = 4;
 
@@ -27,10 +14,8 @@ const POINT_MAX = 140;
 const SUMMARY_MAX = 700;
 const VERDICT_MAX = 700;
 
-/** Прочерк вместо пустой клетки — тот же знак, что и в обычной таблице сравнения. */
 const EMPTY_VALUE = '—';
 
-/** Товар, который отдали модели: порядок в этом массиве и есть её индексы. */
 export interface ComparedProduct {
   id: number;
   name: string;
@@ -94,11 +79,6 @@ function readRows(
   return rows;
 }
 
-/**
- * Плюсы и минусы каждого товара. Возвращаем запись на каждый товар, даже если
- * модель о нём промолчала: клиент рисует столбцы по этому списку, и пропуск
- * сдвинул бы карточки под чужие названия.
- */
 function readProducts(
   raw: unknown,
   products: ComparedProduct[],
@@ -146,14 +126,12 @@ function points(raw: unknown): string[] {
     .slice(0, MAX_POINTS);
 }
 
-/** Индекс товара в ответе модели → его id. Всё за границами массива — null. */
 function productId(raw: unknown, products: ComparedProduct[]): number | null {
   const index = wholeNumber(raw);
   if (index === null || index < 0 || index >= products.length) return null;
   return products[index].id;
 }
 
-/** Число приходит и числом, и строкой «0» — модели непоследовательны. */
 function wholeNumber(raw: unknown): number | null {
   const value = typeof raw === 'string' ? Number(raw.trim()) : raw;
   return typeof value === 'number' && Number.isInteger(value) ? value : null;

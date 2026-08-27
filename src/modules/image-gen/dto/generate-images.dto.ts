@@ -15,26 +15,9 @@ import {
 export const IMAGE_QUALITIES = ['low', 'medium', 'high'] as const;
 export type ImageQuality = (typeof IMAGE_QUALITIES)[number];
 
-/**
- * Что рисуем. `infographic` — карточка как на Wildberries и Ozon: товар на
- * оформленном фоне, крупный заголовок и выноски с характеристиками.
- * `photo` — обычная студийная съёмка на белом, без единой надписи.
- */
 export const CARD_STYLES = ['infographic', 'photo'] as const;
 export type CardStyle = (typeof CARD_STYLES)[number];
 
-/**
- * Размеры только в пикселях. Тиры вроде «1K» в документации OpenRouter описаны,
- * но gpt-image-2 их отвергает: «Invalid size '1K'. Expected WIDTHxHEIGHT».
- *
- * Значения не произвольные — модель требует, чтобы обе стороны были кратны 16,
- * а всего пикселей было не больше 8 294 400.
- *
- * Вертикальные 3:4 идут первыми: это формат карточки на маркетплейсах, и
- * заголовок с выносками помещается только в него. Квадраты оставлены для
- * обычных фотографий товара. В обеих группах последний размер упирается в
- * потолок модели по числу пикселей.
- */
 export const IMAGE_SIZES = [
   '960x1280',
   '1440x1920',
@@ -127,7 +110,6 @@ export class DescribePromptDto {
   style?: CardStyle;
 }
 
-/** Сколько символов описания принимаем и отдаём обратно. */
 export const DESCRIPTION_MAX = 2000;
 
 export class RewriteDescriptionDto {

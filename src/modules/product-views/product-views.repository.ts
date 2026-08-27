@@ -12,7 +12,6 @@ import {
 } from '../../db/public-products';
 import { productCards, productViews, shops } from '../../db/schema';
 
-/** Публичная проекция карточки + когда и сколько раз её открывали. */
 const VIEW_FIELDS = {
   ...PUBLIC_PRODUCT_SUMMARY,
   viewedAt: productViews.viewedAt,
@@ -23,15 +22,10 @@ const VIEW_FIELDS = {
 export class ProductViewsRepository {
   constructor(@Inject(DRIZZLE) private readonly db: DrizzleDb) {}
 
-  /** Из присланных id — только те, что видны покупателю. */
   filterPublicIds(ids: number[]): Promise<Set<number>> {
     return filterVisibleProductIds(this.db, ids);
   }
 
-  /**
-   * Просмотр пишется апсертом: повторный заход на карточку поднимает её наверх
-   * и увеличивает счётчик, а не создаёт вторую строку.
-   */
   record(userId: number, productCardId: number, viewedAt = new Date()) {
     return this.db
       .insert(productViews)
@@ -47,11 +41,6 @@ export class ProductViewsRepository {
       .then((r) => r[0]);
   }
 
-  /**
-   * Слияние истории устройства после входа. В отличие от `record`, счётчик не
-   * трогаем: локальные просмотры уже могли попасть на сервер с другого входа,
-   * и накрутка исказила бы «сколько раз смотрел». Дата берётся поздняя из двух.
-   */
   async merge(
     userId: number,
     items: { productCardId: number; viewedAt: Date }[],
@@ -72,11 +61,6 @@ export class ProductViewsRepository {
     return rows.length;
   }
 
-  /**
-   * История пользователя, свежие сверху. Скрытые и упразднённые товары
-   * отфильтрованы теми же условиями, что и каталог: показать в кабинете ссылку,
-   * которая ответит 404, — хуже, чем не показать её вовсе.
-   */
   async findByUser(userId: number, query: PaginationQueryDto) {
     const { page, limit, offset } = resolvePage(query);
     const where = and(eq(productViews.userId, userId), ...VISIBLE_PRODUCT);

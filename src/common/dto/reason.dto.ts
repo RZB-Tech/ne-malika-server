@@ -1,11 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsString, MaxLength, MinLength } from 'class-validator';
 
-/**
- * Причина модераторского действия — упразднения товара или магазина,
- * блокировки продавца. Во всех трёх случаях требования одинаковые,
- * а раньше это был один и тот же класс, скопированный трижды.
- */
 export class ReasonDto {
   @ApiProperty({
     minLength: 5,

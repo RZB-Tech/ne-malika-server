@@ -1,9 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-/**
- * Названия отдаём тремя полями, а не одним по заголовку Accept-Language:
- * клиент кэширует дерево целиком и переключает язык без похода на сервер.
- */
 export class CategoryNameDto {
   @ApiProperty({ example: 'Ноутбуки' })
   ru: string;
@@ -33,11 +29,6 @@ export class CategoryDto {
   })
   icon?: string | null;
 
-  /**
-   * Покупателю закрытый раздел виден как любой другой — флаг нужен форме товара,
-   * чтобы показать продавцу без разрешения, что раздел есть, но выбрать его
-   * нельзя.
-   */
   @ApiProperty({
     example: false,
     description:

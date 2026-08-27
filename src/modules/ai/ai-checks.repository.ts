@@ -8,7 +8,6 @@ import {
   productCards,
 } from '../../db/schema';
 
-/** Строка очереди ручной модерации: товар + его последняя проверка. */
 export interface AiReviewRow extends Record<string, unknown> {
   checkId: number;
   productCardId: number;
@@ -18,7 +17,6 @@ export interface AiReviewRow extends Record<string, unknown> {
   checkedAt: string;
   reviewedAt: string | null;
   name: string;
-  /** null — «цена договорная». */
   price: string | null;
   photos: string[];
   status: 'active' | 'hidden' | 'abolished' | 'pending';
@@ -30,13 +28,6 @@ export interface AiReviewRow extends Record<string, unknown> {
 export class AiChecksRepository {
   constructor(@Inject(DRIZZLE) private readonly db: DrizzleDb) {}
 
-  /**
-   * Records a verdict and changes visibility as one optimistic transaction.
-   * A model response may arrive after the seller has edited the card. In that
-   * case the timestamp no longer matches and the stale verdict is discarded.
-   * PostgreSQL keeps microseconds while JavaScript Date keeps milliseconds, so
-   * the comparison deliberately uses the original one-millisecond interval.
-   */
   async recordDecision(
     card: ProductCard,
     data: Omit<typeof aiProductChecks.$inferInsert, 'productCardId'>,
@@ -81,11 +72,6 @@ export class AiChecksRepository {
     });
   }
 
-  /**
-   * Проверки, требующие внимания человека: сервис не ответил (error) либо
-   * модель забраковала товар (fail). DISTINCT ON берёт последнюю проверку на
-   * товар — предыдущие попытки в очередь попадать не должны.
-   */
   async findNeedingReview(limit: number, offset: number) {
     const result = await this.db.execute<AiReviewRow>(sql`
       SELECT * FROM (
@@ -129,7 +115,6 @@ export class AiChecksRepository {
     return { data: result.rows, total: totals.rows[0]?.count ?? 0 };
   }
 
-  /** Помечает последнюю проверку товара разобранной — она уходит из очереди. */
   async markLatestReviewed(productCardId: number): Promise<void> {
     const latest = await this.findLatestByProductId(productCardId);
     if (!latest || latest.reviewedAt) return;
@@ -145,11 +130,6 @@ export class AiChecksRepository {
       );
   }
 
-  /**
-   * Товары, застрявшие в `pending`: процесс умер между сохранением карточки и
-   * ответом модели. Без повторного запуска они остались бы невидимыми навсегда —
-   * проверки в БД нет, значит и в очередь модерации они не попадут.
-   */
   findStuckPending(olderThan: Date, limit: number): Promise<ProductCard[]> {
     return this.db
       .select()

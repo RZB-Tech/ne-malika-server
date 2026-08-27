@@ -4,10 +4,8 @@ import {
   AUTOFILL_MAX_CHARACTERISTICS,
 } from './dto/product-autofill.dto';
 
-/** Раздел каталога в том виде, в каком он уходит в промпт и проверяется в ответе. */
 export interface AutofillCategory {
   id: number;
-  /** Полный путь: «Ноутбуки · Игровые». Модель выбирает по нему, а не по id. */
   label: string;
 }
 
@@ -20,17 +18,10 @@ export interface AutofillResult {
   state: 'new' | 'old' | null;
 }
 
-/** Ограничения повторяют колонки товара: длиннее всё равно не сохранится. */
 const KEY_MAX = 100;
 const VALUE_MAX = 500;
 const BRAND_MAX = 100;
 
-/**
- * Параметры, которые модель обязана отдавать отдельными полями, но иногда
- * дублирует и в списке. Оставить дубль нельзя: форма подставляет бренд и
- * модель в свои поля, а при сохранении дописывает их в характеристики — и в
- * карточке оказалось бы по два «Бренда».
- */
 const BRAND_KEYS = new Set([
   'бренд',
   'брэнд',
@@ -42,11 +33,6 @@ const BRAND_KEYS = new Set([
 ]);
 const MODEL_KEYS = new Set(['модель', 'model', 'modeli']);
 
-/**
- * Чему не место в характеристиках. Цена и состояние — отдельные поля карточки,
- * и продублированные списком они разъедутся с ними при первой же правке.
- * Контакты запрещены на площадке целиком: связь идёт через кнопку на витрине.
- */
 const REJECTED_KEYS = new Set([
   'цена',
   'стоимость',
@@ -71,10 +57,6 @@ function normalizeKey(key: string): string {
     .replace(/:$/, '');
 }
 
-/**
- * Модель просили ответить голым JSON, но она может обернуть его в блок кода.
- * Снимаем обёртку, иначе `JSON.parse` спотыкается на первой же кавычке.
- */
 function unfence(raw: string): string {
   return raw
     .trim()
@@ -87,7 +69,6 @@ function text(value: unknown, max: number): string {
   return typeof value === 'string' ? value.trim().slice(0, max) : '';
 }
 
-/** Пустая строка и строковый «null» от модели значат одно — не определила. */
 function optionalText(value: unknown, max: number): string | null {
   const result = text(value, max);
   if (!result || /^(?:null|none|неизвестно|не определено|—|-)$/i.test(result)) {
@@ -96,16 +77,6 @@ function optionalText(value: unknown, max: number): string | null {
   return result;
 }
 
-/**
- * Характеристики из ответа модели: чистим, отбрасываем лишнее и режем по
- * лимиту.
- *
- * Порядок ответа сохраняется — модель просят ставить главное первым, и
- * сортировать после неё значило бы этот порядок потерять. Дубликаты ключей
- * снимаются по первому вхождению: следующий «Процессор» — это либо повтор,
- * либо противоречие, и в обоих случаях верить надо тому, что модель посчитала
- * важнее и назвала раньше.
- */
 function parseCharacteristics(value: unknown): ProductCharacteristic[] {
   if (!Array.isArray(value)) return [];
 
@@ -131,19 +102,6 @@ function parseCharacteristics(value: unknown): ProductCharacteristic[] {
   return result;
 }
 
-/**
- * Разбор ответа модели.
- *
- * Пустой результат считается провалом, а не «модель ничего не нашла»: продавец
- * заплатил за заполненную карточку, и вернуть ему пустые поля вместе со
- * списанием нельзя. Исключение отсюда снимает резерв и не берёт денег.
- *
- * Всё остальное чистится молча. Модель ошибается по мелочи — приписала
- * двоеточие к ключу, продублировала бренд списком, назвала выдуманный id
- * категории, — и ронять из-за этого целый ответ, в котором есть готовое
- * описание и десять верных характеристик, было бы дороже для продавца, чем
- * потерять одно поле.
- */
 export function parseAutofillResult(
   raw: string | null | undefined,
   allowedCategoryIds: ReadonlySet<number>,

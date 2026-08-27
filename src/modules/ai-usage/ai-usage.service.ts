@@ -5,29 +5,12 @@ import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
 
 export interface AiUsageEntry {
   userId: number;
-  /** Магазин, с которого списано. `null` у администратора — платит площадка. */
   shopId: number | null;
   operation: 'prompt' | 'description' | 'image' | 'autofill';
   model: string;
   images?: number;
-  /** Фактическая стоимость у OpenRouter, если он её вернул. */
   usd?: number;
-  /** Сколько кредитов сняли с магазина. */
   credits: number;
-  /**
-   * Операция не стоила магазину ничего, хотя магазин у неё есть: месячная
-   * норма автозаполнений START или безлимит PRO/MAX.
-   *
-   * Необязательное со значением по умолчанию `false`, а не обязательное: у
-   * генерации картинок и правки описания бесплатных веток нет вовсе, и
-   * заставлять их писать `free: false` значило бы напоминать про подписки
-   * коду, который про них ничего не знает. Ошибиться в другую сторону —
-   * забыть `free: true` там, где оно нужно, — можно только в автозаполнении,
-   * и там признак считается единственной функцией `autofillOutcome`.
-   *
-   * Администратор сюда не попадает ни при каких условиях: его строка
-   * отличается пустым `shopId`, см. докблок колонки `ai_usage.free`.
-   */
   free?: boolean;
 }
 
@@ -37,13 +20,6 @@ export class AiUsageService {
 
   constructor(private readonly repository: AiUsageRepository) {}
 
-  /**
-   * Записать обращение к ИИ.
-   *
-   * Ошибку записи глотаем: журнал ведётся ради разбирательств, и уронить из-за
-   * него уже выполненную генерацию — значит наказать продавца за нашу проблему
-   * с логом. Деньги при этом уже списаны отдельной транзакцией.
-   */
   async record(entry: AiUsageEntry): Promise<void> {
     try {
       await this.repository.record({

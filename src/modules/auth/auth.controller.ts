@@ -19,7 +19,6 @@ import { AuthResponseDto } from './dto/auth-response.dto';
 
 const REFRESH_COOKIE = 'refresh_token';
 
-/** Тридцать суток — столько же живёт сам refresh-токен (JWT_REFRESH_TTL). */
 const REFRESH_COOKIE_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 type Tokens = Awaited<ReturnType<AuthService['refresh']>>;
@@ -29,12 +28,6 @@ type Tokens = Awaited<ReturnType<AuthService['refresh']>>;
 @Throttle({ default: { ttl: 60_000, limit: 10 } })
 @Controller('auth')
 export class AuthController {
-  /**
-   * Cookie ограничена путём авторизации: браузер не станет прикладывать её к
-   * каждому запросу каталога. Путь собирается из настроенного префикса, а не
-   * записан строкой: при смене API_PREFIX прошитый «/api/v1/auth» указывал бы
-   * в никуда, и обновление токена молча переставало бы работать.
-   */
   private readonly refreshCookiePath: string;
 
   constructor(
@@ -110,7 +103,6 @@ export class AuthController {
     return { success: true };
   }
 
-  /** Refresh-токен уходит только в httpOnly-cookie, в теле его быть не должно. */
   private respond(
     { accessToken, refreshToken, user }: Tokens,
     res: Response,

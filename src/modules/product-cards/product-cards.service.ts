@@ -26,12 +26,6 @@ import {
 type PublicList = Awaited<ReturnType<ProductCardsRepository['findPublicList']>>;
 type PublicItem = Awaited<ReturnType<ProductCardsRepository['findPublicById']>>;
 
-/**
- * Цена для записи в столбец. Три состояния, и все три разные:
- * `undefined` — поля в запросе не было, значение трогать нельзя;
- * `null` — продавец выбрал «договорную», цену надо стереть;
- * число — обычная цена, numeric в drizzle принимает строкой.
- */
 function priceColumn(
   price: number | null | undefined,
 ): string | null | undefined {
@@ -109,13 +103,6 @@ export class ProductCardsService {
     return updated;
   }
 
-  /**
-   * Проверка категории при правке своего товара.
-   *
-   * Спрашиваем разрешение только когда раздел меняется: товар мог оказаться в
-   * закрытом разделе руками администратора, и запрещать продавцу из-за этого
-   * править описание собственной карточки — наказание не по адресу.
-   */
   private async assertCategoryChangeAllowed(
     card: { shopId: number; categoryId: number | null },
     categoryId: number | undefined,
@@ -128,12 +115,6 @@ export class ProductCardsService {
     );
   }
 
-  /**
-   * Повторная отправка на проверку продавцом — после правки фото или описания.
-   * Проверку из очереди модерации намеренно не снимаем: иначе продавец закрывал
-   * бы собственный отказ, не показав его человеку. Новый вердикт вытеснит старый
-   * сам, если карточка стала чистой.
-   */
   async recheckOwn(ownerId: number, id: number) {
     const card = await this.getOwnOrThrow(ownerId, id);
     this.assertNotAbolished(card);
@@ -142,14 +123,6 @@ export class ProductCardsService {
     return { queued: true };
   }
 
-  /**
-   * Упразднённый товар продавец не трогает вовсе.
-   *
-   * Не только повторная отправка на проверку, но и обычная правка: она
-   * переводит карточку в `pending`, а прошедшая после этого ИИ-проверка
-   * вернула бы её в выдачу — то есть любой продавец снимал бы решение
-   * администратора, поправив в описании запятую.
-   */
   private assertNotAbolished(card: {
     status: string;
     abolishReason: string | null;
@@ -168,11 +141,6 @@ export class ProductCardsService {
     await this.invalidateCache();
   }
 
-  /**
-   * Возврат товара в выдачу — он же ручное одобрение после ИИ-проверки,
-   * поэтому снимаем проверку с очереди модерации: решение принято человеком.
-   * Снимает и ИИ-скрытие, и упразднение — как и восстановление магазина.
-   */
   async adminRestore(id: number) {
     await this.getOrThrow(id);
     const restored = await this.productCardsRepository.restore(id);
@@ -194,7 +162,6 @@ export class ProductCardsService {
     return buildPaginatedResult(data, total, page, limit);
   }
 
-  /** Создание товара администратором в любом магазине — без проверки владения. */
   async adminCreate(shopId: number, dto: CreateProductCardDto) {
     const shop = await this.shopsService.getOrThrowById(shopId);
     this.shopsService.assertAcceptsProducts(shop);
@@ -227,7 +194,6 @@ export class ProductCardsService {
     return updated;
   }
 
-  /** Ручной повтор ИИ-проверки — например, после сбоя сервиса. */
   async adminRecheck(id: number) {
     const card = await this.getOrThrow(id);
     await this.aiChecksService.markReviewed(id);
@@ -235,7 +201,6 @@ export class ProductCardsService {
     return { queued: true };
   }
 
-  /** Полное удаление админом — в отличие от упразднения, восстановить нельзя. */
   async adminRemove(id: number) {
     await this.getOrThrow(id);
     await this.productCardsRepository.delete(id);
@@ -256,25 +221,6 @@ export class ProductCardsService {
   }
 
   async findPublicList(query: FindProductCardsQueryDto, userAgent?: string) {
-    /**
-     * Витрину вперемешку кэшировать нечем: зерно своё у каждого захода, и в
-     * Redis копились бы тысячи ключей, которые никто не прочитает второй раз, —
-     * а заодно растягивался бы сброс по префиксу, он идёт перебором ключей.
-     *
-     * Этим же держится продвижение подписчиков: порядок, зависящий от срока
-     * подписки, существует только в `sort=random` и в Redis не попадает ни разу.
-     * Понадобится продвижение в других сортировках — в ключ придётся добавить
-     * корзину времени, иначе ответ, собранный при живой подписке, переживёт её
-     * на весь PRODUCT_LIST_TTL_SEC:
-     *   productListKey({ ...cacheable, promo: promoBucket().getTime() })
-     *
-     * `visitor_id` из ключа выброшен: на состав ответа он не влияет — это
-     * подпись для дедупликации счётчика поисковых запросов. Оставить его в
-     * ключе значило бы завести каждому посетителю личную копию одной и той же
-     * страницы: попаданий ноль, ключей столько, сколько людей открыло каталог,
-     * и сброс по префиксу (`RedisService.delByPrefix` идёт перебором)
-     * замедляется вместе с ними.
-     */
     const { visitor_id: visitorId, ...cacheable } = query;
     const key = query.sort === 'random' ? null : productListKey(cacheable);
     const cached = key ? await this.redis.get<PublicList>(key) : null;
@@ -294,22 +240,6 @@ export class ProductCardsService {
     return buildPaginatedResult(data, total, page, limit);
   }
 
-  /**
-   * Отметить поиск в счётчике «по каким запросам вас находят».
-   *
-   * Ничего не ждёт и ничего не возвращает: выдача покупателю уже собрана, и
-   * задерживать её ради статистики нельзя — разбор в `SearchStatsService.record`.
-   * Попадание в кэш считаем тоже: для покупателя это такой же поиск, а для
-   * продавца — такой же показ.
-   *
-   * Только первая страница. Листание — то же самое обращение, и складывать его
-   * значило бы объявить самым популярным запросом тот, по которому кто-то один
-   * долистал до конца.
-   *
-   * Магазины достаются отдельным запросом по всей выдаче, а не по отданным
-   * двадцати четырём карточкам, и передаются функцией, а не значением: до базы
-   * дело дойдёт, только если счётчик решит, что записывать есть что.
-   */
   private recordSearchHit(
     query: FindProductCardsQueryDto,
     visitorId: string | undefined,
@@ -330,11 +260,6 @@ export class ProductCardsService {
     return this.productCardsRepository.findPublicIds();
   }
 
-  /**
-   * Превращает фильтр каталога в список id ветки. `undefined` — фильтра нет;
-   * пустой массив — категорию запросили, но её не существует, и выдача должна
-   * быть пустой, а не полной.
-   */
   private async resolveCategoryIds(
     query: FindProductCardsQueryDto,
   ): Promise<number[] | undefined> {
@@ -348,11 +273,6 @@ export class ProductCardsService {
     return undefined;
   }
 
-  /**
-   * Любая запись меняет выдачу целиком: фильтров много, точечно инвалидировать
-   * нечего. Публичный метод, потому что витрину меняют и снаружи модуля —
-   * например, модерация отзыва пересчитывает рейтинг в карточках.
-   */
   invalidateCache() {
     return this.redis.delByPrefix(PRODUCT_CACHE_PREFIX);
   }

@@ -49,12 +49,18 @@ describe('product autofill response parsing', () => {
 
   it('ignores a category the shop cannot use', () => {
     assert.equal(parse({ description: 'Мышь', categoryId: 12 }).categoryId, 12);
-    assert.equal(parse({ description: 'Мышь', categoryId: 99 }).categoryId, null);
+    assert.equal(
+      parse({ description: 'Мышь', categoryId: 99 }).categoryId,
+      null,
+    );
   });
 
   it('treats an unclear condition as unknown rather than guessing', () => {
     assert.equal(parse({ description: 'Мышь', state: 'new' }).state, 'new');
-    assert.equal(parse({ description: 'Мышь', state: 'возможно новый' }).state, null);
+    assert.equal(
+      parse({ description: 'Мышь', state: 'возможно новый' }).state,
+      null,
+    );
     assert.equal(parse({ description: 'Мышь' }).state, null);
   });
 
@@ -69,7 +75,10 @@ describe('product autofill response parsing', () => {
   it('normalises the words models use instead of an empty brand', () => {
     assert.equal(parse({ description: 'Кабель', brand: 'null' }).brand, null);
     assert.equal(parse({ description: 'Кабель', brand: '—' }).brand, null);
-    assert.equal(parse({ description: 'Кабель', brand: ' Anker ' }).brand, 'Anker');
+    assert.equal(
+      parse({ description: 'Кабель', brand: ' Anker ' }).brand,
+      'Anker',
+    );
   });
 
   it('caps the list so the model cannot pad it with filler', () => {
@@ -92,12 +101,6 @@ describe('product autofill response parsing', () => {
   });
 });
 
-/**
- * Три поля ответа — `shopId` для журнала, `free` и `freeLeft` для формы —
- * выводятся из одного резерва, и разъехаться им проще всего именно здесь:
- * каждое читается в своём месте кода, и посчитать `free` в журнале иначе, чем в
- * ответе продавцу, ничего не мешает. Проверка держит все четыре ветки разом.
- */
 describe('autofill outcome by the kind of hold', () => {
   it('bills the admin to the platform, not to a shop, and does not call it free', () => {
     assert.deepEqual(autofillOutcome({ kind: 'platform' }), {

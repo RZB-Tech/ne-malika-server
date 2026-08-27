@@ -19,7 +19,6 @@ import type { AiVerdict } from '../ai/ai-check.types';
 import { FindReviewsQueryDto } from './dto/find-reviews-query.dto';
 import { FindAdminReviewsQueryDto } from './dto/find-admin-reviews-query.dto';
 
-/** Что видит покупатель. Фамилию автора целиком наружу не отдаём — сокращает сервис. */
 const PUBLIC_FIELDS = {
   id: reviews.id,
   rating: reviews.rating,
@@ -27,13 +26,11 @@ const PUBLIC_FIELDS = {
   createdAt: reviews.createdAt,
   shopId: reviews.shopId,
   productCardId: reviews.productCardId,
-  /** На странице продавца видно, о каком товаре речь. */
   productName: productCards.name,
   authorName: users.fullname,
   authorPhoto: users.telegramPhoto,
 };
 
-/** Свой отзыв автор видит целиком — включая статус и причину отказа. */
 const OWN_FIELDS = {
   id: reviews.id,
   rating: reviews.rating,
@@ -65,12 +62,6 @@ export class ReviewsRepository {
     return this.db.query.reviews.findFirst({ where: eq(reviews.id, id) });
   }
 
-  /**
-   * Опубликованные отзывы о товаре или магазине.
-   *
-   * Отзывы о магазине и о его товарах намеренно разделены: на странице товара
-   * человек ждёт слов именно об этом товаре, а не о доставке продавца.
-   */
   async listPublic(query: FindReviewsQueryDto) {
     const { page, limit, offset } = resolvePage(query);
     const where = and(eq(reviews.status, 'approved'), ...target(query));
@@ -91,10 +82,6 @@ export class ReviewsRepository {
     return { data, total: totalRows[0]?.count ?? 0, page, limit };
   }
 
-  /**
-   * Разбивка по звёздам — она же основа статистики: и гистограмма на карточке,
-   * и всё, что потом посчитает по ней ИИ, собирается из этих пяти чисел.
-   */
   async summary(query: FindReviewsQueryDto) {
     const rows = await this.db
       .select({ rating: reviews.rating, count: sql<number>`count(*)::int` })
@@ -118,11 +105,6 @@ export class ReviewsRepository {
     };
   }
 
-  /**
-   * Свои отзывы. Фильтр по товару или магазину здесь точный, а не как в
-   * публичном списке: клиенту нужно знать, писал ли этот человек отзыв именно
-   * об этой карточке — чтобы предложить исправить, а не оставить второй.
-   */
   async listOwn(authorId: number, query: FindReviewsQueryDto) {
     const { page, limit, offset } = resolvePage(query);
     const where = and(eq(reviews.authorId, authorId), ...ownTarget(query))!;
@@ -143,7 +125,6 @@ export class ReviewsRepository {
     return { data, total: totalRows[0]?.count ?? 0, page, limit };
   }
 
-  /** Очередь модерации. По умолчанию сначала непроверенные — ради них и заходят. */
   async listForAdmin(query: FindAdminReviewsQueryDto) {
     const { page, limit, offset } = resolvePage(query);
 
@@ -159,7 +140,6 @@ export class ReviewsRepository {
           authorName: users.fullname,
           authorPhoto: users.telegramPhoto,
           moderatedAt: reviews.moderatedAt,
-          /** Кто решил: null у решений ИИ — живого модератора там не было. */
           moderatedBy: reviews.moderatedBy,
           aiVerdict: reviews.aiVerdict,
           aiNote: reviews.aiNote,
@@ -178,7 +158,6 @@ export class ReviewsRepository {
     return { data, total: totalRows[0]?.count ?? 0, page, limit };
   }
 
-  /** Сколько отзывов в каждом состоянии — счётчик очереди в админке. */
   async statusCounts(): Promise<Record<string, number>> {
     const rows = await this.db
       .select({ status: reviews.status, count: sql<number>`count(*)::int` })
@@ -194,11 +173,6 @@ export class ReviewsRepository {
     return counts;
   }
 
-  /**
-   * Правка отзыва автором. Оценка меняется — значит, меняется и рейтинг, а
-   * отзыв возвращается на проверку: иначе одобренный текст можно было бы
-   * подменить чем угодно после модерации.
-   */
   update(id: number, patch: Partial<NewReview>): Promise<Review | undefined> {
     return this.db.transaction(async (tx) => {
       const [updated] = await tx
@@ -223,10 +197,6 @@ export class ReviewsRepository {
     });
   }
 
-  /**
-   * Решение модератора и пересчёт рейтинга — одной транзакцией.
-   * `moderatedBy: null` — решил ИИ, живого модератора у этого решения нет.
-   */
   setStatus(
     id: number,
     patch: {
@@ -244,7 +214,6 @@ export class ReviewsRepository {
     });
   }
 
-  /** Вердикт без смены статуса — модель засомневалась, решать человеку. */
   saveAiVerdict(
     id: number,
     ai: { verdict: AiVerdict; note: string },
@@ -252,7 +221,6 @@ export class ReviewsRepository {
     return this.update(id, aiColumns(ai));
   }
 
-  /** Данные для ИИ-проверки: сам отзыв и то, о чём он. */
   async findForCheck(id: number) {
     const rows = await this.db
       .select({
@@ -274,7 +242,6 @@ export class ReviewsRepository {
   }
 }
 
-/** Пустая заметка модели в столбец не едет: пусто — значит замечаний нет. */
 function aiColumns(ai?: { verdict: AiVerdict; note: string }) {
   return ai
     ? {
@@ -285,7 +252,6 @@ function aiColumns(ai?: { verdict: AiVerdict; note: string }) {
     : {};
 }
 
-/** Фильтр «о чём отзыв». Пустой — обо всём сразу, так собирают общую статистику. */
 function target(query: FindReviewsQueryDto): SQL[] {
   if (query.product_id !== undefined) {
     return [eq(reviews.productCardId, query.product_id)];
@@ -296,7 +262,6 @@ function target(query: FindReviewsQueryDto): SQL[] {
   return [];
 }
 
-/** Ровно тот объект, о котором писали: отзыв о магазине — это отзыв без товара. */
 function ownTarget(query: FindReviewsQueryDto): SQL[] {
   if (query.product_id !== undefined) {
     return [eq(reviews.productCardId, query.product_id)];
@@ -307,10 +272,6 @@ function ownTarget(query: FindReviewsQueryDto): SQL[] {
   return [];
 }
 
-/**
- * Пересчёт оценок после правки отзыва. Товар — если отзыв о товаре, магазин —
- * всегда: оценка продавца складывается из отзывов обо всех его товарах.
- */
 async function recompute(tx: Tx, review: Review): Promise<void> {
   if (review.productCardId !== null) {
     await recomputeProductRating(tx, review.productCardId);

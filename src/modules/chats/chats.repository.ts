@@ -13,13 +13,6 @@ import {
 } from '../../db/schema';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 
-/**
- * Строка списка переписок. Одна и та же для обеих сторон: покупатель смотрит на
- * магазин, продавец — на покупателя, но данные нужны те же самые, и городить
- * две проекции ради разного порядка полей незачем.
- *
- * `unread` подставляет сервис: чей счётчик брать, зависит от стороны.
- */
 const CHAT_FIELDS = {
   id: chats.id,
   shopId: chats.shopId,
@@ -29,7 +22,6 @@ const CHAT_FIELDS = {
   buyerName: users.fullname,
   buyerPhoto: users.telegramPhoto,
   productCardId: chats.productCardId,
-  /** Из чата, а не из карточки: у снятого товара названия уже не спросишь. */
   productName: chats.productName,
   productPhotos: productCards.photos,
   lastMessageText: chats.lastMessageText,
@@ -48,7 +40,6 @@ const MESSAGE_FIELDS = {
 
 const COUNT = { count: sql<number>`count(*)::int` };
 
-/** Столько текста показываем в списке под именем собеседника. */
 const PREVIEW_MAX = 200;
 
 export type ChatRow = Awaited<
@@ -59,7 +50,6 @@ export type ChatMessageRow = Awaited<
   ReturnType<ChatsRepository['listMessages']>
 >['data'][number];
 
-/** Чат вместе с владельцем магазина — по нему и проверяется доступ. */
 export interface ChatWithOwner extends Chat {
   ownerId: number;
   shopName: string;
@@ -69,10 +59,6 @@ export interface ChatWithOwner extends Chat {
 export class ChatsRepository {
   constructor(@Inject(DRIZZLE) private readonly db: DrizzleDb) {}
 
-  /**
-   * Чат и владелец его магазина одним запросом: без владельца нельзя ни
-   * пустить продавца в переписку, ни отказать постороннему.
-   */
   findById(id: number): Promise<ChatWithOwner | undefined> {
     return this.db
       .select({
@@ -94,12 +80,6 @@ export class ChatsRepository {
       );
   }
 
-  /**
-   * Уже начатый разговор о том же товаре — или разговор с магазином, если
-   * товара нет. Разговор с магазином узнаём по пустому названию товара, а не по
-   * пустой ссылке: у переписки о снятом товаре ссылка тоже пуста, но подставлять
-   * её вместо общего разговора нельзя.
-   */
   findExisting(
     buyerId: number,
     shopId: number,
@@ -133,7 +113,6 @@ export class ChatsRepository {
     return this.list(eq(chats.buyerId, buyerId), query);
   }
 
-  /** Переписки магазина. Магазин ищем по владельцу — свой у продавца один. */
   findForShop(shopId: number, query: PaginationQueryDto) {
     return this.list(eq(chats.shopId, shopId), query);
   }
@@ -156,11 +135,6 @@ export class ChatsRepository {
     return { data, total: totalRows[0]?.count ?? 0, page, limit };
   }
 
-  /**
-   * Сообщение и обновление шапки чата — одной транзакцией: список переписок
-   * читает и то и другое, и разъехавшиеся «последнее сообщение» со счётчиком
-   * непрочитанного выглядят поломкой.
-   */
   addMessage(data: {
     chatId: number;
     senderId: number | null;
@@ -190,10 +164,6 @@ export class ChatsRepository {
     });
   }
 
-  /**
-   * Отметка «прочитано» для одной стороны: обнуляет её счётчик и проставляет
-   * время у входящих сообщений — по нему собеседник видит, что его прочли.
-   */
   async markRead(chatId: number, side: 'buyer' | 'seller'): Promise<void> {
     await this.db.transaction(async (tx) => {
       await tx
@@ -216,10 +186,6 @@ export class ChatsRepository {
     });
   }
 
-  /**
-   * Сколько непрочитанного у человека в обеих ролях. Один запрос на оба
-   * значения: значок в шапке спрашивают на каждой странице.
-   */
   async unreadTotals(
     userId: number,
   ): Promise<{ buyer: number; seller: number }> {

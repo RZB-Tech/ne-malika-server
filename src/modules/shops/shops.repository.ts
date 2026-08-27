@@ -10,7 +10,6 @@ import { escapeLike } from '../product-cards/product-search';
 export class ShopsRepository {
   constructor(@Inject(DRIZZLE) private readonly db: DrizzleDb) {}
 
-  /** Магазин и роль владельца должны меняться как одна операция. */
   createAndPromoteOwner(data: NewShop): Promise<Shop> {
     return this.db.transaction(async (tx) => {
       const [shop] = await tx.insert(shops).values(data).returning();
@@ -72,7 +71,6 @@ export class ShopsRepository {
       .then((r) => r[0]);
   }
 
-  /** Удаляет магазин и снимает роль продавца атомарно, не меняя роль admin. */
   deleteAndDemoteOwner(id: number, ownerId: number): Promise<boolean> {
     return this.db.transaction(async (tx) => {
       const deleted = await tx
@@ -91,12 +89,10 @@ export class ShopsRepository {
     });
   }
 
-  /** Все магазины для админки — сразу с числом товаров, чтобы не делать запрос на строку. */
   async findAllWithProductCount(query: FindAdminShopsQueryDto) {
     const { page, limit, offset } = resolvePage(query);
 
     const search = query.q?.trim();
-    /** Экранируем: «%» и «_» из строки поиска — это ввод, а не шаблон LIKE. */
     const pattern = search ? `%${escapeLike(search)}%` : null;
     const where = pattern
       ? or(

@@ -19,20 +19,10 @@ import {
 
 const REQUEST_TIMEOUT_MS = 60_000;
 
-/**
- * Порог «застревания» на проверке. Заметно больше таймаута запроса вместе с
- * ретраем — иначе при старте второго инстанса подхватились бы карточки,
- * которые прямо сейчас проверяет первый.
- */
 const STUCK_PENDING_MINUTES = 15;
 const STUCK_PENDING_LIMIT = 100;
-/**
- * Одно фото, а не вся галерея: картинка стоит около 2400 токенов, и четыре
- * из них удорожали бы каждую проверку вчетверо без заметной пользы.
- */
 const MAX_PHOTOS = 1;
 
-/** 429 по лимиту — штатная ситуация, SDK разведёт повторы по экспоненте. */
 const MAX_RETRIES = 3;
 
 const SYSTEM_PROMPT = `Ты модератор карточек товаров на маркетплейсе компьютерной техники.
@@ -106,11 +96,6 @@ export class AiChecksService implements OnModuleInit {
     private readonly categories: CategoriesService,
   ) {}
 
-  /**
-   * Товар не публикуется, пока проверка не завершилась, поэтому упавший процесс
-   * оставил бы карточку невидимой навсегда: записи проверки нет, в очередь
-   * модерации она не попадёт, и продавцу пришлось бы идти к администратору.
-   */
   onModuleInit(): void {
     if (process.env.SKIP_STARTUP_JOBS) return;
 
@@ -126,20 +111,14 @@ export class AiChecksService implements OnModuleInit {
     return this.repository.findLatestByProductId(productCardId);
   }
 
-  /** Очередь ручной модерации для админки. */
   listNeedingReview(limit: number, offset: number) {
     return this.repository.findNeedingReview(limit, offset);
   }
 
-  /** Человек разобрался с проверкой — она уходит из очереди. */
   markReviewed(productCardId: number) {
     return this.repository.markLatestReviewed(productCardId);
   }
 
-  /**
-   * Запускается после сохранения товара и намеренно не ожидается вызывающим:
-   * продавец не должен ждать ответа модели, чтобы увидеть свою карточку.
-   */
   runInBackground(card: ProductCard): void {
     void this.run(card).catch((err: Error) =>
       this.logger.error(
@@ -149,7 +128,6 @@ export class AiChecksService implements OnModuleInit {
     );
   }
 
-  /** Последовательно, а не параллельно: очередь после простоя может быть длинной. */
   private async requeueStuckPending(): Promise<void> {
     const olderThan = new Date(Date.now() - STUCK_PENDING_MINUTES * 60_000);
     const stuck = await this.repository.findStuckPending(
@@ -249,13 +227,6 @@ export class AiChecksService implements OnModuleInit {
     this.logger.log(`Товар ${card.id} опубликован — вердикт ${result.verdict}`);
   }
 
-  /**
-   * Запрос к модели с фотографиями, а при неудачной загрузке — повтор по одному
-   * тексту. Фото лежат в S3 и читаются нами: его заминка не должна превращаться
-   * в непройденную проверку и отправлять исправную карточку к модератору. При
-   * повторе модели прямо говорится, что фотографии есть, но недоступны, — иначе
-   * она решит, что продавец их не загрузил, и забракует карточку за это.
-   */
   private async complete(
     model: string,
     card: ProductCard,
@@ -344,15 +315,6 @@ export class AiChecksService implements OnModuleInit {
     );
   }
 
-  /**
-   * Фото отдаём байтами в data-URL, а не ссылкой на S3. По ссылке за картинкой
-   * ходила бы сама модель, и любая заминка на нашей стороне — опечатка в
-   * домене, медленная раздача, приватный бакет — возвращалась как «Timeout
-   * while downloading», то есть проверка срывалась из-за чужого сбоя.
-   *
-   * Если байты прочитать не удалось, проверяем только текст, но говорим об этом
-   * модели прямо: иначе она сочтёт, что фото нет вовсе, и забракует карточку.
-   */
   private async buildUserContent(
     card: ProductCard,
     withPhotos: boolean,
@@ -409,21 +371,12 @@ export class AiChecksService implements OnModuleInit {
   }
 }
 
-/**
- * Фотографии у товара есть, но до нас они не дошли. Отдельный тип, а не текст
- * ошибки: по нему проверка решает повторить запрос без картинок, тогда как
- * любую другую ошибку повторять этим способом бессмысленно.
- */
 class PhotosUnavailableError extends Error {}
 
 function photoKeys(card: ProductCard): string[] {
   return (card.photos ?? []).slice(0, MAX_PHOTOS);
 }
 
-/**
- * Разводит два случая, которые модель иначе не различит: фото нет у товара —
- * это к продавцу, фото есть, но не дошли до модели — это к нам.
- */
 function photoNote(total: number, attached: number): string {
   if (attached > 0) return `Фотографии: приложено ${attached} шт.`;
   if (total === 0) return 'Фотографии: продавец не загрузил ни одной';
@@ -453,10 +406,6 @@ export function obviousContentViolation(card: ProductCard): string | null {
   return null;
 }
 
-/**
- * Текст для админского чата о товаре, который требует ручного разбора.
- * Ссылку на раздел, а не на карточку: очередь всё равно открывается целиком.
- */
 function aiFailureText(
   card: ProductCard,
   reason: string,

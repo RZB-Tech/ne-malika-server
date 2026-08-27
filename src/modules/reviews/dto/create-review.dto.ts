@@ -9,7 +9,6 @@ import {
   Min,
 } from 'class-validator';
 
-/** Длиннее человек не пишет, а поле в интерфейсе не резиновое. */
 export const REVIEW_TEXT_MAX = 2000;
 
 export class CreateReviewDto {

@@ -27,10 +27,6 @@ export class SyncProductViewItemDto {
   viewed_at?: string;
 }
 
-/**
- * Перенос истории, накопленной до входа. Клиент шлёт её один раз после
- * авторизации, дальше просмотры пишутся поштучно.
- */
 export class SyncProductViewsDto {
   @ApiProperty({
     type: [SyncProductViewItemDto],

@@ -12,13 +12,6 @@ import {
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
-/**
- * Дерево категорий каталога. Глубина не ограничена схемой, но наполнение —
- * два уровня: корень («Ноутбуки») и лист («Игровые»).
- *
- * Названия хранятся тремя колонками, а не переводом на лету: список читается
- * на каждой странице каталога, а языков ровно три и новые не планируются.
- */
 export const categories = pgTable(
   'categories',
   {
@@ -35,17 +28,8 @@ export const categories = pgTable(
     nameUzLatn: varchar('name_uz_latn', { length: 120 }).notNull(),
     nameUzCyrl: varchar('name_uz_cyrl', { length: 120 }).notNull(),
 
-    /** Имя иконки lucide — клиент рисует ею плитку категории. Только у корней. */
     icon: varchar('icon', { length: 40 }),
 
-    /**
-     * Раздел закрыт: покупателю он виден как любой другой, но выложить туда
-     * товар может лишь магазин с разрешением от администратора
-     * (`shops.restrictedCategoriesEnabled`).
-     *
-     * Отмечается только корень — подкатегории наследуют запрет, иначе добавленный
-     * позже лист молча оказался бы открытым.
-     */
     restricted: boolean('restricted').notNull().default(false),
 
     position: integer('position').notNull().default(0),

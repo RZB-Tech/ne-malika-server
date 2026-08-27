@@ -30,10 +30,6 @@ import {
 export class PushController {
   constructor(private readonly push: PushService) {}
 
-  /**
-   * Публичный: ключ нужен браузеру до подписки, и секрета в нём нет — на то он
-   * и публичная половина пары VAPID.
-   */
   @Public()
   @Get('config')
   @ApiOperation({ summary: 'Публичный ключ VAPID и доступность канала' })
@@ -42,7 +38,6 @@ export class PushController {
     return { enabled: this.push.isEnabled(), publicKey: this.push.publicKey() };
   }
 
-  /** Подписан ли этот пользователь хоть с одного устройства. */
   @AnyRole()
   @ApiBearerAuth('access-token')
   @Get('state')
@@ -52,10 +47,6 @@ export class PushController {
     return { subscribed: await this.push.hasSubscription(user.id) };
   }
 
-  /**
-   * Подписка привязывается к вошедшему: рассылка выбирает адресатов по роли, и
-   * подписку без владельца было бы некуда отнести.
-   */
   @AnyRole()
   @ApiBearerAuth('access-token')
   @Post('subscribe')

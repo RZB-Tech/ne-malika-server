@@ -1,10 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-/**
- * Публичная проекция карточки товара в личных списках покупателя — история
- * просмотров, избранное. Общая база, чтобы обе выдачи не разъезжались по полям
- * и клиент мог рисовать их одним компонентом.
- */
 export class PublicProductSummaryDto {
   @ApiProperty({ description: 'Идентификатор товара', example: 10 })
   id: number;

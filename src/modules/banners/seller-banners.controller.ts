@@ -25,14 +25,6 @@ import { BannerDto } from './dto/banner-response.dto';
 import { CreateShopBannerDto } from './dto/create-shop-banner.dto';
 import { UpdateShopBannerDto } from './dto/update-shop-banner.dto';
 
-/**
- * Баннер магазина в кабинете продавца — платная возможность тарифа MAX.
- *
- * Магазин везде разрешается по владельцу (`getActiveOwnShopOrThrow`), а не
- * приходит параметром: продавцу принадлежит ровно один магазин, и лишний
- * идентификатор в пути означал бы проверку владения на каждой ручке — то есть
- * ещё одно место, где её можно забыть.
- */
 @ApiTags('banners-seller')
 @ApiBearerAuth('access-token')
 @SellerOnly()

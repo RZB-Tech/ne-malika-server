@@ -20,18 +20,8 @@ import {
 } from './dto/chat.dto';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 
-/** Сколько текста уходит в уведомление — остальное человек прочитает в чате. */
 const NOTIFY_EXCERPT = 200;
 
-/**
- * Внутренняя переписка покупателя с магазином.
- *
- * Зачем она при живом телеграме: разговор о товаре остаётся на площадке. Его
- * видно обеим сторонам в кабинете, он привязан к карточке, переживает смену
- * телефона — и, главное, это то место, где потом сможет отвечать ИИ, пока
- * продавец спит. Телеграм-кнопку он не отменяет: кому удобнее там, тот пишет
- * туда.
- */
 @Injectable()
 export class ChatsService {
   constructor(
@@ -42,7 +32,6 @@ export class ChatsService {
     private readonly notifications: NotificationsService,
   ) {}
 
-  /** Список переписок с той стороны, с которой смотрят. */
   async list(user: AuthenticatedUser, query: FindChatsQueryDto) {
     const role: ChatRole = query.role ?? 'buyer';
 
@@ -59,16 +48,10 @@ export class ChatsService {
     );
   }
 
-  /** Непрочитанное в обеих ролях — для значка в меню. */
   unread(user: AuthenticatedUser) {
     return this.repository.unreadTotals(user.id);
   }
 
-  /**
-   * Лента сообщений. Заодно отмечает их прочитанными: запрашивают её только
-   * когда переписка открыта на экране, а отдельная кнопка «я прочитал» — это
-   * лишний круг к серверу ради того же самого.
-   */
   async messages(
     user: AuthenticatedUser,
     chatId: number,
@@ -101,11 +84,6 @@ export class ChatsService {
     );
   }
 
-  /**
-   * Начать разговор или продолжить начатый. Повторное нажатие «написать» на той
-   * же карточке не должно плодить пустые переписки — поэтому find-or-create, а
-   * не create.
-   */
   async start(user: AuthenticatedUser, dto: StartChatDto) {
     const { shopId, productCardId, productName } =
       await this.resolveTarget(dto);
@@ -162,11 +140,6 @@ export class ChatsService {
     };
   }
 
-  /**
-   * Кто перед нами: покупатель этой переписки или владелец магазина. Все
-   * остальные — посторонние, и о существовании чата им знать незачем, поэтому
-   * 404, а не 403.
-   */
   private async access(
     user: AuthenticatedUser,
     chatId: number,
@@ -180,7 +153,6 @@ export class ChatsService {
     throw new NotFoundException('Переписка не найдена');
   }
 
-  /** Магазин и товар, о котором пишут. Товар должен быть на витрине. */
   private async resolveTarget(dto: StartChatDto): Promise<{
     shopId: number;
     productCardId: number | null;
@@ -220,19 +192,6 @@ export class ChatsService {
     return this.repository.findForShop(shop.id, query);
   }
 
-  /**
-   * Уведомление второй стороне — в Telegram и в браузер.
-   *
-   * Уходит на каждое сообщение. Здесь была пауза в две минуты «чтобы не
-   * частить», и она обернулась худшим из возможных поведений: человек получал
-   * первое сообщение и переставал получать остальные, считая уведомления
-   * сломанными. Пропущенный вопрос покупателя стоит дороже лишнего звонка, а
-   * от стопки уведомлений спасает не молчание, а метка переписки — браузер
-   * держит по одному уведомлению на разговор и обновляет его текст.
-   *
-   * Побочный эффект: падение любого из каналов не должно ронять отправку
-   * сообщения, поэтому вызывается без ожидания и с ловушкой.
-   */
   private async notify(
     chat: ChatWithOwner,
     side: 'buyer' | 'seller',
@@ -262,7 +221,6 @@ export class ChatsService {
   }
 }
 
-/** Строка списка → ответ. Непрочитанное берём то, что относится к смотрящему. */
 function toChatDto(
   row: {
     id: number;

@@ -18,11 +18,6 @@ export class ProductViewsService {
     return { success: true };
   }
 
-  /**
-   * Перенос локальной истории после входа. Недоступные товары молча
-   * отбрасываются: клиент шлёт то, что накопилось на устройстве за месяцы, и
-   * упразднённая за это время карточка — не повод отклонять весь запрос.
-   */
   async sync(userId: number, dto: SyncProductViewsDto) {
     const latest = new Map<number, Date>();
     for (const item of dto.items) {

@@ -2,11 +2,6 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsInt, IsOptional, IsString } from 'class-validator';
 
-/**
- * Ровно те поля, что отдаёт Telegram Login Widget. Список закрытый: подпись
- * считается по всем присланным полям, поэтому лишнее сюда попасть не должно
- * (глобальный ValidationPipe включает forbidNonWhitelisted).
- */
 export class TelegramWidgetDto {
   @ApiProperty({ example: 123456789 })
   @Type(() => Number)

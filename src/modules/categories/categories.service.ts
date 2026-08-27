@@ -10,25 +10,11 @@ import type { Category } from '../../db/schema';
 
 const TREE_CACHE_KEY = 'categories:tree';
 
-/**
- * Корень раздела услуг. Услуги — такой же товар площадки, как железо, но
- * проверять их карточки надо иначе: на фотографии там работа, а не вещь.
- */
 const SERVICES_ROOT_SLUG = 'services';
-/** Дерево меняется вручную и редко, а читается на каждой странице каталога. */
 const TREE_TTL_SEC = 3600;
 
 @Injectable()
 export class CategoriesService {
-  /**
-   * Дерево меняется миграциями, а они катятся при деплое — то есть ровно тогда,
-   * когда поднимается процесс. Поэтому первый запрос после старта идёт мимо
-   * кэша и перезаписывает его: иначе новые категории ждали бы конца часового
-   * TTL, и каталог после деплоя выглядел бы неизменившимся.
-   *
-   * Сброс именно здесь, а не в onModuleInit: на старте соединение с Redis ещё
-   * не поднято, а клиент живёт без офлайн-очереди — команда просто потерялась бы.
-   */
   private cacheStale = true;
 
   constructor(
@@ -48,14 +34,6 @@ export class CategoriesService {
     return tree;
   }
 
-  /**
-   * Проверка категории при сохранении товара. Пустое значение допустимо:
-   * товары, заведённые до появления каталога, категории не имеют.
-   *
-   * `allowRestricted` — есть ли у магазина разрешение на закрытые разделы.
-   * Запрос лишний раз не делаем: у магазина с разрешением ответ один и тот же
-   * для любой категории, а таких запросов — по одному на каждое сохранение.
-   */
   async assertUsable(
     categoryId: number | undefined,
     allowRestricted: boolean,
@@ -72,21 +50,10 @@ export class CategoriesService {
     }
   }
 
-  /**
-   * Категория существует — без проверки доступа. Для админских операций: админ
-   * и есть тот, кто выдаёт разрешение, запрещать ему нечем.
-   */
   assertExists(categoryId: number | undefined): Promise<void> {
     return this.assertUsable(categoryId, true);
   }
 
-  /**
-   * Подпись категории для ИИ-проверки и признак услуги.
-   *
-   * Модератору-модели нужно и то, и другое: без раздела она судит о карточке по
-   * одному названию, а услугу без явной пометки бракует за то, что на фото не
-   * видно продаваемой вещи.
-   */
   async describeForCheck(
     categoryId: number | null,
   ): Promise<{ label: string; isService: boolean } | null> {
@@ -107,7 +74,6 @@ export class CategoriesService {
     };
   }
 
-  /** Ветка каталога целиком — фильтр по «Ноутбукам» обязан включать «Игровые». */
   findSubtreeIds(categoryId: number): Promise<number[]> {
     return this.repository.findSubtreeIds(categoryId);
   }
@@ -117,10 +83,6 @@ export class CategoriesService {
   }
 }
 
-/**
- * Плоский список в дерево за один проход: сортировку задал запрос, поэтому
- * порядок детей сохраняется сам собой.
- */
 function buildTree(rows: Category[]): CategoryDto[] {
   const byId = new Map<number, CategoryDto>();
   for (const row of rows) {
@@ -149,11 +111,6 @@ function buildTree(rows: Category[]): CategoryDto[] {
     }
   }
 
-  /**
-   * Запрет наследуется сверху вниз отдельным проходом, а не в цикле выше:
-   * порядок строк задан позицией, и ребёнок вполне может встретиться раньше
-   * родителя — тогда наследовать было бы ещё нечего.
-   */
   for (const root of roots) inheritRestricted(root, root.restricted);
 
   return roots;

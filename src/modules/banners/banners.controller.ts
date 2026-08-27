@@ -9,12 +9,6 @@ import { PublicBannerDto } from './dto/public-banner.dto';
 export class BannersController {
   constructor(private readonly bannersService: BannersService) {}
 
-  /**
-   * Ответ описан `PublicBannerDto`, а не `BannerDto`: с появлением баннеров
-   * продавцов у строки завелись поля модерации, и `rejectReason` — текст
-   * администратора продавцу — в публичной выдаче не должен появиться ни при
-   * каких обстоятельствах. Разбор — в докблоке самого DTO.
-   */
   @Public()
   @Get()
   @ApiOperation({

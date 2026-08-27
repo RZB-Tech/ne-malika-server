@@ -36,7 +36,6 @@ export class SellerAiChecksController {
     return check ?? { message: 'Проверка ещё не выполнялась' };
   }
 
-  /** Лимит здесь свой: каждая отправка — платный запрос к модели. */
   @Post(':id/recheck')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })

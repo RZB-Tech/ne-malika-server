@@ -17,10 +17,6 @@ export const ADMIN_PRODUCT_STATUSES = [
   'pending',
 ] as const;
 
-/**
- * Выдача для администратора: в отличие от публичной, статус здесь фильтр,
- * а не жёсткое условие — иначе упразднённые товары негде было бы посмотреть.
- */
 export class FindAdminProductCardsQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional({ description: 'Поиск по названию', example: 'ноутбук' })
   @IsOptional()
@@ -42,14 +38,6 @@ export class FindAdminProductCardsQueryDto extends PaginationQueryDto {
   @IsInt()
   shop_id?: number;
 
-  /**
-   * Только товары без категории. Их не найти фильтром по разделу каталога:
-   * такие карточки появляются, когда раздел удаляют (category_id → SET NULL)
-   * или когда продавец завёл товар до появления справочника категорий.
-   *
-   * Разбираем строку вручную: @Type(() => Boolean) превратил бы 'false' в true,
-   * потому что Boolean('false') — это true.
-   */
   @ApiPropertyOptional({
     type: Boolean,
     example: true,

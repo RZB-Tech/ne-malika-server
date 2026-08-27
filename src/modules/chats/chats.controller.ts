@@ -45,16 +45,6 @@ export class ChatsController {
     private readonly chatEvents: ChatEventsService,
   ) {}
 
-  /**
-   * Живой канал: сервер сам говорит вкладке, что в переписке что-то
-   * изменилось, и та обновляет ленту. Без него сообщение появлялось бы у
-   * собеседника только с очередным опросом — то есть с задержкой в секунды,
-   * которую в переписке видно сразу.
-   *
-   * Односторонний SSE, а не веб-сокет: отвечать по этому каналу нечего,
-   * отправка сообщений идёт обычным POST, а SSE переживает прокси и
-   * переподключается сам.
-   */
   @Sse('stream')
   @ApiOperation({
     summary: 'Поток событий переписки (SSE)',
@@ -85,7 +75,6 @@ export class ChatsController {
     return this.chatsService.list(user, query);
   }
 
-  /** Объявлено до маршрутов с параметром — иначе «unread» ушло бы в ParseIntPipe. */
   @Get('unread')
   @ApiOperation({ summary: 'Сколько непрочитанного в обеих ролях' })
   @ApiOkResponse({ type: ChatUnreadDto })

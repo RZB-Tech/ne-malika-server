@@ -43,11 +43,6 @@ export class JwtAuthGuard implements CanActivate {
       );
     }
 
-    /**
-     * Проверка вида токена — вне try: брошенная внутри, она попадала в ту же
-     * ловушку и подменялась общим «просроченный токен». Отличать эти два
-     * случая нужно и в поддержке, и переводчику ошибок.
-     */
     if (payload.type !== 'access') {
       throw new UnauthorizedException('Неверный тип токена');
     }

@@ -82,14 +82,6 @@ export class BotService implements OnModuleInit {
     );
   }
 
-  /**
-   * Главное здесь — привязать чат. Раньше это происходило только после того,
-   * как человек поделится номером, и до тех пор бот не мог написать ему ни
-   * строчки: чата попросту не существовало.
-   *
-   * Тем, кто уже зарегистрирован на сайте, номер повторно не нужен — им сразу
-   * подтверждаем, что уведомления включены.
-   */
   private async handleStart(message: TelegramMessage): Promise<void> {
     const bound = await this.usersRepository
       .bindChat(message.from.id, message.chat.id)
@@ -109,10 +101,6 @@ export class BotService implements OnModuleInit {
     await this.telegramApi.requestContact(message.chat.id, WELCOME_TEXT);
   }
 
-  /**
-   * Отписка. Telegram требует, чтобы отключить рассылку можно было из самого
-   * чата, а не только в личном кабинете.
-   */
   private async handleStop(message: TelegramMessage): Promise<void> {
     await this.usersRepository.setNotificationsByTelegramId(
       message.from.id,
@@ -162,16 +150,6 @@ export class BotService implements OnModuleInit {
   }
 }
 
-/**
- * Команда из текста сообщения.
- *
- * Раньше проверка была `startsWith('/start')`, и под неё подходило всё подряд —
- * от `/startup` до `/start_whatever`. Telegram к тому же дописывает к команде
- * имя бота (`/start@nemalika_bot`), поэтому строгое сравнение без обрезки
- * суффикса тоже не годится.
- *
- * Возвращает `null`, если это не команда.
- */
 function parseCommand(text: string | undefined): string | null {
   const first = text?.trim().split(/\s+/)[0];
   if (!first?.startsWith('/')) return null;

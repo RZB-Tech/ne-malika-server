@@ -8,14 +8,8 @@ import {
   Min,
 } from 'class-validator';
 
-/** Сравнивать нечего, пока товаров меньше двух. */
 export const AI_COMPARE_MIN = 2;
 
-/**
- * Столько же, сколько влезает в обычную таблицу сравнения на клиенте
- * (MAX_COMPARE). Больше и не нужно: каждый товар — это ещё один столбец в ответе
- * модели, а платим за сравнение мы.
- */
 export const AI_COMPARE_MAX = 4;
 
 export class AiCompareQueryDto {

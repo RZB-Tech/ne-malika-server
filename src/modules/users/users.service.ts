@@ -54,7 +54,6 @@ export class UsersService {
     return this.usersRepository.setRole(id, role);
   }
 
-  /** reason === null снимает блокировку. */
   async setBlocked(id: number, reason: string | null) {
     const user = await this.usersRepository.findById(id);
     if (!user) {
@@ -63,12 +62,6 @@ export class UsersService {
     return this.usersRepository.setBlocked(id, reason);
   }
 
-  /**
-   * Возвращает существующего пользователя либо создаёт нового по данным initData.
-   * phone_number/telegram_chat_id на этом шаге ещё не известны — их пришлёт
-   * BotModule после того, как пользователь поделится контактом через кнопку
-   * request_contact (см. раздел 4.2, шаг 4).
-   */
   async findOrCreateFromTelegram(payload: TelegramUserPayload): Promise<User> {
     const existing = await this.usersRepository.findByTelegramId(payload.id);
     if (existing) {

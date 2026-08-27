@@ -24,32 +24,19 @@ type PublicCard = Awaited<
   ReturnType<ProductCardsRepository['findPublicList']>
 >['data'][number];
 
-/** Текст короткий, но модели дешёвые бывают медленными — минуты хватает с запасом. */
 const REQUEST_TIMEOUT_MS = 60_000;
 
-/** Один повтор: 429 у дешёвых моделей не редкость, а ждать человек не станет. */
 const MAX_RETRIES = 1;
 
-/**
- * Потолок ответа. Четыре столбца по дюжине строк плюс плюсы-минусы — это около
- * восьмисот токенов; тысяча двести оставляет запас и одновременно не даёт
- * модели уехать в сочинение на вольную тему за наш счёт.
- */
 const MAX_COMPLETION_TOKENS = 1200;
 
-/** Разброс тут вредит: одни и те же товары должны сравниваться одинаково. */
 const TEMPERATURE = 0.2;
 
-/** Сколько текста продавца показываем модели — дальше начинается «пишите в директ». */
 const DESCRIPTION_MAX = 700;
 const CHARACTERISTICS_MAX = 24;
 
 const CACHE_PREFIX = 'aicmp:';
 
-/**
- * Сутки. Ключ включает отпечаток самих карточек, поэтому правка товара сбрасывает
- * ответ сама — срок нужен только чтобы кэш не рос вечно.
- */
 const CACHE_TTL_SEC = 24 * 60 * 60;
 
 const SYSTEM_PROMPT = `Ты помогаешь покупателю выбрать компьютерную технику на маркетплейсе. Тебе дают от двух до четырёх товаров: название, цену, состояние, характеристики и описание продавца.
@@ -83,21 +70,12 @@ verdict: best — у кого железо сильнее; value — что вы
 
 Пиши коротко и по делу, без вступлений, без эмодзи и рекламных восклицаний.`;
 
-/** На каком языке отвечать. Модель дешёвая, поэтому просим прямо и однозначно. */
 const LANGUAGE_HINT: Record<ApiLocale, string> = {
   ru: 'Отвечай по-русски.',
   'uz-Latn': 'Javobni o‘zbek tilida, lotin yozuvida yoz (не по-русски).',
   'uz-Cyrl': 'Жавобни ўзбек тилида, кирилл ёзувида ёз (не по-русски).',
 };
 
-/**
- * ИИ-сравнение товаров по составляющим.
- *
- * Для покупателя оно бесплатно — ни кредитов, ни входа, — поэтому счёт за него
- * приходит нам, и вся защита здесь про деньги: самая дешёвая модель, короткий
- * запрос, потолок ответа, кэш по отпечатку карточек и жёсткий лимит частоты на
- * контроллере.
- */
 @Injectable()
 export class AiCompareService {
   private readonly logger = new Logger(AiCompareService.name);
@@ -132,11 +110,6 @@ export class AiCompareService {
     return { ...result, cached: false };
   }
 
-  /**
-   * Карточки в том порядке, в каком их выбрал покупатель: столбцы у него на
-   * экране уже стоят, и переставлять их под ответ модели нельзя. Выдача
-   * репозитория отсортирована по своему, поэтому раскладываем сами.
-   */
   private async load(ids: number[]): Promise<PublicCard[]> {
     const { data } = await this.cards.findPublicList({
       ids,
@@ -205,7 +178,6 @@ export class AiCompareService {
   }
 }
 
-/** Что видит модель. Порядок полей постоянный — так ответ стабильнее. */
 function describe(card: PublicCard, index: number): string {
   const characteristics = (card.characteristics ?? [])
     .slice(0, CHARACTERISTICS_MAX)
@@ -222,7 +194,6 @@ function describe(card: PublicCard, index: number): string {
   ].join('\n');
 }
 
-/** numeric приезжает как «4500000.00» — лишние нули только сбивают модель. */
 function trimPrice(price: string): string {
   const value = Number(price);
   return Number.isFinite(value) ? String(value) : price;
@@ -233,14 +204,6 @@ function clip(text: string | null, max: number): string {
   return value.length > max ? `${value.slice(0, max)}…` : value;
 }
 
-/**
- * Ключ кэша — отпечаток самих карточек, а не только их id. Продавец правит
- * характеристики и цену, и сравнение, снятое до правки, начинает врать; при
- * отпечатке оно вытесняется само, без сброса кэша со стороны товаров.
- *
- * В ключ входит и модель: сменили её в настройках — старые ответы больше не
- * подходят.
- */
 function cacheKey(
   cards: PublicCard[],
   locale: ApiLocale,

@@ -17,18 +17,6 @@ import { FindProductCardsQueryDto } from './dto/find-product-cards-query.dto';
 export class ProductCardsController {
   constructor(private readonly productCardsService: ProductCardsService) {}
 
-  /**
-   * `user-agent` берём заголовком в подписи метода, а не через параметр-декоратор:
-   * это тот же приём, что в `ProductStatsController`, и попадание заголовка в
-   * OpenAPI здесь безвредно — сгенерированный клиент его не отправляет, а
-   * браузер проставляет сам. Нужен он ровно для одного: отсеять роботов, чтобы
-   * обход поисковика не приезжал продавцу как интерес покупателей.
-   *
-   * Подпись посетителя, наоборот, приходит полем запроса (`visitor_id`):
-   * заголовков, которые клиент мог бы проставить сам, у нас нет, а
-   * `app.set('trust proxy')` не выставлен — за nginx `req.ip` одинаков у всех
-   * и для дедупликации не годится.
-   */
   @Get()
   @ApiOperation({ summary: 'Список товаров с фильтрами, поиском и пагинацией' })
   findAll(

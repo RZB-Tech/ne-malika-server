@@ -32,10 +32,6 @@ export class UsersRepository {
     return shop !== undefined;
   }
 
-  /**
-   * Список для админки: пользователь, его магазин и число товаров.
-   * Магазин присоединяем слева — админы и продавцы без магазина тоже нужны.
-   */
   async findAllForAdmin(query: PaginationQueryDto) {
     const { page, limit, offset } = resolvePage(query);
 
@@ -54,11 +50,6 @@ export class UsersRepository {
         shopId: shops.id,
         shopName: shops.name,
         shopStatus: shops.status,
-        /**
-         * Кредиты принадлежат магазину, а не человеку: покупателю тратить их
-         * негде. Без магазина здесь NULL — в админке это прочерк, потому что
-         * «магазина нет» и «баланс кончился» разные вещи.
-         */
         creditsBalance: shops.creditsBalance,
         creditsReserved: shops.creditsReserved,
         productCount: sql<number>`count(${productCards.id})::int`,
@@ -79,7 +70,6 @@ export class UsersRepository {
     return { data, total: totalRows[0]?.count ?? 0, page, limit };
   }
 
-  /** Последние изменённые товары пользователя — «недавние действия» в карточке. */
   findRecentActivity(userId: number, limit = 10) {
     return this.db
       .select({
@@ -140,14 +130,6 @@ export class UsersRepository {
       .then((rows) => rows[0]);
   }
 
-  /**
-   * Привязывает чат к уже существующему аккаунту. Вызывается на /start: до
-   * этого момента чата с ботом нет и Telegram не даёт написать первым, а
-   * телефон для этого спрашивать необязательно.
-   *
-   * Возвращает false, если аккаунта с таким telegramId ещё нет — человек
-   * пришёл в бота раньше, чем зарегистрировался на сайте.
-   */
   async bindChat(telegramId: number, chatId: number): Promise<boolean> {
     const rows = await this.db
       .update(users)
@@ -161,7 +143,6 @@ export class UsersRepository {
     return rows.length > 0;
   }
 
-  /** Отписка по команде /stop из самого чата. */
   async setNotificationsByTelegramId(
     telegramId: number,
     enabled: boolean,
@@ -172,7 +153,6 @@ export class UsersRepository {
       .where(eq(users.telegramId, telegramId));
   }
 
-  /** Вызывается BotModule после получения контакта через request_contact. */
   async upsertFromBotContact(data: {
     telegramId: number;
     telegramChatId: number;

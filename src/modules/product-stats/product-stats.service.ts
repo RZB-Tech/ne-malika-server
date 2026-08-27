@@ -24,25 +24,10 @@ import type { ShopAnalyticsDto } from './dto/shop-analytics.dto';
 import { buildAnalyticsCsv } from './shop-analytics.csv';
 import { eachDay, isBot, shiftDay, today } from './product-stats.util';
 
-/**
- * Окно, в котором повторное действие того же посетителя по тому же товару не
- * считается. Защищает от F5 и от того, что карточка перемонтируется при
- * навигации назад-вперёд.
- */
 const REPEAT_WINDOW_SEC = 30 * 60;
 
-/** С запасом больше суток: ключ уникальности всё равно содержит дату. */
 const DAY_KEY_TTL_SEC = 30 * 60 * 60;
 
-/**
- * Длина топа товаров в сводке магазина.
- *
- * Десять, а не «все с ненулевыми просмотрами»: панель отвечает на вопрос «что
- * у меня работает», и продавцу с тысячей позиций список на тысячу строк на
- * него не отвечает. Тем же числом ограничена и выгрузка — иначе CSV
- * рассказывал бы про магазин не то же самое, что страница, с которой его
- * скачали.
- */
 const TOP_PRODUCTS = 10;
 
 @Injectable()
@@ -55,13 +40,6 @@ export class ProductStatsService {
     private readonly searchStatsService: SearchStatsService,
   ) {}
 
-  /**
-   * Записать событие с карточки товара.
-   *
-   * Тихо игнорирует ботов и повторы: у клиента нет способа и нет причины
-   * реагировать на «не посчитали», а превращать это в ошибку значило бы
-   * ронять аналитикой обычный просмотр страницы.
-   */
   async record(
     productCardId: number,
     kind: ProductEventKind,
@@ -81,13 +59,6 @@ export class ProductStatsService {
     await this.repository.record(productCardId, day, delta);
   }
 
-  /**
-   * Во что превращается событие. `null` — считать нечего: повтор в пределах окна.
-   *
-   * Счётчики «уникальных» берутся отдельными ключами с жизнью до конца суток,
-   * а «сырые» — коротким окном: так один человек за день добавит единицу к
-   * `visitors`, но несколько к `views`, если возвращался на карточку.
-   */
   private async buildDelta(
     productCardId: number,
     kind: ProductEventKind,
@@ -132,7 +103,6 @@ export class ProductStatsService {
     };
   }
 
-  /** Статистика карточки для её владельца. */
   async forSeller(
     ownerId: number,
     productCardId: number,
@@ -170,25 +140,11 @@ export class ProductStatsService {
     };
   }
 
-  /**
-   * Сводка по магазину продавца: график, итоги и топ товаров.
-   *
-   * Магазин выводится по владельцу, а не приходит идентификатором в запросе
-   * (V13): у продавца он один, и параметр, который пришлось бы каждый раз
-   * проверять на принадлежность, — это лишний способ однажды забыть проверку.
-   */
   async forShop(ownerId: number, days: number): Promise<ShopAnalyticsDto> {
     const shop = await this.shopsService.getActiveOwnShopOrThrow(ownerId);
     return this.buildShopAnalytics(shop, days);
   }
 
-  /**
-   * По каким словам находили товары магазина. Только MAX.
-   *
-   * Данные берутся у `SearchStatsService`, а не из своего репозитория: считает
-   * их модуль поиска, ему же принадлежит таблица. Здесь только гейт и
-   * календарь — то, что общее у всей аналитики магазина.
-   */
   async searchesForShop(
     ownerId: number,
     days: number,
@@ -206,15 +162,6 @@ export class ProductStatsService {
     return this.searchStatsService.topForShop(shop.id, from, to, limit);
   }
 
-  /**
-   * Та же сводка файлом. Только MAX (V7).
-   *
-   * Гейт здесь обязателен и продублирован осознанно: в исходном проекте
-   * выгрузка была закрыта только глубиной периода, а глубина в 30 дней
-   * разрешена всем — то есть магазин на START выгрузил бы CSV, который
-   * продаётся как часть MAX. Проверка тарифа и проверка глубины отвечают на
-   * разные вопросы, и одна другую не заменяет.
-   */
   async exportCsvForShop(ownerId: number, days: number): Promise<string> {
     const shop = await this.shopsService.getActiveOwnShopOrThrow(ownerId);
     requireMaxPlan(shop, 'Выгрузка CSV доступна на тарифе MAX');
@@ -222,22 +169,6 @@ export class ProductStatsService {
     return buildAnalyticsCsv(await this.buildShopAnalytics(shop, days));
   }
 
-  /**
-   * Общая сборка сводки: одна на страницу и на выгрузку.
-   *
-   * Принимает уже найденный магазин, а не идентификатор владельца, чтобы
-   * выгрузка не искала его второй раз — и, что важнее, чтобы гейт тарифа и
-   * гейт глубины смотрели ровно на одну и ту же строку. Разные строки означали
-   * бы, что подписка, истёкшая между двумя запросами, откроет то, что уже
-   * закрыто.
-   *
-   * Глубина периода — единственное место аналитики, где тариф не «есть или
-   * нет», а число, и читается оно через `effectiveLimits` (B4). Текст отказа
-   * называет ровно 30 дней, и это не приблизительность: до 365 дело доходит
-   * только на MAX, а там запрос упрётся раньше в `@Max(365)` у
-   * `StatsRangeQueryDto` — и отказ будет уже не про тариф, а про несуществующий
-   * период.
-   */
   private async buildShopAnalytics(
     shop: Shop,
     days: number,
@@ -303,13 +234,6 @@ export class ProductStatsService {
     };
   }
 
-  /**
-   * Активность площадки по дням: что заводили и как это смотрели.
-   *
-   * Четыре отдельных запроса вместо одного с полными внешними соединениями:
-   * источники независимы, у каждого свои сутки с данными, и склейка в памяти
-   * по короткому ряду (максимум 365 точек) дешевле и читается яснее.
-   */
   async adminActivity(days: number): Promise<AdminActivityDto> {
     const to = today();
     const from = shiftDay(to, -(days - 1));
@@ -350,38 +274,12 @@ function sum<T>(items: T[], pick: (item: T) => number): number {
   return items.reduce((acc, item) => acc + pick(item), 0);
 }
 
-/**
- * Тариф магазина сейчас — MAX, или отказ с объяснением.
- *
- * Единственный вход — `effectiveLimits` (B4). Сравнение `shop.subscriptionPlan
- * === 'max'` выглядело бы короче и было бы дырой: колонка намеренно сохраняет
- * купленный когда-то тариф после истечения срока, и такая проверка отдавала бы
- * поисковые запросы и выгрузку магазину, переставшему платить полгода назад.
- *
- * Текст отказа приходит параметром, а не собирается здесь: продавец должен
- * прочитать, что именно ему недоступно, — иначе на странице аналитики две
- * разные кнопки объясняются одной и той же фразой.
- */
 function requireMaxPlan(shop: Shop, message: string): void {
   if (effectiveLimits(shop).id !== 'max') {
     throw new ForbiddenException(message);
   }
 }
 
-/**
- * Доля дошедших до контакта, в целых процентах.
- *
- * Делится на посещения, а не на сумму раскрытий телефона и переходов в
- * Telegram: один посетитель умеет и то и другое, их сумма способна обогнать
- * число посетителей, и «конверсия» вышла бы больше ста процентов. Ровно так же
- * считает карточка товара на клиенте (`components/seller/product-stats.tsx`),
- * и расходиться этим двум числам нельзя — продавец видит их на соседних
- * страницах.
- *
- * Ноль посещений даёт ноль, а не «нет данных»: это число рисуется в панели
- * рядом с остальными, и `null` пришлось бы отдельно обрабатывать на клиенте
- * ради случая, в котором и показывать-то нечего.
- */
 function conversionOf(contactVisitors: number, visits: number): number {
   if (visits === 0) return 0;
   return Math.round((contactVisitors / visits) * 100);

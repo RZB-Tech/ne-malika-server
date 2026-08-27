@@ -45,10 +45,6 @@ export class AdminBannersController {
     return this.bannersService.create(dto);
   }
 
-  /**
-   * Объявлен раньше `:id`: маршруты Nest разбираются в порядке объявления, и
-   * ниже `reorder` попал бы в ParseIntPipe и вернул 400 вместо перестановки.
-   */
   @Patch('reorder')
   @ApiOperation({ summary: 'Задать порядок баннеров в карусели' })
   @ApiOkResponse({ type: [BannerDto] })

@@ -10,17 +10,6 @@ import { pgTable } from 'drizzle-orm/pg-core';
 import { users } from './users.schema';
 import { productCards } from './product-cards.schema';
 
-/**
- * История просмотров товаров покупателем.
- *
- * Одна строка на пару «пользователь + товар», а не журнал событий: кабинету
- * нужен список «что я смотрел», и повторный заход на ту же карточку должен
- * поднимать её наверх, а не плодить дубликаты. Поэтому запись идёт апсертом по
- * уникальному индексу, а число заходов копится в `viewCount`.
- *
- * Аноним сюда не попадает — его история живёт в localStorage и переносится
- * сюда одним запросом после входа (POST /me/product-views/sync).
- */
 export const productViews = pgTable(
   'product_views',
   {
@@ -34,10 +23,8 @@ export const productViews = pgTable(
       .notNull()
       .references(() => productCards.id, { onDelete: 'cascade' }),
 
-    /** Сколько раз пользователь открывал карточку. */
     viewCount: integer('view_count').notNull().default(1),
 
-    /** Последний просмотр — по нему сортируется выдача кабинета. */
     viewedAt: timestamp('viewed_at', { withTimezone: true })
       .notNull()
       .defaultNow(),

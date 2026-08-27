@@ -47,15 +47,6 @@ export class ShopCreditsDto {
   available: number;
 }
 
-/**
- * Баланс глазами продавца: то же самое плюс подписочный карман.
- *
- * Отдельным классом, наследником, а не двумя новыми полями в `ShopCreditsDto`.
- * Тот отдаётся админской ручкой, которая собирает его своим литералом; сделав
- * поля обязательными там, мы сломали бы сборку файла, а сделав
- * необязательными — заставили бы клиента продавца проверять на `undefined`
- * числа, которые всегда есть. Наследование оставляет обе стороны честными.
- */
 export class SellerCreditsDto extends ShopCreditsDto {
   @ApiProperty({
     description:
@@ -72,15 +63,6 @@ export class SellerCreditsDto extends ShopCreditsDto {
   usable: number;
 }
 
-/**
- * Подробности операции в истории продавца.
- *
- * Все поля необязательны и это не небрежность: `meta` — свободная запись
- * журнала, у выдачи и у списания она разная, а строки, написанные до
- * появления подписок, не содержат вовсе ничего. Себестоимости, оплаченной
- * суммы и множителя наценки здесь нет намеренно — их отсекает
- * `sellerVisibleMeta`.
- */
 export class CreditTxnMetaDto {
   @ApiPropertyOptional({
     enum: ['prompt', 'description', 'image', 'autofill'],
@@ -124,7 +106,6 @@ export class CreditTxnMetaDto {
   paymentId?: number;
 }
 
-/** Строка истории кредитов. */
 export class CreditTxnDto {
   @ApiProperty()
   id: number;

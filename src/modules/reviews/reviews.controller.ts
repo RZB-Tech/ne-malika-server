@@ -41,10 +41,6 @@ export class ReviewsController {
     return this.reviewsService.listPublic(query);
   }
 
-  /**
-   * Объявлено до маршрутов с `:id` — иначе «summary» и «mine» ушли бы в
-   * ParseIntPipe и вернули 400 вместо ответа.
-   */
   @Public()
   @Get('summary')
   @ApiOperation({
@@ -65,10 +61,6 @@ export class ReviewsController {
     return this.reviewsService.listOwn(user.id, query);
   }
 
-  /**
-   * Ограничение жёстче общего: отзыв — это ручной ввод, и десяток в минуту с
-   * одного адреса означает не покупателя, а накрутку рейтинга.
-   */
   @AnyRole()
   @ApiBearerAuth('access-token')
   @Throttle({ default: { ttl: 60_000, limit: 10 } })

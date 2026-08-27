@@ -24,7 +24,6 @@ import { UpdateReviewDto } from './dto/update-review.dto';
 import { FindReviewsQueryDto } from './dto/find-reviews-query.dto';
 import { FindAdminReviewsQueryDto } from './dto/find-admin-reviews-query.dto';
 
-/** Если модель забраковала отзыв, но объяснить не смогла. */
 const AI_REJECT_FALLBACK = 'Отзыв нарушает правила площадки';
 
 @Injectable()
@@ -63,10 +62,6 @@ export class ReviewsService {
     }
   }
 
-  /**
-   * Правка своего отзыва. Возвращает его на проверку: иначе одобренный текст
-   * можно было бы после модерации заменить на любой другой.
-   */
   async updateOwn(userId: number, id: number, dto: UpdateReviewDto) {
     const review = await this.getOwnOrThrow(userId, id);
 
@@ -130,7 +125,6 @@ export class ReviewsService {
     return this.decline(id, adminId, reason);
   }
 
-  /** Ручной повтор проверки — например, когда модель была недоступна. */
   async recheck(id: number) {
     await this.getOrThrow(id);
     await this.runAiCheck(id);
@@ -143,10 +137,6 @@ export class ReviewsService {
     await this.productCardsService.invalidateCache();
   }
 
-  /**
-   * Проверка не ожидается вызывающим: покупатель не должен ждать модель, чтобы
-   * увидеть, что отзыв принят.
-   */
   private checkInBackground(id: number): void {
     void this.runAiCheck(id).catch((err: Error) =>
       this.logger.error(
@@ -156,14 +146,6 @@ export class ReviewsService {
     );
   }
 
-  /**
-   * Решение по отзыву.
-   *
-   * `pass` — публикуем сразу, `fail` — отклоняем с объяснением модели, которое
-   * увидит автор. Всё остальное — сомнения модели, недоступный сервис, любая
-   * неожиданность — оставляет отзыв человеку. Публиковать непроверенное нельзя,
-   * а отклонять от имени модели, которая не ответила, — тем более.
-   */
   private async runAiCheck(id: number): Promise<void> {
     const review = await this.repository.findForCheck(id);
     if (!review || review.status !== 'pending') return;
@@ -191,7 +173,6 @@ export class ReviewsService {
     void this.notifications.notifyAdmins(needsHumanText(review, result.note));
   }
 
-  /** `moderatedBy: null` — решение приняла модель, а не человек. */
   private async publish(
     id: number,
     moderatedBy: number | null,
@@ -242,7 +223,6 @@ export class ReviewsService {
     return updated;
   }
 
-  /** Отзывы о магазине продавца — ровно те, что видит покупатель. */
   async listForOwner(userId: number, query: FindReviewsQueryDto) {
     const shop = await this.ownShopOrThrow(userId);
     return this.listPublic({
@@ -257,12 +237,6 @@ export class ReviewsService {
     return this.repository.summary({ shop_id: shop.id });
   }
 
-  /**
-   * Куда относится отзыв и вправе ли человек его оставлять.
-   *
-   * Товар или магазин — ровно одно из двух: «и то и другое» означало бы, что
-   * клиент прислал противоречивые данные, и молча выбрать за него нельзя.
-   */
   private async resolveTarget(userId: number, dto: CreateReviewDto) {
     if ((dto.productCardId === undefined) === (dto.shopId === undefined)) {
       throw new BadRequestException(
@@ -292,7 +266,6 @@ export class ReviewsService {
     };
   }
 
-  /** Оценивать себя нельзя: иначе рейтинг продавца — это его собственное мнение. */
   private async shopOrThrow(shopId: number, userId: number) {
     const shop = await this.shopsRepository.findById(shopId);
     if (!shop) throw new NotFoundException('Магазин не найден');
@@ -330,21 +303,12 @@ export class ReviewsService {
   }
 }
 
-/**
- * Публичное имя автора: имя и первая буква фамилии. Отзывы читают посторонние,
- * и полное имя покупателя рядом с адресом магазина — это уже не про товар.
- */
 function shortName(fullname: string): string {
   const [first, second] = fullname.trim().split(/\s+/);
   if (!first) return 'Покупатель';
   return second ? `${first} ${second[0]}.` : first;
 }
 
-/**
- * Уведомление администраторам — только когда решение действительно за
- * человеком. Слать его на каждый отзыв значило бы вернуть ручную модерацию,
- * от которой и уходили.
- */
 function needsHumanText(review: ReviewForCheck, reason: string): string {
   const target = review.productName
     ? `товар «${escapeHtml(review.productName)}»`

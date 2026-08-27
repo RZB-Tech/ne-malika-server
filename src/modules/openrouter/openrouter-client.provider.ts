@@ -7,17 +7,8 @@ export const OPENROUTER_CLIENT = Symbol('OPENROUTER_CLIENT');
 
 const logger = new Logger('OpenRouterClient');
 
-/**
- * Соединение может простаивать, пока модель думает над картинкой, — а простой
- * без трафика рвут NAT и фаерволы. Keep-alive держит сессию видимо живой.
- */
 const keepAliveAgent = new Agent({ keepAlive: true, keepAliveMsecs: 15_000 });
 
-/**
- * OpenRouter говорит по протоколу OpenAI, поэтому клиентом остаётся тот же SDK.
- * Как и остальные внешние сервисы, он опционален: без ключа проверка товаров и
- * составление промпта просто не запускаются, а приложение работает.
- */
 export const openrouterClientProvider: Provider = {
   provide: OPENROUTER_CLIENT,
   inject: [ConfigService],

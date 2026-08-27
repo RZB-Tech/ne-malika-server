@@ -60,7 +60,6 @@ export class ReportsService {
     return buildPaginatedResult(data, total, page, limit);
   }
 
-  /** Жалоба разобрана — убираем её из очереди. */
   async adminRemove(id: number) {
     const report = await this.reportsRepository.findById(id);
     if (!report) {
@@ -70,10 +69,6 @@ export class ReportsService {
   }
 }
 
-/**
- * Текст жалобы для админского чата. Контекст обрезаем: покупатель может
- * прислать простыню, а уведомление должно читаться с экрана телефона.
- */
 function newReportText(
   shopName: string,
   productCardId: number | undefined,

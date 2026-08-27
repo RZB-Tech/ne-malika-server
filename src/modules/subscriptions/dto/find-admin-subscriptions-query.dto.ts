@@ -15,14 +15,6 @@ import type { SubscriptionPlanId } from '../subscriptions.constants';
 
 const PLAN_VALUES = [...subscriptionPlanEnum.enumValues];
 
-/**
- * Фильтры админского списка подписок.
- *
- * Имена в змеином регистре (`expiring_days`, `needs_review`) — как у остальных
- * админских выдач репозитория (`shop_id` в жалобах, `product_id` в отзывах):
- * это параметры строки запроса, и переименовывать их в camelCase ради красоты
- * значило бы сломать уже написанные ссылки в админке.
- */
 export class FindAdminSubscriptionsQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional({
     enum: PLAN_VALUES,
@@ -64,12 +56,6 @@ export class FindAdminSubscriptionsQueryDto extends PaginationQueryDto {
       'списаны, а автоматика не довела дело до конца (Д3)',
   })
   @IsOptional()
-  /**
-   * Строка запроса приходит текстом, и `IsBoolean` без приведения отверг бы
-   * `?needs_review=true` целиком. Приводим только два известных написания:
-   * всё прочее оставляем строкой, и валидатор честно отвечает 400, вместо
-   * того чтобы молча счесть `?needs_review=0` включённым фильтром.
-   */
   @Transform(({ value }: { value: unknown }): unknown =>
     value === 'true' || value === true
       ? true

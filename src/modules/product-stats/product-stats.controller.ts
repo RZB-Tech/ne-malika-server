@@ -13,13 +13,6 @@ import { Public } from '../../common/decorators/public.decorator';
 import { ProductStatsService } from './product-stats.service';
 import { RecordProductEventDto } from './dto/record-product-event.dto';
 
-/**
- * Приём событий с карточки товара: открыли, раскрыли телефон, ушли в Telegram.
- *
- * Публичный намеренно — считать надо всех, а большинство посетителей витрины не
- * авторизованы. Личность посетителя не устанавливается: приходит анонимный id
- * из localStorage, нужный только чтобы отличить повторный заход от нового.
- */
 @ApiTags('product-stats')
 @Public()
 @Controller('product-cards')

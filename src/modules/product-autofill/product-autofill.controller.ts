@@ -23,11 +23,6 @@ import {
   AutofilledProductDto,
 } from './dto/product-autofill.dto';
 
-/**
- * Автозаполнение карточки. Одна ручка обслуживает и создание товара, и правку:
- * работа там одна и та же — прочитать фотографии и вернуть поля, — а разница
- * лишь в том, что при правке часть полей уже заполнена и уходит в запрос.
- */
 @ApiTags('product-autofill')
 @ApiBearerAuth('access-token')
 @SellerOrAdmin()
@@ -35,11 +30,6 @@ import {
 export class ProductAutofillController {
   constructor(private readonly autofill: ProductAutofillService) {}
 
-  /**
-   * Ручка только читает. Остаток бесплатных попыток она показывает, но не
-   * занимает: форма спрашивает цену при каждом своём открытии, и занятие
-   * попытки показом её остатка обнуляло бы месячную норму, ничего не заполнив.
-   */
   @Get('price')
   @ApiOperation({
     summary:
@@ -54,11 +44,6 @@ export class ProductAutofillController {
     });
   }
 
-  /**
-   * Лимит жёстче обычного: каждый запрос — платная работа модели по трём
-   * фотографиям. Десяти в минуту хватает и на подбор варианта, и на правку
-   * нескольких карточек подряд, а перебором кнопки баланс уже не спустить.
-   */
   @Post()
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })

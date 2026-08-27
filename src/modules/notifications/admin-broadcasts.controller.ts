@@ -67,11 +67,6 @@ export class AdminBroadcastsController {
     return { count, push };
   }
 
-  /**
-   * Одна рассылка в минуту: каждый запрос — это сообщение всем пользователям
-   * сразу, и случайный двойной клик не должен превращаться во вторую.
-   * Прежний лимит 3 этого как раз не обеспечивал.
-   */
   @Post()
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 1, ttl: 60_000 } })

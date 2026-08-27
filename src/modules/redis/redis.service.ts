@@ -2,10 +2,6 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import type Redis from 'ioredis';
 import { REDIS_CLIENT } from './redis-client.provider';
 
-/**
- * Тонкая обёртка над Redis: JSON внутри, «тихий» отказ снаружи.
- * Любая ошибка кэша логируется и превращается в промах — запрос идёт в БД.
- */
 @Injectable()
 export class RedisService {
   private readonly logger = new Logger(RedisService.name);
@@ -36,19 +32,6 @@ export class RedisService {
     }
   }
 
-  /**
-   * Занять ключ, если он свободен. Возвращает `true` только первому вызову
-   * в пределах `ttlSec` — на этом строится подсчёт уникальных посетителей и
-   * защита счётчика просмотров от F5.
-   *
-   * Атомарность обязательна: пара «прочитать, потом записать» под двумя
-   * одновременными запросами пропустила бы оба, и один человек посчитался бы
-   * двумя. `SET NX` решает это одной командой.
-   *
-   * Без Redis возвращает `true` — статистика продолжает считаться, но без
-   * схлопывания повторов. Лучше завышенные просмотры, чем потерянные: в проде
-   * Redis есть всегда (docker-compose.prod.yml), это путь для локального дева.
-   */
   async claim(key: string, ttlSec: number): Promise<boolean> {
     if (!this.client) return true;
     try {
@@ -69,11 +52,6 @@ export class RedisService {
     }
   }
 
-  /**
-   * Сброс группы ключей по префиксу. Через SCAN, а не KEYS: KEYS блокирует
-   * сервер целиком. Записей в каталоге на порядки меньше, чем чтений,
-   * поэтому обход по записи дешевле, чем версионирование ключей на чтении.
-   */
   async delByPrefix(prefix: string): Promise<void> {
     if (!this.client) return;
     try {

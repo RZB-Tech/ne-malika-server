@@ -8,17 +8,6 @@ import type { Request, Response } from 'express';
 import { resolveLocale } from '../i18n/locale';
 import { translateMessage } from '../i18n/messages';
 
-/**
- * Переводит текст ошибки на язык запроса.
- *
- * Фильтр, а не перевод в момент throw: язык известен только из заголовка
- * запроса, а бросают ошибки сервисы и гварды, куда запрос не проброшен. Здесь
- * же ответ уже собран и правится в одном месте.
- *
- * Ловим только HttpException: у неперехваченной ошибки текст технический, его
- * пользователю всё равно не показывают, и обработку таких случаев оставляем
- * стандартному фильтру Nest.
- */
 @Catch(HttpException)
 export class I18nExceptionFilter implements ExceptionFilter {
   catch(exception: HttpException, host: ArgumentsHost): void {
@@ -34,10 +23,6 @@ export class I18nExceptionFilter implements ExceptionFilter {
   }
 }
 
-/**
- * Тело ответа Nest — либо строка, либо объект с полем message, где у ошибок
- * валидации лежит массив. Разбираем все три формы, остальное отдаём как есть.
- */
 function localize(
   body: string | object,
   locale: ReturnType<typeof resolveLocale>,
