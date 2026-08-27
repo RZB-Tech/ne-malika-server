@@ -203,9 +203,7 @@ export class ClickController {
       return answer(body, CLICK_RESPONSE.invalidRequest);
     }
 
-    const order = await this.subscriptions.findOrderForPayment(
-      callback.merchantTransId,
-    );
+    const order = await this.resolveOrder(callback);
     if (!order) {
       this.logger.warn(
         `Колбэк Click по неизвестному счёту: merchant_trans_id=${callback.merchantTransId}, ` +
@@ -228,6 +226,20 @@ export class ClickController {
       return this.prepare(body, callback, order.merchantBillingId);
     }
     return this.complete(body, callback, context, order.shopId);
+  }
+
+  private async resolveOrder(
+    callback: NonNullable<ReturnType<typeof parseClickCallback>>,
+  ) {
+    if (callback.merchantTransId) {
+      return this.subscriptions.findOrderForPayment(callback.merchantTransId);
+    }
+
+    if (callback.action === 1 && callback.merchantPrepareId) {
+      return this.subscriptions.findOrderForPayment(callback.merchantPrepareId);
+    }
+
+    return this.subscriptions.findOrderByAmount(callback.amount);
   }
 
   private async prepare(

@@ -159,6 +159,37 @@ export class SubscriptionsRepository {
       .where(eq(subscriptionPayments.id, id));
   }
 
+  async findSolePendingByAmount(
+    amount: number,
+    since: Date,
+  ): Promise<PaymentOrder | undefined> {
+    const rows = await this.db
+      .select({
+        id: subscriptionPayments.id,
+        merchantBillingId: subscriptionPayments.merchantBillingId,
+        shopId: subscriptionPayments.shopId,
+        shopName: shops.name,
+        shopStatus: shops.status,
+        ownerId: users.id,
+        ownerTelegramId: users.telegramId,
+      })
+      .from(subscriptionPayments)
+      .innerJoin(shops, eq(subscriptionPayments.shopId, shops.id))
+      .innerJoin(users, eq(shops.owner, users.id))
+      .where(
+        and(
+          eq(subscriptionPayments.provider, 'click'),
+          eq(subscriptionPayments.status, 'pending'),
+          eq(shops.status, 'active'),
+          sql`${subscriptionPayments.amount} = ${amount}`,
+          sql`${subscriptionPayments.createdAt} > ${since.toISOString()}::timestamptz`,
+        ),
+      )
+      .limit(2);
+
+    return rows.length === 1 ? rows[0] : undefined;
+  }
+
   async findOwnOrder(
     ownerId: number,
     merchantBillingId: number,

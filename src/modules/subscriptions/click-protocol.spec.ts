@@ -180,10 +180,6 @@ describe('разбор колбэка Click', () => {
       ['paydoc не число', { ...PREPARE_BODY, click_paydoc_id: 'not-a-number' }],
       ['trans_id не число', { ...PREPARE_BODY, click_trans_id: '12a' }],
       ['service_id не число', { ...PREPARE_BODY, service_id: 'svc' }],
-      [
-        'пустой merchant_trans_id и нет transaction_param',
-        { ...PREPARE_BODY, merchant_trans_id: '   ' },
-      ],
       ['нет sign_time', { ...PREPARE_BODY, sign_time: '' }],
       ['неизвестный action', { ...PREPARE_BODY, action: '2' }],
       ['action не число', { ...PREPARE_BODY, action: 'prepare' }],
@@ -199,6 +195,17 @@ describe('разбор колбэка Click', () => {
         name,
       );
     }
+  });
+
+  it('пропускает пустой merchant_trans_id: заказ подберут по сумме', () => {
+    const body = { ...PREPARE_BODY, merchant_trans_id: '' };
+    const parsed = parseClickCallback({
+      ...body,
+      sign_string: createClickSignature(body, 'secret'),
+    });
+
+    assert.equal(parsed?.merchantTransId, '');
+    assert.equal(parsed?.amount, 15_000);
   });
 
   it('берёт transaction_param, когда merchant_trans_id пуст', () => {

@@ -107,7 +107,6 @@ export function parseClickCallback(
     !/^\d+$/.test(clickTransId) ||
     !/^\d+$/.test(clickPaydocId) ||
     !/^\d+$/.test(serviceId) ||
-    !merchantTransId ||
     !/^\d+(?:\.\d{1,2})?$/.test(amountText) ||
     !isInteger(actionText) ||
     !isInteger(errorText) ||

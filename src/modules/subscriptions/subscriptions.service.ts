@@ -380,6 +380,27 @@ export class SubscriptionsService implements OnModuleInit {
     return this.repository.findOrderForPayment(billingId);
   }
 
+  async findOrderByAmount(amount: number): Promise<PaymentOrder | undefined> {
+    if (!(amount > 0)) return undefined;
+
+    const since = new Date(Date.now() - ORDER_REUSE_MINUTES * 60_000);
+    const order = await this.repository.findSolePendingByAmount(amount, since);
+
+    if (order) {
+      this.logger.warn(
+        `Click прислал Prepare без номера заказа: подобран единственный неоплаченный счёт ` +
+          `${order.merchantBillingId} на ${amount} UZS (магазин ${order.shopId})`,
+      );
+    } else {
+      this.logger.error(
+        `Click прислал Prepare без номера заказа, и подобрать его нельзя: ` +
+          `на ${amount} UZS нет ровно одного неоплаченного счёта за последние ${ORDER_REUSE_MINUTES} мин`,
+      );
+    }
+
+    return order;
+  }
+
   async prepare(input: {
     orderId: number;
     amount: number;
