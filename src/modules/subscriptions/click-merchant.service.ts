@@ -26,8 +26,12 @@ interface ClickMerchantResponse {
   error_code?: number;
   error_note?: string;
   invoice_id?: number;
+  id?: number;
   invoice_status?: number;
   invoice_status_note?: string;
+  status?: number | null;
+  status_note?: string | null;
+  payment_id?: number | null;
 }
 
 const DEFAULT_MERCHANT_API_URL = 'https://api.click.uz/v2/merchant';
@@ -127,11 +131,12 @@ export class ClickMerchantService {
         },
       );
 
-      if (ok && payload?.error_code === 0 && payload.invoice_id) {
+      const invoiceId = payload?.invoice_id ?? payload?.id;
+      if (ok && payload?.error_code === 0 && invoiceId) {
         this.logger.log(
-          `Счёт Click ${payload.invoice_id} выставлен на ${phone}: заказ ${input.merchantTransId}, ${input.amountUzs} UZS`,
+          `Счёт Click ${invoiceId} выставлен на ${phone}: заказ ${input.merchantTransId}, ${input.amountUzs} UZS`,
         );
-        return { ok: true, invoiceId: payload.invoice_id };
+        return { ok: true, invoiceId };
       }
 
       const detail =
@@ -161,8 +166,8 @@ export class ClickMerchantService {
       if (ok && payload?.error_code === 0) {
         return {
           ok: true,
-          status: payload.invoice_status ?? 0,
-          note: payload.invoice_status_note ?? '',
+          status: payload.status ?? payload.invoice_status ?? 0,
+          note: payload.status_note ?? payload.invoice_status_note ?? '',
         };
       }
 
