@@ -164,8 +164,16 @@ export class FilesService {
       }
       chunks.push(buffer);
     }
-    const type = file.contentType ?? 'image/jpeg';
-    return `data:${type};base64,${Buffer.concat(chunks).toString('base64')}`;
+    const bytes = Buffer.concat(chunks);
+    const type = sniffImageMime(bytes);
+    if (!type) {
+      throw new BadGatewayException(
+        `Файл ${key} не является картинкой формата JPEG, PNG или WebP ` +
+          `(Content-Type в S3: ${file.contentType ?? 'не указан'}) — ` +
+          'модель такой файл не примет',
+      );
+    }
+    return `data:${type};base64,${bytes.toString('base64')}`;
   }
 
   async exists(key: string): Promise<boolean> {
@@ -221,4 +229,27 @@ export class FilesService {
       s3Error.name === 'NotFound'
     );
   }
+}
+
+const JPEG_MAGIC = Buffer.from([0xff, 0xd8, 0xff]);
+const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+
+/**
+ * Content-Type в S3 задаёт клиент, поэтому он может врать: файл заявлен как
+ * image/jpeg, а внутри HEIC с телефона или что-то ещё. Модель на таком отвечает
+ * невнятным 400 от провайдера, так что формат определяем по сигнатуре файла.
+ */
+function sniffImageMime(
+  bytes: Buffer,
+): 'image/jpeg' | 'image/png' | 'image/webp' | null {
+  if (bytes.subarray(0, 3).equals(JPEG_MAGIC)) return 'image/jpeg';
+  if (bytes.subarray(0, 8).equals(PNG_MAGIC)) return 'image/png';
+  if (
+    bytes.length >= 12 &&
+    bytes.subarray(0, 4).toString('latin1') === 'RIFF' &&
+    bytes.subarray(8, 12).toString('latin1') === 'WEBP'
+  ) {
+    return 'image/webp';
+  }
+  return null;
 }

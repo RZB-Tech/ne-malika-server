@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type OpenAI from 'openai';
 import { OPENROUTER_CLIENT } from '../openrouter/openrouter-client.provider';
+import { describeError } from '../openrouter/openrouter.util';
 import { AiChecksRepository } from './ai-checks.repository';
 import { SettingsService } from '../settings/settings.service';
 import { RedisService } from '../redis/redis.service';
@@ -183,8 +184,11 @@ export class AiChecksService implements OnModuleInit {
       tokensUsed = completion.usage?.total_tokens ?? null;
       result = parseAiCheckResult(completion.choices[0]?.message?.content);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Модель не ответила по товару ${card.id}: ${message}`);
+      const message = describeError(err);
+      this.logger.error(
+        `Модель не ответила по товару ${card.id} (модель ${model}, ` +
+          `фотографий у карточки ${photoKeys(card).length}): ${message}`,
+      );
       await this.deferToManualReview(
         card,
         model,
