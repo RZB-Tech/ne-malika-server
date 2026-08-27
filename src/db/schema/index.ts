@@ -17,4 +17,7 @@ export * from './credit-transactions.schema';
 export * from './ai-usage.schema';
 export * from './push-subscriptions.schema';
 export * from './banners.schema';
+export * from './subscription-payments.schema';
+export * from './subscription-reminders.schema';
+export * from './search-hits.schema';
 export * from './relations';

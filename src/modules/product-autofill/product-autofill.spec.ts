@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { parseAutofillResult } from './product-autofill.types';
+import { autofillOutcome } from './product-autofill.service';
 import { AUTOFILL_MAX_CHARACTERISTICS } from './dto/product-autofill.dto';
 
 const CATEGORIES = new Set([12, 34]);
@@ -88,5 +89,48 @@ describe('product autofill response parsing', () => {
       /ни одного поля/,
     );
     assert.throws(() => parseAutofillResult('не json', CATEGORIES), /JSON/);
+  });
+});
+
+/**
+ * Три поля ответа — `shopId` для журнала, `free` и `freeLeft` для формы —
+ * выводятся из одного резерва, и разъехаться им проще всего именно здесь:
+ * каждое читается в своём месте кода, и посчитать `free` в журнале иначе, чем в
+ * ответе продавцу, ничего не мешает. Проверка держит все четыре ветки разом.
+ */
+describe('autofill outcome by the kind of hold', () => {
+  it('bills the admin to the platform, not to a shop, and does not call it free', () => {
+    assert.deepEqual(autofillOutcome({ kind: 'platform' }), {
+      shopId: null,
+      free: false,
+      freeLeft: null,
+    });
+  });
+
+  it('leaves no counter for an unlimited plan: PRO and MAX have nothing to run out of', () => {
+    assert.deepEqual(autofillOutcome({ kind: 'unlimited', shopId: 7 }), {
+      shopId: 7,
+      free: true,
+      freeLeft: null,
+    });
+  });
+
+  it('reports how many free tries are left after this one', () => {
+    assert.deepEqual(
+      autofillOutcome({
+        kind: 'free',
+        shopId: 7,
+        month: '2026-08-01',
+        leftAfter: 3,
+      }),
+      { shopId: 7, free: true, freeLeft: 3 },
+    );
+  });
+
+  it('keeps the shop of the reservation itself, not the one resolved by owner', () => {
+    assert.deepEqual(
+      autofillOutcome({ kind: 'paid', hold: { shopId: 7, credits: 10 } }),
+      { shopId: 7, free: false, freeLeft: null },
+    );
   });
 });

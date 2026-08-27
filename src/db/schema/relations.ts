@@ -7,6 +7,8 @@ import { favorites } from './favorites.schema';
 import { reports } from './reports.schema';
 import { reviews } from './reviews.schema';
 import { aiProductChecks } from './ai-products-checks.schema';
+import { banners } from './banners.schema';
+import { subscriptionPayments } from './subscription-payments.schema';
 
 export const usersRelations = relations(users, ({ many }) => ({
   shops: many(shops),
@@ -23,6 +25,42 @@ export const shopsRelations = relations(shops, ({ one, many }) => ({
   productCards: many(productCards),
   reports: many(reports),
   reviews: many(reviews),
+  subscriptionPayments: many(subscriptionPayments),
+  banners: many(banners),
+}));
+
+/**
+ * Платёж и магазин связаны в обе стороны: разбор спора начинается то с
+ * магазина («что он оплачивал»), то с номера транзакции провайдера («чей это
+ * платёж»), и обе дороги должны быть короткими.
+ */
+export const subscriptionPaymentsRelations = relations(
+  subscriptionPayments,
+  ({ one }) => ({
+    shop: one(shops, {
+      fields: [subscriptionPayments.shopId],
+      references: [shops.id],
+    }),
+    initiator: one(users, {
+      fields: [subscriptionPayments.initiatorId],
+      references: [users.id],
+    }),
+  }),
+);
+
+/**
+ * У баннера две ссылки на людей и магазины, и обе необязательные: площадочный
+ * баннер живёт без магазина, непроверенный — без модератора.
+ */
+export const bannersRelations = relations(banners, ({ one }) => ({
+  shop: one(shops, {
+    fields: [banners.shopId],
+    references: [shops.id],
+  }),
+  moderator: one(users, {
+    fields: [banners.moderatedBy],
+    references: [users.id],
+  }),
 }));
 
 export const productCardsRelations = relations(

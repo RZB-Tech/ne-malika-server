@@ -5,6 +5,7 @@ import {
   asc,
   desc,
   eq,
+  gt,
   gte,
   ilike,
   inArray,
@@ -31,6 +32,10 @@ import {
   escapeLike,
   type ProductSearch,
 } from './product-search';
+import {
+  PAID_PLANS,
+  PLAN_LIMITS,
+} from '../subscriptions/subscriptions.constants';
 
 /** Проекция товара для покупателя: без внутренних полей модерации и эмбеддинга. */
 const PUBLIC_FIELDS = {
@@ -99,9 +104,145 @@ const SEARCH_VECTOR = sql`(to_tsvector('russian', ${SEARCH_DOCUMENT}) || to_tsve
  *
  * id вторым ключом — на случай совпадения хэшей: без него порядок таких
  * товаров решала бы сама СУБД, и он мог бы разойтись между страницами.
+ *
+ * Продвижение подписчиков (`promo`) встраивается в ту же тасовку, а не рядом с
+ * ней. Сила подписки — множитель вероятности оказаться выше, а не место в
+ * списке: жёсткие ярусы («сначала все оплаченные, потом остальные») превратили
+ * бы первую страницу в сплошной рекламный блок, и покупатель перестал бы
+ * доверять порядку вовсе — включая позиции, за которые никто не платил.
+ *
+ * Формула — взвешенная выборка без возвращения (Efraimidis–Spirakis): ключ
+ * `u^(1/w)`, где `u` — то же детерминированное число из [0,1] по паре «зерно +
+ * id», а `w` — вес тарифа; берём наибольшие ключи. При `w = 1` возведение в
+ * первую степень порядок не меняет, и магазин без подписки стоит ровно там же,
+ * где стоял бы без всякого продвижения. При `w = 3` товар MAX попадает в начало
+ * примерно втрое чаще — но не всегда, и место за ним не закреплено: одно и то
+ * же зерно даёт один и тот же порядок, а новое зерно — новую расстановку.
  */
-function randomOrder(seed: string): SQL[] {
-  return [sql`md5(${seed} || ${productCards.id}::text)`, asc(productCards.id)];
+function randomOrder(seed: string, promo: Promo | null): SQL[] {
+  /** Без продвижения — прежняя тасовка слово в слово: фильтрованные выдачи не меняются вовсе. */
+  if (!promo) {
+    return [
+      sql`md5(${seed} || ${productCards.id}::text)`,
+      asc(productCards.id),
+    ];
+  }
+
+  /**
+   * `shops` уже приджойнен ради `shops.name` и `shops.status` — вес достаётся
+   * без нового соединения. Второй ключ по id остаётся по той же причине, что и
+   * в тасовке без продвижения: при совпавших ключах порядок иначе выбирала бы
+   * СУБД, и он мог бы разойтись между страницами одной ленты.
+   */
+  return [
+    desc(sql`power(${shuffleKey(seed)}, 1.0 / ${promoWeightSql(promo.at)})`),
+    asc(productCards.id),
+  ];
+}
+
+/**
+ * Момент, на который проверяется подписка в порядке выдачи. Округлён вниз до
+ * пятиминутки намеренно.
+ *
+ * Живой `now()` менялся бы между запросами страниц одной ленты: у магазина,
+ * чья подписка кончилась между первой и третьей страницей, вес упал бы с трёх
+ * до единицы, его товары переехали бы вниз — и часть карточек показалась бы
+ * покупателю дважды, а часть не показалась бы вовсе. Та же беда, из-за которой
+ * витрина тасуется хэшем от зерна, а не `random()`: порядок обязан быть одним
+ * и тем же для всех страниц одного захода.
+ *
+ * Отсюда обещание в обе стороны: истёкшая подписка перестаёт поднимать товар не
+ * позже чем через PROMO_BUCKET_SEC, и ровно на столько же задерживается начало
+ * оплаченного показа. Пять минут — сознательный размен: короче — и границу
+ * корзины начнут пересекать обычные заходы с листанием, длиннее — и продавец
+ * успеет пожаловаться, что оплата не сработала.
+ */
+export const PROMO_BUCKET_SEC = 300;
+
+export function promoBucket(now: Date = new Date()): Date {
+  const ms = PROMO_BUCKET_SEC * 1000;
+  return new Date(Math.floor(now.getTime() / ms) * ms);
+}
+
+/** Продвижение включено; `at` — момент, на который смотрим сроки подписок. */
+interface Promo {
+  at: Date;
+}
+
+/**
+ * Тот же md5, что и в обычной тасовке, приведённый к числу из [0,1]: строку в
+ * степень не возвести, а формуле нужен именно `u`.
+ *
+ * Семь hex-символов, а не восемь: `bit(28)::int` всегда неотрицателен, тогда
+ * как `bit(32)` через `int4` умеет прийти со знаком — отрицательное `u` под
+ * дробной степенью дало бы NaN и перевернуло бы весь порядок выдачи.
+ */
+function shuffleKey(seed: string): SQL {
+  return sql`((('x' || substr(md5(${seed} || ${productCards.id}::text), 1, 7))::bit(28)::int)::double precision / 268435455.0)`;
+}
+
+/**
+ * Вес магазина в общей витрине — SQL-половина `effectiveLimits`.
+ *
+ * **Это единственное место, где `shops.subscription_plan` читается напрямую**
+ * (железное правило B4: колонка намеренно сохраняет `'max'` после истечения
+ * срока, и всякая проверка вида `plan === 'max'` без второй половины выдала бы
+ * права магазину, переставшему платить). Здесь обе половины условия стоят
+ * рядом в каждой ветке `case`, а сравнение строгое — ровно как в
+ * `SUBSCRIPTION_ACTIVE` и в `effectiveLimits`. Перебирать тысячи карточек в JS
+ * ради веса нельзя, а SQL не умеет читать `subscriptions.constants.ts` — отсюда
+ * второй экземпляр правила; встречный комментарий стоит в `PlanLimits.promoWeight`.
+ *
+ * Сами числа берутся из `PLAN_LIMITS`, а не объявляются здесь: разъехавшись,
+ * два списка весов спорили бы молча — витрина показывала бы одно, а страница
+ * тарифов обещала другое. Ветки с весом 1 в `case` не попадают: они ничем не
+ * отличаются от `else`, и лишнее сравнение в выражении, которое считается на
+ * каждой карточке, не нужно.
+ */
+function promoWeightSql(at: Date): SQL {
+  const alive = gt(shops.subscriptionUntil, at);
+  const branches = PAID_PLANS.filter(
+    (plan) => PLAN_LIMITS[plan].promoWeight !== 1,
+  ).map(
+    (plan) =>
+      sql`when ${alive} and ${eq(shops.subscriptionPlan, plan)} then ${PLAN_LIMITS[plan].promoWeight}::double precision`,
+  );
+
+  /** Все веса равны единице — продвижения нет; тогда и `case` строить не из чего. */
+  if (branches.length === 0) return sql`1::double precision`;
+
+  return sql`(case ${sql.join(branches, sql` `)} else 1::double precision end)`;
+}
+
+/**
+ * Общая витрина — выдача, которую покупатель ничем не сузил.
+ *
+ * Проверяем все параметры разом, а не одно «нет поиска»: любой фильтр означает
+ * осознанный запрос, и подменять ответ на него оплаченным — не реклама, а
+ * подлог. Решение владельца: поиск и категории не трогаем вовсе.
+ *
+ * Смотрим на `categoryIds`, а не на `query.category_id`/`query.category`: ветку
+ * каталога разворачивает сервис, и после разворота фильтр виден только здесь.
+ * `ids` сравниваем с `undefined`, а не с длиной: пустой массив — «просили
+ * список, список оказался мусорным», и выдача обязана быть пустой.
+ *
+ * `visitor_id`, `seed`, `page` и `limit` фильтрами не являются и здесь не
+ * упомянуты сознательно: они меняют порядок и объём страницы, а не состав
+ * выдачи.
+ */
+function isGeneralCatalog(
+  query: FindProductCardsQueryDto,
+  categoryIds?: number[],
+): boolean {
+  return (
+    !query.q &&
+    categoryIds === undefined &&
+    query.ids === undefined &&
+    query.shop_id === undefined &&
+    query.price_min === undefined &&
+    query.price_max === undefined &&
+    !query.state
+  );
 }
 
 /**
@@ -112,9 +253,10 @@ function randomOrder(seed: string): SQL[] {
 function resolveSort(
   query: FindProductCardsQueryDto,
   search: ProductSearch | null,
+  promo: Promo | null,
 ): SQL[] {
   if (query.sort === 'random') {
-    return randomOrder(query.seed ?? '');
+    return randomOrder(query.seed ?? '', promo);
   }
   if (query.sort === 'price_asc') {
     return [sql`${productCards.price} asc nulls last`];
@@ -194,6 +336,17 @@ export class ProductCardsRepository {
     const search = query.q ? buildProductSearch(query.q) : null;
     const where = and(...publicConditions(query, categoryIds, search));
 
+    /**
+     * Продвижение — только на нетронутой витрине и только вперемешку. Обе
+     * половины условия обязательны: в отсортированной по цене выдаче поднимать
+     * подписчика значило бы врать про цену, а в отфильтрованной — подменять
+     * ответ на осознанный запрос покупателя.
+     */
+    const promo =
+      query.sort === 'random' && isGeneralCatalog(query, categoryIds)
+        ? { at: promoBucket() }
+        : null;
+
     const [data, totalRows] = await Promise.all([
       this.db
         .select(PUBLIC_FIELDS)
@@ -201,7 +354,7 @@ export class ProductCardsRepository {
         .innerJoin(shops, eq(productCards.shopId, shops.id))
         .leftJoin(categories, eq(productCards.categoryId, categories.id))
         .where(where)
-        .orderBy(...resolveSort(query, search))
+        .orderBy(...resolveSort(query, search, promo))
         .limit(limit)
         .offset(offset),
       this.db
@@ -212,6 +365,48 @@ export class ProductCardsRepository {
     ]);
 
     return { data, total: totalRows[0]?.count ?? 0, page, limit };
+  }
+
+  /**
+   * Магазины, чьи товары попали в выдачу по этому запросу, — для счётчика
+   * поисковых запросов.
+   *
+   * Отдельный запрос, а не разбор уже отданной страницы. Страница — двадцать
+   * четыре карточки, и магазин, чей товар стоит на тридцатой позиции, не увидел
+   * бы этот запрос в своём отчёте вовсе, хотя по нему его находят: покупатель
+   * листает дальше, а вторая страница в статистику не идёт (иначе самым
+   * популярным запросом площадки оказался бы тот, по которому кто-то один
+   * долистал до конца).
+   *
+   * `WHERE` тот же самый, что у выдачи, — собирается тем же `publicConditions`.
+   * Расхождение здесь означало бы отчёт про выдачу, которой покупатель не
+   * видел.
+   *
+   * `LIMIT` без `ORDER BY` — обрезка неупорядоченная, и это осознанно: чем один
+   * магазин из тысячи совпавших достойнее другого, сказать нечего, а
+   * упорядочивание потребовало бы отсортировать всю тысячу ради выбрасывания
+   * восьмисот. Смысл ограничения — потолок на число строк вставки от одного
+   * нажатия клавиши.
+   *
+   * Джойн с `categories` не нужен: он в выдаче только ради названий раздела в
+   * проекции, а условия к нему не обращаются — фильтр по ветке каталога
+   * приходит готовым списком id.
+   */
+  async findMatchingShopIds(
+    query: FindProductCardsQueryDto,
+    categoryIds: number[] | undefined,
+    limit: number,
+  ): Promise<number[]> {
+    const search = query.q ? buildProductSearch(query.q) : null;
+
+    const rows = await this.db
+      .selectDistinct({ shopId: productCards.shopId })
+      .from(productCards)
+      .innerJoin(shops, eq(productCards.shopId, shops.id))
+      .where(and(...publicConditions(query, categoryIds, search)))
+      .limit(limit);
+
+    return rows.map((row) => row.shopId);
   }
 
   /**

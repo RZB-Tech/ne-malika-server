@@ -30,6 +30,8 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { CreditsModule } from './modules/credits/credits.module';
 import { AiUsageModule } from './modules/ai-usage/ai-usage.module';
 import { BannersModule } from './modules/banners/banners.module';
+import { SearchStatsModule } from './modules/search-stats/search-stats.module';
+import { SubscriptionsModule } from './modules/subscriptions/subscriptions.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -61,6 +63,8 @@ import { AppService } from './app.service';
     CreditsModule,
     AiUsageModule,
     BannersModule,
+    SearchStatsModule,
+    SubscriptionsModule,
   ],
   controllers: [AppController],
   providers: [

@@ -9,6 +9,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { PaginationMetaDto } from '../../../common/dto/paginated-response.dto';
 
 export class GrantCreditsDto {
   @ApiProperty({
@@ -36,14 +37,139 @@ export class GrantCreditsDto {
 }
 
 export class ShopCreditsDto {
-  @ApiProperty({ description: 'Начислено всего, за вычетом потраченного' })
+  @ApiProperty({ description: 'Купленные и подаренные кредиты. Не сгорают' })
   balance: number;
 
   @ApiProperty({ description: 'Занято выполняющимися сейчас запросами' })
   reserved: number;
 
-  @ApiProperty({ description: 'Доступно к трате: balance − reserved' })
+  @ApiProperty({ description: 'Доступно к трате' })
   available: number;
+}
+
+/**
+ * Баланс глазами продавца: то же самое плюс подписочный карман.
+ *
+ * Отдельным классом, наследником, а не двумя новыми полями в `ShopCreditsDto`.
+ * Тот отдаётся админской ручкой, которая собирает его своим литералом; сделав
+ * поля обязательными там, мы сломали бы сборку файла, а сделав
+ * необязательными — заставили бы клиента продавца проверять на `undefined`
+ * числа, которые всегда есть. Наследование оставляет обе стороны честными.
+ */
+export class SellerCreditsDto extends ShopCreditsDto {
+  @ApiProperty({
+    description:
+      'Кредиты подписки как они лежат в магазине — включая запертые ' +
+      'истёкшим тарифом: оплатив снова, продавец получит норму заново',
+  })
+  subscription: number;
+
+  @ApiProperty({
+    description:
+      'Из них доступны к трате сейчас. Ноль, если подписка истекла: ' +
+      'кредиты не сгорели, но и потратить их нельзя',
+  })
+  usable: number;
+}
+
+/**
+ * Подробности операции в истории продавца.
+ *
+ * Все поля необязательны и это не небрежность: `meta` — свободная запись
+ * журнала, у выдачи и у списания она разная, а строки, написанные до
+ * появления подписок, не содержат вовсе ничего. Себестоимости, оплаченной
+ * суммы и множителя наценки здесь нет намеренно — их отсекает
+ * `sellerVisibleMeta`.
+ */
+export class CreditTxnMetaDto {
+  @ApiPropertyOptional({
+    enum: ['prompt', 'description', 'image', 'autofill'],
+    description: 'За что списано',
+  })
+  operation?: 'prompt' | 'description' | 'image' | 'autofill';
+
+  @ApiPropertyOptional({ description: 'Сколько картинок нарисовано' })
+  images?: number;
+
+  @ApiPropertyOptional({
+    enum: ['welcome', 'welcome_topup', 'subscription', 'subscription_burn'],
+    description:
+      'Метка выдачи: подарок, выдача нормы подписки или сгорание остатка',
+  })
+  promo?: 'welcome' | 'welcome_topup' | 'subscription' | 'subscription_burn';
+
+  @ApiPropertyOptional({
+    enum: ['start', 'pro', 'max'],
+    description: 'Тариф, по которому выдано или сожжено',
+  })
+  plan?: 'start' | 'pro' | 'max';
+
+  @ApiPropertyOptional({
+    description: 'Сколько из списания ушло с подписочного счёта',
+  })
+  fromSubscription?: number;
+
+  @ApiPropertyOptional({
+    enum: ['quota', 'unlimited'],
+    description: 'Автозаполнение прошло по месячной норме либо по безлимиту',
+  })
+  free?: 'quota' | 'unlimited';
+
+  @ApiPropertyOptional({
+    description: 'Списано по объявленному прайсу, а не по стоимости запроса',
+  })
+  fixed?: boolean;
+
+  @ApiPropertyOptional({ description: 'Платёж, породивший выдачу' })
+  paymentId?: number;
+}
+
+/** Строка истории кредитов. */
+export class CreditTxnDto {
+  @ApiProperty()
+  id: number;
+
+  @ApiProperty({
+    enum: ['grant', 'spend', 'refund', 'adjust'],
+    description:
+      'grant — начисление, spend — списание за запрос, adjust — правка ' +
+      'человеком либо сгорание подписочного остатка',
+  })
+  kind: 'grant' | 'spend' | 'refund' | 'adjust';
+
+  @ApiProperty({
+    description: 'Со знаком: выдача положительна, списание — нет',
+  })
+  amount: number;
+
+  @ApiProperty({ description: 'Купленный остаток после операции' })
+  balanceAfter: number;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      'Подписочный остаток после операции. null у строк, написанных до ' +
+      'появления подписок — историю задним числом не переписываем',
+  })
+  subscriptionAfter: number | null;
+
+  @ApiProperty({ type: String, nullable: true })
+  note: string | null;
+
+  @ApiProperty({ type: CreditTxnMetaDto, nullable: true })
+  meta: CreditTxnMetaDto | null;
+
+  @ApiProperty()
+  createdAt: Date;
+}
+
+export class PaginatedCreditsHistoryDto {
+  @ApiProperty({ type: [CreditTxnDto] })
+  data: CreditTxnDto[];
+
+  @ApiProperty({ type: PaginationMetaDto })
+  meta: PaginationMetaDto;
 }
 
 export class GrantResultDto {

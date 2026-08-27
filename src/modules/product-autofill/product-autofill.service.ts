@@ -12,9 +12,10 @@ import { describeError, usageCost } from '../openrouter/openrouter.util';
 import { FilesService } from '../files/files.service';
 import { CategoriesService } from '../categories/categories.service';
 import { ShopsService } from '../shops/shops.service';
-import { CreditsService, type CreditHold } from '../credits/credits.service';
+import { CreditsService, type AutofillHold } from '../credits/credits.service';
 import { AiUsageService } from '../ai-usage/ai-usage.service';
 import { AUTOFILL_CREDITS } from '../credits/credits.constants';
+import { AUTOFILL_FREE_PER_MONTH } from '../subscriptions/subscriptions.constants';
 import type { CategoryDto } from '../categories/dto/category.dto';
 import {
   AUTOFILL_MAX_PHOTOS,
@@ -32,6 +33,39 @@ import {
 interface Author {
   id: number;
   isAdmin: boolean;
+}
+
+/**
+ * Чем обернулось автозаполнение для отчётности: чей это магазин, было ли оно
+ * бесплатным и сколько бесплатных попыток осталось.
+ *
+ * Одной функцией на всех потребителей — ответ формы и строку `ai_usage` — и
+ * это главное в ней. Три поля выводятся из одного и того же резерва, живут в
+ * разных местах кода и разъезжаются легко: достаточно посчитать `free` в
+ * журнале иначе, чем в ответе, и разбор жалобы «списали, хотя было бесплатно»
+ * упрётся в два несогласных источника.
+ *
+ * `platform` (администратор) — `free: false`, и это не описка. Признак отвечает
+ * на вопрос «магазину досталось даром», а магазина у администратора нет: его
+ * строка отличается пустым `shop_id`, как и написано в докблоке колонки
+ * `ai_usage.free`. Сделав здесь `true`, мы смешали бы в отчётах расход на
+ * подписчиков с расходом на собственные проверки площадки.
+ */
+export function autofillOutcome(hold: AutofillHold): {
+  shopId: number | null;
+  free: boolean;
+  freeLeft: number | null;
+} {
+  switch (hold.kind) {
+    case 'platform':
+      return { shopId: null, free: false, freeLeft: null };
+    case 'unlimited':
+      return { shopId: hold.shopId, free: true, freeLeft: null };
+    case 'free':
+      return { shopId: hold.shopId, free: true, freeLeft: hold.leftAfter };
+    case 'paid':
+      return { shopId: hold.hold.shopId, free: false, freeLeft: null };
+  }
 }
 
 /**
@@ -138,18 +172,37 @@ export class ProductAutofillService {
   /**
    * Прайс и остаток — форма спрашивает их до нажатия кнопки, чтобы показать
    * цену рядом с ней и не выдавать отказ уже после клика.
+   *
+   * Весь расчёт для продавца делает `CreditsService.autofillQuota`: там же
+   * живёт и сам резерв (`holdAutofill`), и порядок «безлимит → норма → кредиты»
+   * обязан быть один на обе точки. Разложив его здесь во второй раз, мы бы
+   * получили ровно тот баг, ради которого правило и заводилось, — подпись
+   * «бесплатно» над списанием десяти кредитов, — и заметили бы его по жалобе.
+   *
+   * Счётчик нормы `autofillQuota` читает с якорем по месяцу (V8), а не из
+   * колонки: сброс ленивый, и первого числа там ещё лежит прошлое число.
+   *
+   * Администратор отвечается литералом и не ходит в базу вовсе: магазина у него
+   * нет, а `plan: 'free'` здесь — не «истёкшая подписка», а «тарифа не бывает».
+   * Отличить одно от другого форма может по `balance === null`.
    */
   async price(author: Author): Promise<AutofillPriceDto> {
     if (author.isAdmin) {
-      return { price: AUTOFILL_CREDITS, allowed: true, balance: null };
+      return {
+        price: AUTOFILL_CREDITS,
+        effectivePrice: 0,
+        free: true,
+        unlimited: true,
+        freeLeft: null,
+        freeLimit: AUTOFILL_FREE_PER_MONTH,
+        resetsAt: null,
+        plan: 'free',
+        allowed: true,
+        balance: null,
+      };
     }
 
-    const balance = await this.available(author.id);
-    return {
-      price: AUTOFILL_CREDITS,
-      allowed: balance >= AUTOFILL_CREDITS,
-      balance,
-    };
+    return this.credits.autofillQuota(author.id);
   }
 
   /**
@@ -160,8 +213,17 @@ export class ProductAutofillService {
    * а не за обращение к модели. Ответ, который не удалось разобрать, — наш
    * брак, и себестоимость такого запроса площадка берёт на себя.
    *
-   * Поэтому же `settleFixed` и `cancel` стоят на взаимоисключающих путях:
-   * списание после снятия резерва освободило бы чужой резерв вторым разом.
+   * Поэтому же `settleAutofill` и `cancelAutofill` стоят на взаимоисключающих
+   * путях: списание после снятия резерва освободило бы чужой резерв вторым
+   * разом.
+   *
+   * Чем именно оплачено — безлимитом тарифа, месячной нормой или кредитами —
+   * решает `holdAutofill`, и здесь это не разбирается сознательно. Тариф вообще
+   * не спрашивается: правило «читать план только через `effectiveLimits`»
+   * соблюдается тем, что мы не читаем его вовсе. Откат тоже один на все ветки —
+   * `cancelAutofill` сам знает, что бесплатной попытке надо вернуть счётчик, а
+   * платной — резерв. Отдельная ветка отката здесь означала бы, что продавец,
+   * которому модель не ответила, теряет попытку из пяти.
    */
   async fill(
     dto: AutofillProductDto,
@@ -175,11 +237,7 @@ export class ProductAutofillService {
 
     const categories = await this.allowedCategories(author);
     const model = this.config.get<string>('openrouter.autofillModel')!;
-    const hold = await this.credits.holdFixed(
-      author,
-      AUTOFILL_CREDITS,
-      'автозаполнение карточки',
-    );
+    const hold = await this.credits.holdAutofill(author);
 
     let completion: OpenAI.Chat.ChatCompletion;
     let filled: AutofillResult;
@@ -190,7 +248,7 @@ export class ProductAutofillService {
         new Set(categories.map((category) => category.id)),
       );
     } catch (err) {
-      await this.credits.cancel(hold);
+      await this.credits.cancelAutofill(hold);
 
       const details = describeError(err);
       this.logger.error(
@@ -211,44 +269,68 @@ export class ProductAutofillService {
       model,
     );
 
+    const outcome = autofillOutcome(hold);
     return {
       ...filled,
       credits,
-      balance: hold ? await this.available(author.id) : null,
+      balance: await this.balanceAfter(outcome.shopId),
+      free: outcome.free,
+      freeLeft: outcome.freeLeft,
     };
   }
 
-  /** Доступный остаток магазина: занятое выполняющимся запросом не в счёт. */
-  private async available(ownerId: number): Promise<number> {
-    const shopId = await this.credits.shopIdOf(ownerId);
-    if (!shopId) return 0;
-
-    const state = await this.credits.balance(shopId);
-    return Math.max(0, (state?.balance ?? 0) - (state?.reserved ?? 0));
+  /**
+   * Доступный остаток магазина после операции — форма обновляет им счётчик, не
+   * спрашивая цену заново.
+   *
+   * Считает `CreditsService.available` (B5), а не `balance − reserved`.
+   * Собственная формула здесь знала только про купленные кредиты, и подписчик
+   * PRO с шестью тысячами подписочных и нулём купленных получал `balance: 0` —
+   * кнопка объявляла «кредиты закончились» сразу после оплаты тарифа. Хуже
+   * того, отказ был только на глазах: сам резерв идёт через `AVAILABLE_CREDITS`
+   * и прошёл бы, то есть форма запрещала операцию, которую сервер выполнить
+   * готов.
+   *
+   * Магазин приходит из резерва, а не разрешается по владельцу вторым запросом:
+   * `holdAutofill` его уже нашёл, и остаток обязан показываться того самого
+   * магазина, у которого списали. `null` — администратор, у него лимита нет.
+   */
+  private async balanceAfter(shopId: number | null): Promise<number | null> {
+    if (shopId === null) return null;
+    return this.credits.available(shopId);
   }
 
   /**
    * Списать прайс и записать, кто ходил к модели. Двумя записями, как и в
    * генерации картинок: журнал денег ведётся по магазину и не знает, чьи руки
    * нажали кнопку, а запросы администратора списания не создают вовсе.
+   *
+   * `ai_usage` пишется на всех ветках, включая бесплатные: себестоимость
+   * запроса у площадки одинакова, платит за него продавец кредитами или уже
+   * заплатил абонплатой. Отметка `free` разводит эти два случая — без неё
+   * `credits = 0` при непустом `shop_id` читалось бы как сбой списания
+   * (`settleFixed` в catch возвращает ноль), и разобрать по журналу, что
+   * произошло, было бы нечем.
    */
   private async settleAndLog(
-    hold: CreditHold | null,
+    hold: AutofillHold,
     author: Author,
     usd: number | undefined,
     model: string,
   ): Promise<number> {
-    const credits = await this.credits.settleFixed(hold, usd, {
+    const credits = await this.credits.settleAutofill(hold, usd, {
       operation: 'autofill',
       model,
     });
+    const outcome = autofillOutcome(hold);
     await this.aiUsage.record({
       userId: author.id,
-      shopId: hold?.shopId ?? null,
+      shopId: outcome.shopId,
       operation: 'autofill',
       model,
       usd,
       credits,
+      free: outcome.free,
     });
     return credits;
   }

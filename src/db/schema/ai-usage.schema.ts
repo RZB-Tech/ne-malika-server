@@ -58,6 +58,17 @@ export const aiUsage = pgTable(
     /** Списано с магазина. Ноль у администратора и у бесплатных операций. */
     credits: bigint('credits', { mode: 'number' }).notNull().default(0),
 
+    /**
+     * Операция не стоила магазину ничего, хотя магазин у неё есть: месячная
+     * норма START или безлимит PRO/MAX.
+     *
+     * Без этого признака `credits = 0` при непустом `shop_id` означал бы ровно
+     * один случай — сбой списания (`CreditsService.settleFixed` в catch
+     * возвращает 0), — и разобрать по журналу, что произошло, стало бы нечем.
+     * Администратор различается по `shop_id IS NULL`, с ним пересечения нет.
+     */
+    free: boolean('free').notNull().default(false),
+
     /** Списано по оценке, потому что фактическая стоимость не пришла. */
     estimated: boolean('estimated').notNull().default(false),
 

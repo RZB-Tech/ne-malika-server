@@ -49,7 +49,18 @@ export class AdminCreditsController {
     return {
       balance: state.balance,
       reserved: state.reserved,
-      available: Math.max(0, state.balance - state.reserved),
+      /**
+       * Готовое `state.available`, а не `balance - reserved` (B5): с появлением
+       * подписочного кармана старая формула считала только купленные кредиты.
+       * У подписчика PRO с 6000 подписочных и нулём купленных админ видел бы
+       * «доступно 0» ровно там, где продавец на своей странице видит 6000, и
+       * разбор обращения начинался бы с несуществующей проблемы.
+       *
+       * `Math.max(0, …)` оставлен: `AVAILABLE_CREDITS` своего `greatest(0, …)`
+       * не имеет, а резерв способен пережить магазин, у которого кредиты
+       * отобрали, — показывать администратору минус незачем.
+       */
+      available: Math.max(0, state.available),
     };
   }
 

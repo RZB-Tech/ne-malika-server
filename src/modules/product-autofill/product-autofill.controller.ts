@@ -35,8 +35,17 @@ import {
 export class ProductAutofillController {
   constructor(private readonly autofill: ProductAutofillService) {}
 
+  /**
+   * Ручка только читает. Остаток бесплатных попыток она показывает, но не
+   * занимает: форма спрашивает цену при каждом своём открытии, и занятие
+   * попытки показом её остатка обнуляло бы месячную норму, ничего не заполнив.
+   */
   @Get('price')
-  @ApiOperation({ summary: 'Цена автозаполнения и остаток кредитов магазина' })
+  @ApiOperation({
+    summary:
+      'Цена следующего автозаполнения: бесплатно по норме или безлимиту ' +
+      'тарифа либо по прайсу, плюс остаток кредитов магазина',
+  })
   @ApiResponse({ status: 200, type: AutofillPriceDto })
   price(@CurrentUser() user: AuthenticatedUser): Promise<AutofillPriceDto> {
     return this.autofill.price({

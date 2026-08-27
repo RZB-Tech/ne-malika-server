@@ -35,4 +35,24 @@ export const swaggerConfig = new DocumentBuilder()
   .addTag('me-favorites', 'Личный кабинет покупателя: избранные товары')
   .addTag('files', 'Загрузка и получение файлов из S3')
   .addTag('reports', 'Жалобы покупателей и их просмотр администратором')
+  .addTag('subscriptions-public', 'Тарифы подписки магазина и их цены')
+  .addTag(
+    'subscriptions-seller',
+    'Подписка продавца: состояние, оплата, история платежей',
+  )
+  .addTag(
+    'subscriptions-admin',
+    'Подписки магазинов: список, ручная выдача и отмена (администратор)',
+  )
+  .addTag('credits-seller', 'Кредиты магазина на ИИ и их журнал (продавец)')
+  .addTag('banners-public', 'Карусель баннеров на главной (покупатель)')
+  .addTag('banners-seller', 'Баннер магазина в карусели главной (тариф MAX)')
+  .addTag(
+    'banners-admin',
+    'Баннеры площадки и модерация баннеров магазинов (администратор)',
+  )
+  .addTag(
+    'shop-analytics-seller',
+    'Аналитика магазина: сводка, поисковые запросы, выгрузка CSV (продавец)',
+  )
   .build();

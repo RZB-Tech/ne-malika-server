@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, eq, gte, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, lte, sql } from 'drizzle-orm';
 import { DRIZZLE, type DrizzleDb } from '../../db/db.provider';
 import { VISIBLE_PRODUCT } from '../../db/public-products';
 import { productCards, productStatsDaily, shops } from '../../db/schema';
@@ -28,6 +28,41 @@ export interface CountByDay {
   day: string;
   count: number;
 }
+
+/**
+ * Строка топа товаров магазина за период.
+ *
+ * Конверсии здесь нет намеренно: это производная величина, и считается она в
+ * сервисе тем же выражением, что и общая по магазину. Возвращать её из SQL
+ * значило бы завести второе место, где живёт правило «делим на посещения, а не
+ * на сумму контактов», — и однажды поправить только одно из двух.
+ */
+export interface TopProductRow {
+  id: number;
+  name: string;
+  views: number;
+  visitors: number;
+  phoneClicks: number;
+  telegramClicks: number;
+  contactVisitors: number;
+}
+
+/**
+ * Пять сумм суточного среза — одним выражением на оба магазинных отчёта.
+ *
+ * `coalesce(..., 0)::int` обязателен на каждой (V5): `sum()` поверх `integer`
+ * даёт в Postgres `bigint`, у сырого SQL нет drizzle-маппера, и node-postgres
+ * без парсеров типов вернул бы строку. Дальше эта «единица» сложилась бы с
+ * соседней в «11», а не в 2 — ошибка, которая не падает, а тихо врёт продавцу
+ * в отчёте.
+ */
+const SUMS = {
+  views: sql<number>`coalesce(sum(${productStatsDaily.views}), 0)::int`,
+  visitors: sql<number>`coalesce(sum(${productStatsDaily.visitors}), 0)::int`,
+  phoneClicks: sql<number>`coalesce(sum(${productStatsDaily.phoneClicks}), 0)::int`,
+  telegramClicks: sql<number>`coalesce(sum(${productStatsDaily.telegramClicks}), 0)::int`,
+  contactVisitors: sql<number>`coalesce(sum(${productStatsDaily.contactVisitors}), 0)::int`,
+} as const;
 
 @Injectable()
 export class ProductStatsRepository {
@@ -103,6 +138,82 @@ export class ProductStatsRepository {
         ),
       )
       .orderBy(asc(productStatsDaily.day));
+  }
+
+  /**
+   * Суточные строки всего магазина за отрезок, от старого к новому.
+   *
+   * Соединение с `product_cards` — единственный способ узнать магазин: в
+   * суточном срезе лежит только товар. Товары в подсчёт входят все, включая
+   * снятые с витрины и скрытые модератором: это уже случившаяся история
+   * магазина, и прятать её от самого продавца незачем — иначе прошлый месяц
+   * менялся бы задним числом каждый раз, когда он убирает проданный товар.
+   *
+   * Уникальные (`visitors`, `contactVisitors`) складываются по товарам, а
+   * значит один посетитель, открывший три карточки магазина, посчитан трижды.
+   * Настоящую уникальность по магазину дал бы только журнал посетителей, от
+   * которого таблица сознательно ушла. Важно, что конверсия от этого не врёт:
+   * оба её числа завышены одинаково, и внутри каждого товара
+   * `contactVisitors <= visitors`, так что доля остаётся в пределах ста
+   * процентов.
+   */
+  async shopDaily(
+    shopId: number,
+    from: string,
+    to: string,
+  ): Promise<DailyRow[]> {
+    return this.db
+      .select({ day: productStatsDaily.day, ...SUMS })
+      .from(productStatsDaily)
+      .innerJoin(
+        productCards,
+        eq(productStatsDaily.productCardId, productCards.id),
+      )
+      .where(
+        and(
+          eq(productCards.shopId, shopId),
+          gte(productStatsDaily.day, from),
+          lte(productStatsDaily.day, to),
+        ),
+      )
+      .groupBy(productStatsDaily.day)
+      .orderBy(asc(productStatsDaily.day));
+  }
+
+  /**
+   * Товары магазина, которые за период смотрели чаще прочих.
+   *
+   * Порядок — просмотры по убыванию, а при равенстве по возрастанию id.
+   * Второй ключ не украшение: без него Postgres волен вернуть строки с
+   * одинаковым числом просмотров в любом порядке, и продавец, обновив
+   * страницу, увидел бы, что его товары «поменялись местами» сами по себе.
+   *
+   * `limit` приходит из кода, а не от пользователя, — сколько строк влезает в
+   * панель и в выгрузку, решает приложение.
+   */
+  async shopTopProducts(
+    shopId: number,
+    from: string,
+    to: string,
+    limit: number,
+  ): Promise<TopProductRow[]> {
+    return this.db
+      .select({ id: productCards.id, name: productCards.name, ...SUMS })
+      .from(productStatsDaily)
+      .innerJoin(
+        productCards,
+        eq(productStatsDaily.productCardId, productCards.id),
+      )
+      .where(
+        and(
+          eq(productCards.shopId, shopId),
+          gte(productStatsDaily.day, from),
+          lte(productStatsDaily.day, to),
+        ),
+      )
+      .groupBy(productCards.id, productCards.name)
+      .orderBy(desc(SUMS.views), asc(productCards.id))
+      .limit(limit);
   }
 
   /** Просмотры и контакты поперёк всех товаров, по суткам. */

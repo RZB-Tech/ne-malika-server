@@ -11,6 +11,7 @@ import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
 import {
   GetObjectCommand,
   GetObjectCommandOutput,
+  HeadObjectCommand,
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
@@ -187,6 +188,45 @@ export class FilesService {
     }
     const type = file.contentType ?? 'image/jpeg';
     return `data:${type};base64,${Buffer.concat(chunks).toString('base64')}`;
+  }
+
+  /**
+   * Есть ли такой объект в хранилище.
+   *
+   * `HeadObjectCommand`, а не `GetObjectCommand`: нужен только факт, а тело
+   * баннера — мегабайты, которые пришлось бы вычитать и выбросить. Head
+   * возвращает одни метаданные и стоит примерно как ничего.
+   *
+   * Нужен там, где ключ приходит от пользователя отдельно от загрузки: форма
+   * присылает uuid, который ей вернул presigned-эндпоинт, но никакой связи
+   * между этими двумя запросами нет, и `@IsUUID('4')` проверяет лишь форму
+   * строки. Несуществующий ключ в баннере — битая картинка на главной
+   * странице, и увидит её покупатель, а не тот, кто её прислал.
+   *
+   * Отсутствие файла — это `false`, а не исключение: «нет объекта» здесь
+   * нормальный ответ, и решать, чем он обернётся для пользователя, обязан
+   * вызывающий — у баннера и у аватарки тексты разные. А вот недоступность
+   * самого S3 глотать нельзя: молчаливый `false` на упавшем хранилище
+   * превратил бы аварию в «вы прислали неверный файл», и чинить пошли бы не
+   * то и не там.
+   */
+  async exists(key: string): Promise<boolean> {
+    const bucket = this.configService.get<string>('s3.bucket')!;
+
+    try {
+      await this.s3.send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+      return true;
+    } catch (error) {
+      if (this.isS3NotFound(error)) {
+        return false;
+      }
+
+      this.logger.error(
+        `Не удалось проверить файл ${key} в S3`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      throw new BadGatewayException('Не удалось проверить файл в S3');
+    }
   }
 
   buildPublicUrl(key: string): string {

@@ -250,6 +250,15 @@ export class ImageGenService {
   /**
    * Остаток кредитов. Отдаётся клиенту, чтобы продавец видел его до нажатия
    * кнопки, а не узнавал об отказе после.
+   *
+   * `allowed` — это выключатель диалога генерации фотографий на клиенте, и
+   * считать его своей формулой нельзя (B5). Прежняя строка
+   * `balance − reserved` знала только про купленные кредиты: подписчик PRO,
+   * у которого шесть тысяч подписочных и ноль купленных, получал `allowed:
+   * false` — то есть неактивную кнопку в день оплаты тарифа, за который
+   * генерация как раз и оплачена. Остаток по обоим карманам считает
+   * `CreditsService.available`, и он же стоит в резерве, — значит показанное
+   * число и решение занять кредиты приняты по одному правилу.
    */
   async balance(
     userId: number,
@@ -260,11 +269,7 @@ export class ImageGenService {
     const shopId = await this.credits.shopIdOf(userId);
     if (!shopId) return { allowed: false, credits: 0 };
 
-    const state = await this.credits.balance(shopId);
-    const available = Math.max(
-      0,
-      (state?.balance ?? 0) - (state?.reserved ?? 0),
-    );
+    const available = await this.credits.available(shopId);
     return { allowed: available > 0, credits: available };
   }
 

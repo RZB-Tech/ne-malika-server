@@ -33,6 +33,14 @@ export class AiUsageRepository {
     if (query.operation !== undefined) {
       filters.push(eq(aiUsage.operation, query.operation));
     }
+    /**
+     * Именно `!== undefined`, а не проверка на истинность: `free=false` —
+     * осмысленный запрос «покажи только те, за которые заплатили кредитами»,
+     * и он обязан отличаться от «фильтра нет».
+     */
+    if (query.free !== undefined) {
+      filters.push(eq(aiUsage.free, query.free));
+    }
     const where = filters.length ? and(...filters) : undefined;
 
     const data = await this.db
@@ -43,6 +51,7 @@ export class AiUsageRepository {
         images: aiUsage.images,
         usd: aiUsage.usd,
         credits: aiUsage.credits,
+        free: aiUsage.free,
         estimated: aiUsage.estimated,
         createdAt: aiUsage.createdAt,
         userId: aiUsage.userId,
@@ -70,17 +79,47 @@ export class AiUsageRepository {
   }
 
   /**
-   * Итоги за всё время: сколько запросов, сколько они стоили площадке и сколько
-   * снято с магазинов. Разница между двумя суммами и есть заработок на ИИ —
-   * ради неё сводка и нужна.
+   * Итоги за всё время: сколько запросов, во что они обошлись площадке и
+   * сколько снято с магазинов.
+   *
+   * Расход разложен на три кармана, а не сложен в одну сумму, и до подписок
+   * этого не требовалось: тогда всё, что не оплачено кредитами, было запросами
+   * администратора и считалось единицами строк. Теперь появился третий случай —
+   * автозаполнение по месячной норме или безлимиту тарифа, — у которого
+   * `credits = 0` при непустом `shop_id`. Оставь мы одну сумму, себестоимость
+   * таких запросов легла бы в неё при нулевой выручке рядом и прочиталась бы
+   * как чистый убыток, хотя она уже оплачена абонплатой, которой в этой сводке
+   * вообще нет.
+   *
+   * Отсюда деление:
+   * - `usd` — только платные операции, то есть те, у которых есть магазин и
+   *   с него списаны кредиты. Ровно эта сумма сравнима с `credits`, и только их
+   *   разница и есть маржа на ИИ;
+   * - `freeUsd` — операции подписчиков по норме и безлимиту. Расход настоящий,
+   *   но покрыт подпиской, и сравнивать его с `credits` бессмысленно;
+   * - `platformUsd` — запросы администратора (`shop_id IS NULL`): проверки,
+   *   разбор жалоб, собственные карточки площадки. Выручки у них нет и не
+   *   предполагалось.
+   *
+   * Три суммы в сложении дают весь расход у OpenRouter — то, что раньше
+   * показывало одно поле `usd`. Складывать их обратно должен тот, кто хочет
+   * именно расход; тот, кто хочет маржу, обязан этого не делать.
+   *
+   * `filter (where …)` вместо `sum(case when …)`: то же самое, но условие
+   * читается как условие, а не как выражение внутри суммы.
    */
   async totals() {
+    const paid = sql`${aiUsage.shopId} is not null and not ${aiUsage.free}`;
     const rows = await this.db
       .select({
         requests: sql<number>`count(*)::int`,
         images: sql<number>`coalesce(sum(${aiUsage.images}), 0)::int`,
-        usd: sql<number>`coalesce(sum(${aiUsage.usd}), 0)::double precision`,
+        usd: sql<number>`coalesce(sum(${aiUsage.usd}) filter (where ${paid}), 0)::double precision`,
         credits: sql<number>`coalesce(sum(${aiUsage.credits}), 0)::bigint`,
+        freeRequests: sql<number>`(count(*) filter (where ${aiUsage.free}))::int`,
+        freeUsd: sql<number>`coalesce(sum(${aiUsage.usd}) filter (where ${aiUsage.free}), 0)::double precision`,
+        platformRequests: sql<number>`(count(*) filter (where ${aiUsage.shopId} is null))::int`,
+        platformUsd: sql<number>`coalesce(sum(${aiUsage.usd}) filter (where ${aiUsage.shopId} is null), 0)::double precision`,
       })
       .from(aiUsage);
 
@@ -90,6 +129,10 @@ export class AiUsageRepository {
       images: row?.images ?? 0,
       usd: Number(row?.usd ?? 0),
       credits: Number(row?.credits ?? 0),
+      freeRequests: row?.freeRequests ?? 0,
+      freeUsd: Number(row?.freeUsd ?? 0),
+      platformRequests: row?.platformRequests ?? 0,
+      platformUsd: Number(row?.platformUsd ?? 0),
     };
   }
 }

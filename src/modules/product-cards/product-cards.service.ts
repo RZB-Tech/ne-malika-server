@@ -8,6 +8,8 @@ import { ShopsService } from '../shops/shops.service';
 import { AiChecksService } from '../ai/ai-checks.service';
 import { CategoriesService } from '../categories/categories.service';
 import { RedisService } from '../redis/redis.service';
+import { SearchStatsService } from '../search-stats/search-stats.service';
+import { SEARCH_HIT_SHOP_LIMIT } from '../search-stats/search-stats.util';
 import { CreateProductCardDto } from './dto/create-product-card.dto';
 import { UpdateProductCardDto } from './dto/update-product-card.dto';
 import { FindProductCardsQueryDto } from './dto/find-product-cards-query.dto';
@@ -45,6 +47,7 @@ export class ProductCardsService {
     private readonly aiChecksService: AiChecksService,
     private readonly categoriesService: CategoriesService,
     private readonly redis: RedisService,
+    private readonly searchStats: SearchStatsService,
   ) {}
 
   async createForSeller(
@@ -252,13 +255,28 @@ export class ProductCardsService {
     return card;
   }
 
-  async findPublicList(query: FindProductCardsQueryDto) {
+  async findPublicList(query: FindProductCardsQueryDto, userAgent?: string) {
     /**
      * Витрину вперемешку кэшировать нечем: зерно своё у каждого захода, и в
      * Redis копились бы тысячи ключей, которые никто не прочитает второй раз, —
      * а заодно растягивался бы сброс по префиксу, он идёт перебором ключей.
+     *
+     * Этим же держится продвижение подписчиков: порядок, зависящий от срока
+     * подписки, существует только в `sort=random` и в Redis не попадает ни разу.
+     * Понадобится продвижение в других сортировках — в ключ придётся добавить
+     * корзину времени, иначе ответ, собранный при живой подписке, переживёт её
+     * на весь PRODUCT_LIST_TTL_SEC:
+     *   productListKey({ ...cacheable, promo: promoBucket().getTime() })
+     *
+     * `visitor_id` из ключа выброшен: на состав ответа он не влияет — это
+     * подпись для дедупликации счётчика поисковых запросов. Оставить его в
+     * ключе значило бы завести каждому посетителю личную копию одной и той же
+     * страницы: попаданий ноль, ключей столько, сколько людей открыло каталог,
+     * и сброс по префиксу (`RedisService.delByPrefix` идёт перебором)
+     * замедляется вместе с ними.
      */
-    const key = query.sort === 'random' ? null : productListKey({ ...query });
+    const { visitor_id: visitorId, ...cacheable } = query;
+    const key = query.sort === 'random' ? null : productListKey(cacheable);
     const cached = key ? await this.redis.get<PublicList>(key) : null;
     const result =
       cached ??
@@ -270,8 +288,42 @@ export class ProductCardsService {
       await this.redis.set(key, result, PRODUCT_LIST_TTL_SEC);
     }
 
+    this.recordSearchHit(query, visitorId, userAgent);
+
     const { data, total, page, limit } = result;
     return buildPaginatedResult(data, total, page, limit);
+  }
+
+  /**
+   * Отметить поиск в счётчике «по каким запросам вас находят».
+   *
+   * Ничего не ждёт и ничего не возвращает: выдача покупателю уже собрана, и
+   * задерживать её ради статистики нельзя — разбор в `SearchStatsService.record`.
+   * Попадание в кэш считаем тоже: для покупателя это такой же поиск, а для
+   * продавца — такой же показ.
+   *
+   * Только первая страница. Листание — то же самое обращение, и складывать его
+   * значило бы объявить самым популярным запросом тот, по которому кто-то один
+   * долистал до конца.
+   *
+   * Магазины достаются отдельным запросом по всей выдаче, а не по отданным
+   * двадцати четырём карточкам, и передаются функцией, а не значением: до базы
+   * дело дойдёт, только если счётчик решит, что записывать есть что.
+   */
+  private recordSearchHit(
+    query: FindProductCardsQueryDto,
+    visitorId: string | undefined,
+    userAgent: string | undefined,
+  ): void {
+    if (!query.q || (query.page ?? 1) !== 1) return;
+
+    this.searchStats.record(query.q, visitorId, userAgent, async () =>
+      this.productCardsRepository.findMatchingShopIds(
+        query,
+        await this.resolveCategoryIds(query),
+        SEARCH_HIT_SHOP_LIMIT,
+      ),
+    );
   }
 
   listPublicIds() {

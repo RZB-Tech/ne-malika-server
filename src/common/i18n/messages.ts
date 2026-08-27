@@ -16,6 +16,14 @@ import { type ApiLocale } from './locale';
  *   {причина}», «Осталось N из M»): ключом служит готовая строка, а она у
  *   каждого запроса своя. Их перевод потребует кодов вместо текстов;
  * — служебное про OPENROUTER_API_KEY и вебхук: это видит только администратор.
+ *   Той же причиной оставлены по-русски отказы админских ручек подписки
+ *   («Магазин упразднён — подписку выдавать нечему», «У магазина нет
+ *   действующей подписки», «Магазин с оплаченной подпиской удалить нельзя —
+ *   сначала отмените подписку»): язык интерфейса администратора один;
+ * — коды ответа колбэка Click (`CLICK_RESPONSE`): их читает робот провайдера,
+ *   сверка идёт по строке, и перевод сломал бы приём оплаты. Служебное
+ *   «Платёжный документ уже учтён другим платежом» до пользователя тоже не
+ *   доходит — исключение ловит `ClickController` и отвечает кодом протокола.
  */
 const TRANSLATIONS: Record<string, Record<Exclude<ApiLocale, 'ru'>, string>> = {
   'Отсутствует access-токен': {
@@ -155,6 +163,72 @@ const TRANSLATIONS: Record<string, Record<Exclude<ApiLocale, 'ru'>, string>> = {
   'end должен быть в формате HH:mm': {
     'uz-Latn': 'end HH:mm formatida bo‘lishi kerak',
     'uz-Cyrl': 'end HH:mm форматида бўлиши керак',
+  },
+
+  /* Подписка магазина */
+  'Подписка доступна только владельцу активного магазина': {
+    'uz-Latn': 'Obuna faqat faol do‘kon egasi uchun mavjud',
+    'uz-Cyrl': 'Обуна фақат фаол дўкон эгаси учун мавжуд',
+  },
+  'Оплата подписки временно недоступна': {
+    'uz-Latn': 'Obunani to‘lash vaqtincha ishlamayapti',
+    'uz-Cyrl': 'Обунани тўлаш вақтинча ишламаяпти',
+  },
+  'Неизвестный тариф': {
+    'uz-Latn': 'Noma’lum tarif',
+    'uz-Cyrl': 'Номаълум тариф',
+  },
+
+  /* Кредиты на ИИ */
+  'Кредиты закончились. Обратитесь к администратору за пополнением.': {
+    'uz-Latn':
+      'Kreditlar tugadi. To‘ldirish uchun administratorga murojaat qiling.',
+    'uz-Cyrl':
+      'Кредитлар тугади. Тўлдириш учун администраторга мурожаат қилинг.',
+  },
+  'Генерация доступна только владельцу активного магазина.': {
+    'uz-Latn': 'Generatsiya faqat faol do‘kon egasi uchun mavjud.',
+    'uz-Cyrl': 'Генерация фақат фаол дўкон эгаси учун мавжуд.',
+  },
+
+  /* Баннер магазина */
+  'Баннер доступен на тарифе MAX': {
+    'uz-Latn': 'Banner MAX tarifida mavjud',
+    'uz-Cyrl': 'Баннер MAX тарифида мавжуд',
+  },
+  'Баннер уже загружен — отредактируйте существующий': {
+    'uz-Latn': 'Banner allaqachon yuklangan — mavjudini tahrirlang',
+    'uz-Cyrl': 'Баннер аллақачон юкланган — мавжудини таҳрирланг',
+  },
+  'Баннер не найден': {
+    'uz-Latn': 'Banner topilmadi',
+    'uz-Cyrl': 'Баннер топилмади',
+  },
+  'Укажите причину отказа': {
+    'uz-Latn': 'Rad etish sababini ko‘rsating',
+    'uz-Cyrl': 'Рад этиш сабабини кўрсатинг',
+  },
+  'Изображение не загружено — повторите загрузку файла': {
+    'uz-Latn': 'Rasm yuklanmagan — faylni qaytadan yuklang',
+    'uz-Cyrl': 'Расм юкланмаган — файлни қайтадан юкланг',
+  },
+  'Не удалось проверить файл в S3': {
+    'uz-Latn': 'Faylni S3 da tekshirib bo‘lmadi',
+    'uz-Cyrl': 'Файлни S3 да текшириб бўлмади',
+  },
+
+  /* Аналитика магазина */
+  'Период больше 30 дней доступен на тарифе MAX': {
+    'uz-Latn': '30 kundan uzoq davr MAX tarifida mavjud',
+    'uz-Cyrl': '30 кундан узоқ давр MAX тарифида мавжуд',
+  },
+  'Статистика поисковых запросов доступна на тарифе MAX': {
+    'uz-Latn': 'Qidiruv so‘rovlari statistikasi MAX tarifida mavjud',
+    'uz-Cyrl': 'Қидирув сўровлари статистикаси MAX тарифида мавжуд',
+  },
+  'Выгрузка CSV доступна на тарифе MAX': {
+    'uz-Latn': 'CSV yuklab olish MAX tarifida mavjud',
+    'uz-Cyrl': 'CSV юклаб олиш MAX тарифида мавжуд',
   },
 };
 

@@ -1,3 +1,5 @@
+import type { CreditTxnMeta } from '../../db/schema';
+
 /**
  * Кредиты — внутренняя единица расхода на ИИ.
  *
@@ -148,4 +150,142 @@ export function estimateImagesUsd(
  */
 export function estimatePromptUsd(): number {
   return 0.001;
+}
+
+/**
+ * Как одно списание раскладывается по двум карманам магазина.
+ *
+ * Отдельным типом, а не парой чисел в сигнатуре: обе половины обязаны быть
+ * посчитаны за один раз и от одного и того же остатка, а два отдельных
+ * вызова рано или поздно разъехались бы на строке кода между ними.
+ */
+export interface SpendSplit {
+  /** Сколько ушло с подписочного счёта — того, что сгорит при следующей оплате. */
+  fromSubscription: number;
+  /** Остаток списания, снятый с купленного баланса. Он не сгорает никогда. */
+  fromBalance: number;
+}
+
+/**
+ * Порядок карманов: сперва подписочные кредиты, потом купленные.
+ *
+ * Правило объявлено здесь и только здесь, отдельной чистой функцией. Причин
+ * две. Первая — его нужно проверять тестом: расчёт «сколько из какого кармана»
+ * это ровно то место, где ошибка на единицу превращается в чужие деньги, а
+ * поднимать ради неё базу с транзакциями невозможно. Вторая — списание живёт
+ * внутри `CreditsRepository.spend` между блокировкой строки и апдейтом, и
+ * повторить эти три строки где-то ещё будет соблазн ровно до первого
+ * расхождения.
+ *
+ * Почему именно такой порядок: подписочные сгорают при выдаче следующей нормы,
+ * купленные не сгорают никогда. Обратный порядок означал бы, что к концу
+ * месяца у продавца сгорело ровно то, за что он заплатил отдельно, — и
+ * объяснить это ему было бы нечем.
+ *
+ * `usableSubscription` — уже посчитанный доступный подписочный остаток
+ * (`USABLE_SUBSCRIPTION_CREDITS`), а не сырая колонка: у истёкшей подписки он
+ * равен нулю, и вся сумма честно уходит с купленного баланса. Проверять срок
+ * здесь заново значило бы завести третью копию условия «подписка жива».
+ *
+ * Отрицательное, дробное и `NaN` схлопываются в ноль вместо того, чтобы
+ * протечь в SQL: испорченное число на входе должно стоить магазину ноль
+ * кредитов, а не превратиться в `subscription_credits + 12` при вычитании.
+ */
+export function splitSpend(
+  credits: number,
+  usableSubscription: number,
+): SpendSplit {
+  const total = asCount(credits);
+  const fromSubscription = Math.min(total, asCount(usableSubscription));
+  return { fromSubscription, fromBalance: total - fromSubscription };
+}
+
+/** Целое неотрицательное или ноль — деньги дробными и отрицательными не бывают. */
+function asCount(value: number): number {
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+}
+
+/**
+ * Чем платится следующее автозаполнение: абонплатой, месячной нормой или
+ * кредитами.
+ *
+ * Функция нужна затем, что этот выбор делается дважды и обязан совпасть:
+ * `holdAutofill` по нему решает, что занимать, а `autofillQuota` — что
+ * написать на кнопке до нажатия. Разъехавшись, они дали бы худший из
+ * возможных багов в деньгах: подпись «бесплатно» над списанием десяти
+ * кредитов.
+ *
+ * На вход идут `PlanLimits` от `effectiveLimits`, а не `shop.subscriptionPlan`
+ * (B4): у истёкшей подписки сюда приедет `FREE_LIMITS` с нулём бесплатных
+ * попыток, и ветка честно окажется платной.
+ *
+ * `freeAutofills === null` — безлимит PRO/MAX, и проверять его надо ДО
+ * сравнения с потраченным: `null > used` в TypeScript не пишется, а в
+ * JavaScript тихо привело бы `null` к нулю и объявило безлимит исчерпанным.
+ */
+export function autofillCharge(
+  limits: { freeAutofills: number | null },
+  freeUsedThisMonth: number,
+): 'unlimited' | 'free' | 'paid' {
+  if (limits.freeAutofills === null) return 'unlimited';
+  return asCount(limits.freeAutofills) > asCount(freeUsedThisMonth)
+    ? 'free'
+    : 'paid';
+}
+
+/**
+ * Первое число следующего календарного месяца площадки, `YYYY-MM-DD`.
+ *
+ * Нужно ровно для одного: сказать продавцу, когда обновится норма бесплатных
+ * автозаполнений. Считается строкой от строки `monthStart()`, а не
+ * арифметикой над `Date`, по той же причине, по которой сам `monthStart`
+ * считается поверх `today()`: процесс живёт в UTC, а месяц у площадки
+ * ташкентский, и `setMonth` в ночь на первое число вернул бы предыдущий.
+ *
+ * Отдаётся датой, а не моментом времени, сознательно. Норма сбрасывается в
+ * ташкентскую полночь, то есть в 19:00 UTC предыдущих суток; отдав этот момент
+ * в ISO, мы получили бы на клиенте «обновится 31 августа» у всякого, чей
+ * браузер западнее Ташкента. Дата же читается одинаково везде.
+ */
+export function nextMonthStart(monthStart: string): string {
+  const [year, month] = monthStart.split('-').map(Number);
+  if (!year || !month) return monthStart;
+  return month === 12
+    ? `${year + 1}-01-01`
+    : `${year}-${String(month + 1).padStart(2, '0')}-01`;
+}
+
+/**
+ * Что из подробностей списания видит продавец.
+ *
+ * Фильтр белым списком, а не удалением лишнего: в `meta` попадает всё, что
+ * посчитал нужным записать вызывающий, и «забыть вычеркнуть» новое поле здесь
+ * будет ровно один раз — в тот день, когда в журнал добавят ещё одну
+ * внутреннюю цифру.
+ *
+ * Скрывается ровно то, что раскрывает экономику площадки: `usd` —
+ * себестоимость запроса у OpenRouter, `paidUsd` и `markup` — сколько магазин
+ * заплатил и с каким множителем ему это пересчитали, `estimated` — что
+ * стоимость не пришла и списали оценку. Первые три вместе дают маржу площадки
+ * с точностью до цента, и объявлять её продавцу мы не собирались: в кредитах
+ * он видит цену операции, а не наш прайс у поставщика (см. докблок
+ * `CREDITS_PER_USD`). Администратору всё это по-прежнему видно целиком — его
+ * история идёт мимо этой функции.
+ */
+export function sellerVisibleMeta(
+  meta: CreditTxnMeta | null,
+): CreditTxnMeta | null {
+  if (!meta) return null;
+  const visible: CreditTxnMeta = {};
+  if (meta.operation !== undefined) visible.operation = meta.operation;
+  if (meta.images !== undefined) visible.images = meta.images;
+  if (meta.promo !== undefined) visible.promo = meta.promo;
+  if (meta.plan !== undefined) visible.plan = meta.plan;
+  if (meta.fromSubscription !== undefined) {
+    visible.fromSubscription = meta.fromSubscription;
+  }
+  if (meta.free !== undefined) visible.free = meta.free;
+  if (meta.fixed !== undefined) visible.fixed = meta.fixed;
+  if (meta.paymentId !== undefined) visible.paymentId = meta.paymentId;
+  return visible;
 }

@@ -1,6 +1,6 @@
 import { SQL, and, eq, sql } from 'drizzle-orm';
 import { productCards, reviews, shops } from './schema';
-import type { DrizzleDb } from './db.provider';
+import type { Tx } from './db.provider';
 
 /**
  * Пересчёт оценок по опубликованным отзывам.
@@ -15,8 +15,14 @@ import type { DrizzleDb } from './db.provider';
  * оценку, товар удалён вместе с отзывами, — и дальше цифра врёт молча.
  */
 
-/** Транзакция drizzle: пересчёт обязан идти в одном коммите с самой правкой. */
-export type Tx = Parameters<Parameters<DrizzleDb['transaction']>[0]>[0];
+/**
+ * Транзакция drizzle: пересчёт обязан идти в одном коммите с самой правкой.
+ *
+ * Сам тип переехал в `db.provider.ts` — он понадобился не только рейтингам, —
+ * а здесь остался реэкспортом: по этому пути его уже импортирует модуль
+ * отзывов, и ломать чужие импорты ради переезда объявления незачем.
+ */
+export type { Tx };
 
 export async function recomputeProductRating(
   tx: Tx,
