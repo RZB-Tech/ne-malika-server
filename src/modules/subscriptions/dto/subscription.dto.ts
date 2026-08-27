@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { IsIn, IsNotEmpty, IsString } from 'class-validator';
 import {
   paymentProviderEnum,
   paymentStatusEnum,
@@ -359,4 +360,38 @@ export class PaginatedAdminSubscriptionsDto {
 
   @ApiProperty({ type: PaginationMetaDto })
   meta: PaginationMetaDto;
+}
+
+export class CreateInvoiceDto {
+  @ApiProperty({ enum: ['start', 'pro', 'max'] })
+  @IsIn(['start', 'pro', 'max'])
+  plan: PaidPlan;
+
+  @ApiProperty({
+    description: 'Телефон плательщика: 998XXXXXXXXX либо 9 цифр',
+    example: '998901234567',
+  })
+  @IsString()
+  @IsNotEmpty()
+  phone: string;
+}
+
+export class InvoiceDto {
+  @ApiProperty({ description: 'Номер счёта в системе Click' })
+  invoiceId: number;
+
+  @ApiProperty({ description: 'Наш номер заказа' })
+  orderId: number;
+
+  @ApiProperty({ enum: ['start', 'pro', 'max'] })
+  plan: PaidPlan;
+
+  @ApiProperty()
+  amountUzs: number;
+
+  @ApiProperty({ description: 'Куда ушёл счёт' })
+  phone: string;
+
+  @ApiProperty({ enum: ['pending', 'paid', 'cancelled'] })
+  status: 'pending' | 'paid' | 'cancelled';
 }

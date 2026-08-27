@@ -4,6 +4,8 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Param,
+  ParseIntPipe,
   Post,
   Query,
 } from '@nestjs/common';
@@ -21,6 +23,8 @@ import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { SubscriptionsService } from './subscriptions.service';
 import { CreateCheckoutDto } from './dto/create-checkout.dto';
 import {
+  CreateInvoiceDto,
+  InvoiceDto,
   PaginatedSubscriptionPaymentsDto,
   PaymentLinkDto,
   SellerSubscriptionDto,
@@ -60,6 +64,31 @@ export class SellerSubscriptionsController {
     @Body() dto: CreateCheckoutDto,
   ): Promise<PaymentLinkDto> {
     return this.subscriptions.checkout(user.id, dto.plan);
+  }
+
+  @Post('invoice')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Выставить счёт на номер телефона' })
+  @ApiResponse({ status: 200, type: InvoiceDto })
+  @ApiResponse({ status: 400, description: 'Неверный номер телефона' })
+  @ApiResponse({ status: 503, description: 'Merchant API не настроен' })
+  invoice(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: CreateInvoiceDto,
+  ): Promise<InvoiceDto> {
+    return this.subscriptions.createInvoice(user.id, dto.plan, dto.phone);
+  }
+
+  @Get('invoice/:orderId')
+  @ApiOperation({ summary: 'Состояние выставленного счёта' })
+  @ApiResponse({ status: 200, type: InvoiceDto })
+  @ApiResponse({ status: 404, description: 'Счёт не найден' })
+  invoiceState(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('orderId', ParseIntPipe) orderId: number,
+  ): Promise<InvoiceDto> {
+    return this.subscriptions.invoiceState(user.id, orderId);
   }
 
   @Get('payments')

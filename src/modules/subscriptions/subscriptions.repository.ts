@@ -149,6 +149,34 @@ export class SubscriptionsRepository {
     return rows[0];
   }
 
+  async patchOrderMeta(
+    id: number,
+    patch: SubscriptionPaymentMeta,
+  ): Promise<void> {
+    await this.db
+      .update(subscriptionPayments)
+      .set({ meta: SubscriptionsRepository.mergeMeta(patch) })
+      .where(eq(subscriptionPayments.id, id));
+  }
+
+  async findOwnOrder(
+    ownerId: number,
+    merchantBillingId: number,
+  ): Promise<SubscriptionPayment | undefined> {
+    const rows = await this.db
+      .select({ payment: subscriptionPayments })
+      .from(subscriptionPayments)
+      .innerJoin(shops, eq(subscriptionPayments.shopId, shops.id))
+      .where(
+        and(
+          eq(subscriptionPayments.merchantBillingId, merchantBillingId),
+          eq(shops.owner, ownerId),
+        ),
+      )
+      .limit(1);
+    return rows[0]?.payment;
+  }
+
   async lockByBillingId(
     tx: Tx,
     merchantBillingId: number,

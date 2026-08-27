@@ -22,7 +22,10 @@ import type {
 import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
 import type { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { createClickPaymentUrl } from './click-protocol';
-import { ClickMerchantService } from './click-merchant.service';
+import {
+  ClickMerchantService,
+  normalizeUzPhone,
+} from './click-merchant.service';
 import {
   SubscriptionsRepository,
   type PaymentOrder,
@@ -46,6 +49,7 @@ import type { ActivateSubscriptionDto } from './dto/activate-subscription.dto';
 import type { FindAdminSubscriptionsQueryDto } from './dto/find-admin-subscriptions-query.dto';
 import type {
   AdminSubscriptionRowDto,
+  InvoiceDto,
   PaymentLinkDto,
   SellerSubscriptionDto,
   SubscriptionPaymentDto,
@@ -187,6 +191,94 @@ export class SubscriptionsService implements OnModuleInit {
         order.createdAt.getTime() + TEST_WINDOW_MINUTES * 60_000,
       ).toISOString(),
       url: this.payUrl(this.testPriceUzs, order.merchantBillingId),
+    };
+  }
+
+  async createInvoice(
+    ownerId: number,
+    plan: PaidPlan,
+    phone: string,
+  ): Promise<InvoiceDto> {
+    const spec = this.specOf(plan);
+    this.requireClickConfigured();
+
+    if (!this.merchant.isConfigured()) {
+      this.logger.error(
+        'Счёт на телефон запрошен без реквизитов Merchant API: нет CLICK_MERCHANT_USER_ID',
+      );
+      throw new ServiceUnavailableException(
+        'Оплата по номеру телефона временно недоступна',
+      );
+    }
+
+    const normalized = normalizeUzPhone(phone);
+    if (!normalized) throw new BadRequestException('Неверный номер телефона');
+
+    const shop = await this.shopOfOwner(ownerId);
+
+    const order = await this.openOrder({
+      shopId: shop.id,
+      plan: spec.id,
+      amount: spec.priceUzs,
+      initiatorId: ownerId,
+      test: false,
+    });
+
+    const invoice = await this.merchant.createInvoice({
+      phone: normalized,
+      amountUzs: spec.priceUzs,
+      merchantTransId: String(order.merchantBillingId),
+    });
+
+    if (!invoice.ok) {
+      throw new ServiceUnavailableException(
+        'Не удалось выставить счёт — попробуйте оплатить по ссылке',
+      );
+    }
+
+    await this.repository.patchOrderMeta(order.id, {
+      invoiceId: invoice.invoiceId,
+      invoicePhone: normalized,
+    });
+
+    return {
+      invoiceId: invoice.invoiceId,
+      orderId: order.merchantBillingId,
+      plan: spec.id,
+      amountUzs: spec.priceUzs,
+      phone: normalized,
+      status: 'pending',
+    };
+  }
+
+  async invoiceState(ownerId: number, orderId: number): Promise<InvoiceDto> {
+    const order = await this.repository.findOwnOrder(ownerId, orderId);
+    if (!order) throw new NotFoundException('Счёт не найден');
+
+    const invoiceId = order.meta?.invoiceId;
+    if (!invoiceId) throw new NotFoundException('Счёт не выставлялся');
+
+    if (order.status !== 'paid' && order.status !== 'cancelled') {
+      const state = await this.merchant.invoiceState(invoiceId);
+      if (state.ok) {
+        this.logger.log(
+          `Счёт Click ${invoiceId} (заказ ${orderId}): статус ${state.status} — ${state.note}`,
+        );
+      }
+    }
+
+    return {
+      invoiceId,
+      orderId: order.merchantBillingId,
+      plan: isPaidPlan(order.plan) ? order.plan : 'start',
+      amountUzs: order.amount,
+      phone: order.meta?.invoicePhone ?? '',
+      status:
+        order.status === 'paid'
+          ? 'paid'
+          : order.status === 'cancelled'
+            ? 'cancelled'
+            : 'pending',
     };
   }
 

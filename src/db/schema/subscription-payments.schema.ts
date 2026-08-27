@@ -30,6 +30,8 @@ export interface SubscriptionPaymentMeta {
   needsManualReview?: boolean;
   refundedByProvider?: boolean;
   test?: boolean;
+  invoiceId?: number;
+  invoicePhone?: string;
   adminId?: number;
   note?: string;
 }
