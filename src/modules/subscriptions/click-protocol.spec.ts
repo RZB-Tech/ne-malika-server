@@ -275,13 +275,31 @@ describe('ссылка на кассу Click', () => {
       }),
     );
 
-    assert.equal(url.origin + url.pathname, 'https://my.click.uz/services/pay');
+    assert.equal(
+      url.origin + url.pathname,
+      'https://my.click.uz/services/pay/',
+    );
     assert.deepEqual(Object.fromEntries(url.searchParams), {
       service_id: '42',
       merchant_id: '7',
       amount: '65000.00',
       transaction_param: 'user 1',
     });
+  });
+
+  it('строит адрес кассы ровно так, как в примерах Android и iOS', () => {
+    const url = createClickPaymentUrl({
+      serviceId: '110383',
+      merchantId: '58112',
+      amountUzs: 1000,
+      transactionParam: '100002',
+    });
+
+    assert.equal(
+      url,
+      'https://my.click.uz/services/pay/?service_id=110383&merchant_id=58112&amount=1000.00&transaction_param=100002',
+    );
+    assert.ok(url.includes('/services/pay/?'));
   });
 
   it('не даёт параметру платежа развалить строку запроса', () => {

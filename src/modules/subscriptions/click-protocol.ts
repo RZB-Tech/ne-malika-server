@@ -156,6 +156,8 @@ export function createClickMerchantAuth(
   return `${merchantUserId}:${digest}:${timestamp}`;
 }
 
+export const CLICK_PAY_URL = 'https://my.click.uz/services/pay/';
+
 export function createClickPaymentUrl(input: {
   serviceId: string;
   merchantId: string;
@@ -170,5 +172,5 @@ export function createClickPaymentUrl(input: {
     transaction_param: input.transactionParam,
   });
   if (input.returnUrl) params.set('return_url', input.returnUrl);
-  return `https://my.click.uz/services/pay?${params.toString()}`;
+  return `${CLICK_PAY_URL}?${params.toString()}`;
 }
