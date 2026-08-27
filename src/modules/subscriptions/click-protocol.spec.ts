@@ -193,7 +193,10 @@ describe('разбор колбэка Click', () => {
       ['paydoc не число', { ...PREPARE_BODY, click_paydoc_id: 'not-a-number' }],
       ['trans_id не число', { ...PREPARE_BODY, click_trans_id: '12a' }],
       ['service_id не число', { ...PREPARE_BODY, service_id: 'svc' }],
-      ['пустой merchant_trans_id', { ...PREPARE_BODY, merchant_trans_id: '   ' }],
+      [
+        'пустой merchant_trans_id и нет transaction_param',
+        { ...PREPARE_BODY, merchant_trans_id: '   ' },
+      ],
       ['нет sign_time', { ...PREPARE_BODY, sign_time: '' }],
       ['неизвестный action', { ...PREPARE_BODY, action: '2' }],
       ['action не число', { ...PREPARE_BODY, action: 'prepare' }],
@@ -209,6 +212,38 @@ describe('разбор колбэка Click', () => {
         name,
       );
     }
+  });
+
+  /**
+   * Боевое наблюдение: касса присылает пустой `merchant_trans_id`, а значение
+   * оставляет в `transaction_param` — том, что мы положили в ссылку оплаты.
+   * Отказ здесь означает `-8` на законный запрос и «Недостаточно информации от
+   * поставщика» на экране плательщика, поэтому падать такому тесту нельзя.
+   */
+  it('берёт transaction_param, когда merchant_trans_id пуст', () => {
+    const signString = createClickSignature(PREPARE_BODY, 'secret');
+
+    const parsed = parseClickCallback({
+      sign_string: signString,
+      ...PREPARE_BODY,
+      merchant_trans_id: '',
+      transaction_param: 'user-1',
+    });
+
+    assert.equal(parsed?.merchantTransId, 'user-1');
+  });
+
+  /** Присланный `merchant_trans_id` главнее: подстановка — запасной путь. */
+  it('не даёт transaction_param перебить непустой merchant_trans_id', () => {
+    const signString = createClickSignature(PREPARE_BODY, 'secret');
+
+    const parsed = parseClickCallback({
+      sign_string: signString,
+      ...PREPARE_BODY,
+      transaction_param: 'подменённое-значение',
+    });
+
+    assert.equal(parsed?.merchantTransId, 'user-1');
   });
 
   /**

@@ -190,7 +190,22 @@ export function parseClickCallback(
   const clickTransId = clickField(body, 'click_trans_id');
   const clickPaydocId = clickField(body, 'click_paydoc_id');
   const serviceId = clickField(body, 'service_id');
-  const merchantTransId = clickField(body, 'merchant_trans_id');
+  /**
+   * Касса Click умеет прислать в SHOP API ПУСТОЙ `merchant_trans_id`, оставив
+   * значение в `transaction_param` — том самом параметре, который мы положили
+   * в ссылку на оплату. Это наблюдение из боевой интеграции, а не догадка.
+   * Читать только первое поле — значит отвечать `-8` на совершенно законный
+   * запрос, а плательщику видеть «Оплата временно невозможна. Недостаточно
+   * информации от поставщика».
+   *
+   * Подпись при этом считается по ИСХОДНОМУ значению, пусть и пустому:
+   * `createClickSignature` читает `merchant_trans_id` из тела сам, и сверяться
+   * надо с тем, что провайдер отправил, а не с тем, что мы восстановили.
+   * Подстановка живёт только здесь — в поле, по которому ищется магазин.
+   */
+  const merchantTransId =
+    clickField(body, 'merchant_trans_id') ||
+    clickField(body, 'transaction_param');
   const merchantPrepareId = clickField(body, 'merchant_prepare_id');
   const amountText = clickField(body, 'amount');
   const actionText = clickField(body, 'action');
