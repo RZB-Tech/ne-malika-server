@@ -23,6 +23,7 @@ import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { ReasonDto } from '../../common/dto/reason.dto';
 import { SubscriptionsService } from './subscriptions.service';
 import { ActivateSubscriptionDto } from './dto/activate-subscription.dto';
+import { CreateTestPaymentDto } from './dto/create-test-payment.dto';
 import { FindAdminSubscriptionsQueryDto } from './dto/find-admin-subscriptions-query.dto';
 import {
   SubscriptionReportDto,
@@ -108,16 +109,30 @@ export class AdminShopSubscriptionController {
   @Post('test-checkout')
   @HttpCode(HttpStatus.OK)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
-  @ApiOperation({ summary: 'Открыть окно тестовой оплаты и выдать ссылку' })
+  @ApiOperation({
+    summary: 'Завести фейковый счёт для проверки кассы',
+    description:
+      'Открывает счёт с тестовой суммой: оплата по нему проходит через ' +
+      'боевой протокол, но подписку не выдаёт. Для Payme это же и есть ' +
+      'заказ для песочницы — в ответе номер заказа, сумма в тийинах, имя ' +
+      'поля account и ID кассы.',
+  })
   @ApiResponse({ status: 200, type: TestPaymentLinkDto })
-  @ApiResponse({ status: 400, description: 'Тестовая сумма не задана' })
+  @ApiResponse({
+    status: 400,
+    description: 'Сумма не задана либо совпадает с ценой боевого тарифа',
+  })
   @ApiResponse({ status: 404, description: 'Активный магазин не найден' })
-  @ApiResponse({ status: 503, description: 'Click не настроен' })
+  @ApiResponse({ status: 503, description: 'Касса не настроена' })
   testCheckout(
     @CurrentUser() user: AuthenticatedUser,
     @Param('shopId', ParseIntPipe) shopId: number,
+    @Body() dto: CreateTestPaymentDto,
   ): Promise<TestPaymentLinkDto> {
-    return this.subscriptions.createTestCheckout(shopId, user.id);
+    return this.subscriptions.createTestCheckout(shopId, user.id, {
+      provider: dto.provider,
+      amountUzs: dto.amountUzs,
+    });
   }
 
   @Post('cancel')

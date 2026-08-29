@@ -63,7 +63,7 @@ export class SellerSubscriptionsController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateCheckoutDto,
   ): Promise<PaymentLinkDto> {
-    return this.subscriptions.checkout(user.id, dto.plan);
+    return this.subscriptions.checkout(user.id, dto.plan, dto.provider);
   }
 
   @Post('invoice')

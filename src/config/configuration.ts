@@ -75,6 +75,21 @@ export default () => ({
     testPriceUzs: envInt(process.env.SUBSCRIPTION_TEST_PRICE_UZS, 1_000),
   },
 
+  payme: {
+    merchantId: envText(process.env.PAYME_MERCHANT_ID),
+    key: envText(process.env.PAYME_KEY),
+    checkoutUrl:
+      envText(process.env.PAYME_CHECKOUT_URL) ?? 'https://checkout.paycom.uz',
+    accountField: envText(process.env.PAYME_ACCOUNT_FIELD) ?? 'order_id',
+    sandboxTtlMin: envInt(process.env.PAYME_SANDBOX_ORDER_TTL_MIN, 720),
+    fiscal: {
+      ikpu: envText(process.env.PAYME_FISCAL_IKPU),
+      packageCode: envText(process.env.PAYME_FISCAL_PACKAGE_CODE),
+      vatPercent: envInt(process.env.PAYME_FISCAL_VAT_PERCENT, 12),
+      receiptType: envInt(process.env.PAYME_FISCAL_RECEIPT_TYPE, 0),
+    },
+  },
+
   click: {
     merchantId: envText(process.env.CLICK_MERCHANT_ID),
     serviceId: envText(process.env.CLICK_SERVICE_ID),

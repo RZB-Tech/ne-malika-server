@@ -10,6 +10,7 @@ import {
   IsOptional,
   IsString,
   Matches,
+  Max,
   Min,
   ValidateIf,
   validateSync,
@@ -194,6 +195,52 @@ class EnvironmentVariables {
   @IsInt()
   @Min(1000)
   CLICK_REVERSAL_TIMEOUT_MS?: number;
+
+  @IsOptional()
+  @IsString()
+  PAYME_MERCHANT_ID?: string;
+
+  @ValidateIf((env: EnvironmentVariables) => hasText(env.PAYME_MERCHANT_ID))
+  @IsString()
+  @IsNotEmpty({
+    message: 'PAYME_KEY обязателен вместе с PAYME_MERCHANT_ID',
+  })
+  PAYME_KEY?: string;
+
+  @IsOptional()
+  @IsString()
+  PAYME_CHECKOUT_URL?: string;
+
+  @IsOptional()
+  @IsString()
+  PAYME_ACCOUNT_FIELD?: string;
+
+  @Transform(optionalInt)
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  PAYME_SANDBOX_ORDER_TTL_MIN?: number;
+
+  @IsOptional()
+  @IsString()
+  PAYME_FISCAL_IKPU?: string;
+
+  @IsOptional()
+  @IsString()
+  PAYME_FISCAL_PACKAGE_CODE?: string;
+
+  @Transform(optionalInt)
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  PAYME_FISCAL_VAT_PERCENT?: number;
+
+  @Transform(optionalInt)
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  PAYME_FISCAL_RECEIPT_TYPE?: number;
 
   @Transform(optionalInt)
   @IsOptional()

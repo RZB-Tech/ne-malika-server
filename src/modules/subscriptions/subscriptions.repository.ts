@@ -80,6 +80,8 @@ export interface TopShopRow {
   payments: number;
 }
 
+export type PaymentProvider = SubscriptionPayment['provider'];
+
 export interface PaymentShop {
   id: number;
   name: string;
@@ -95,6 +97,13 @@ export interface PaymentOrder {
   shopStatus: string;
   ownerId: number;
   ownerTelegramId: number;
+}
+
+export interface OrderWithShop {
+  payment: SubscriptionPayment;
+  shopName: string;
+  shopStatus: Shop['status'];
+  ownerId: number;
 }
 
 interface LockedShop {
@@ -153,6 +162,7 @@ export class SubscriptionsRepository {
 
   async createOrder(data: {
     shopId: number;
+    provider: PaymentProvider;
     plan: SubscriptionPlanId;
     amount: number;
     initiatorId: number | null;
@@ -162,7 +172,7 @@ export class SubscriptionsRepository {
       .insert(subscriptionPayments)
       .values({
         shopId: data.shopId,
-        provider: 'click',
+        provider: data.provider,
         plan: data.plan,
         amount: data.amount,
         status: 'pending',
@@ -175,6 +185,7 @@ export class SubscriptionsRepository {
 
   async findReusableOrder(data: {
     shopId: number;
+    provider: PaymentProvider;
     plan: SubscriptionPlanId;
     amount: number;
     test: boolean;
@@ -186,7 +197,7 @@ export class SubscriptionsRepository {
       .where(
         and(
           eq(subscriptionPayments.shopId, data.shopId),
-          eq(subscriptionPayments.provider, 'click'),
+          eq(subscriptionPayments.provider, data.provider),
           eq(subscriptionPayments.plan, data.plan),
           eq(subscriptionPayments.status, 'pending'),
           sql`${subscriptionPayments.amount} = ${data.amount}`,
@@ -297,6 +308,7 @@ export class SubscriptionsRepository {
 
   async lockByProviderTransaction(
     tx: Tx,
+    provider: PaymentProvider,
     providerTransactionId: string,
   ): Promise<SubscriptionPayment | undefined> {
     const rows = await tx
@@ -304,13 +316,59 @@ export class SubscriptionsRepository {
       .from(subscriptionPayments)
       .where(
         and(
-          eq(subscriptionPayments.provider, 'click'),
+          eq(subscriptionPayments.provider, provider),
           eq(subscriptionPayments.providerTransactionId, providerTransactionId),
         ),
       )
       .limit(1)
       .for('update');
     return rows[0];
+  }
+
+  /**
+   * Привязка транзакции Payme к заказу. Один заказ держит ровно одну
+   * транзакцию: вторую по тому же счёту протокол обязывает отбить.
+   */
+  async attachPaymeTransaction(
+    tx: Tx,
+    id: number,
+    data: {
+      providerTransactionId: string;
+      meta: SubscriptionPaymentMeta;
+    },
+  ): Promise<SubscriptionPayment> {
+    const rows = await tx
+      .update(subscriptionPayments)
+      .set({
+        status: 'prepared',
+        providerTransactionId: data.providerTransactionId,
+        providerPrepareId: data.providerTransactionId,
+        meta: SubscriptionsRepository.mergeMeta(data.meta),
+      })
+      .where(eq(subscriptionPayments.id, id))
+      .returning();
+    return rows[0];
+  }
+
+  /**
+   * Выписка для GetStatement: транзакции Payme, созданные в интервале.
+   * Время создания хранится в meta.paymeCreateTime — миллисекунды, как
+   * их считает сам протокол.
+   */
+  async findPaymeStatement(
+    fromMs: number,
+    toMs: number,
+  ): Promise<SubscriptionPayment[]> {
+    return this.db
+      .select()
+      .from(subscriptionPayments)
+      .where(
+        and(
+          eq(subscriptionPayments.provider, 'payme'),
+          sql`(${subscriptionPayments.meta} ->> 'paymeCreateTime')::bigint between ${fromMs} and ${toMs}`,
+        ),
+      )
+      .orderBy(subscriptionPayments.id);
   }
 
   async markPaid(
@@ -493,6 +551,40 @@ export class SubscriptionsRepository {
       .innerJoin(shops, eq(subscriptionPayments.shopId, shops.id))
       .innerJoin(users, eq(shops.owner, users.id))
       .where(eq(subscriptionPayments.merchantBillingId, merchantBillingId))
+      .limit(1);
+    return rows[0];
+  }
+
+  /** Счёт вместе с магазином — чтения хватает, блокировка тут не нужна. */
+  async findOrderWithShop(
+    merchantBillingId: number,
+  ): Promise<OrderWithShop | undefined> {
+    const rows = await this.db
+      .select({
+        payment: subscriptionPayments,
+        shopName: shops.name,
+        shopStatus: shops.status,
+        ownerId: shops.owner,
+      })
+      .from(subscriptionPayments)
+      .innerJoin(shops, eq(subscriptionPayments.shopId, shops.id))
+      .where(eq(subscriptionPayments.merchantBillingId, merchantBillingId))
+      .limit(1);
+    return rows[0];
+  }
+
+  async findPaymeByTransaction(
+    providerTransactionId: string,
+  ): Promise<SubscriptionPayment | undefined> {
+    const rows = await this.db
+      .select()
+      .from(subscriptionPayments)
+      .where(
+        and(
+          eq(subscriptionPayments.provider, 'payme'),
+          eq(subscriptionPayments.providerTransactionId, providerTransactionId),
+        ),
+      )
       .limit(1);
     return rows[0];
   }

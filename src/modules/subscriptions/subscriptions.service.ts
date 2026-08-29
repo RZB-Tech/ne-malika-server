@@ -15,6 +15,7 @@ import { RedisService } from '../redis/redis.service';
 import { PRODUCT_CACHE_PREFIX } from '../product-cards/product-cards.cache';
 import { escapeHtml, excerpt } from '../bot/telegram-html';
 import { nextMonthStart } from '../credits/credits.constants';
+import type { Tx } from '../../db/db.provider';
 import type {
   SubscriptionPayment,
   SubscriptionPaymentMeta,
@@ -22,6 +23,7 @@ import type {
 import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
 import type { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { createClickPaymentUrl } from './click-protocol';
+import { createPaymeCheckoutUrl, uzsToTiyin } from './payme-protocol';
 import {
   ClickMerchantService,
   normalizeUzPhone,
@@ -29,6 +31,7 @@ import {
 import {
   SubscriptionsRepository,
   type PaymentOrder,
+  type PaymentProvider,
   type PaymentShop,
 } from './subscriptions.repository';
 import {
@@ -77,6 +80,16 @@ export type PrepareResult =
   | { kind: 'shop_gone' }
   | { kind: 'expired' }
   | { kind: 'conflict' };
+
+export type SettleResult =
+  | {
+      kind: 'paid';
+      payment: SubscriptionPayment;
+      ownerId: number;
+      shopName: string;
+      test?: boolean;
+    }
+  | { kind: 'mismatch' };
 
 export type CompleteResult =
   | {
@@ -167,39 +180,73 @@ export class SubscriptionsService implements OnModuleInit {
     return spec;
   }
 
+  /** Сколько живёт тестовый счёт провайдера. */
+  testWindowMinutes(provider: PaymentProvider): number {
+    return provider === 'payme'
+      ? (this.config.get<number>('payme.sandboxTtlMin') ?? 720)
+      : TEST_WINDOW_MINUTES;
+  }
+
+  /**
+   * Фейковый счёт для проверки кассы: боевой заказ с тестовой суммой, который
+   * ничего не выдаёт при оплате. Для Payme это же и есть заказ, номер и сумму
+   * которого вбивают в песочницу.
+   */
   async createTestCheckout(
     shopId: number,
     adminId: number,
+    options: { provider?: PaymentProvider; amountUzs?: number } = {},
   ): Promise<TestPaymentLinkDto> {
-    this.requireClickConfigured();
+    const provider = options.provider ?? 'click';
+    this.requireProviderConfigured(provider);
 
-    if (!(this.testPriceUzs > 0)) {
+    const amountUzs = options.amountUzs ?? this.testPriceUzs;
+
+    if (!Number.isInteger(amountUzs) || amountUzs <= 0) {
       throw new BadRequestException(
-        'Тестовая сумма не задана: заполните SUBSCRIPTION_TEST_PRICE_UZS',
+        'Тестовая сумма не задана: заполните SUBSCRIPTION_TEST_PRICE_UZS либо укажите сумму в запросе',
+      );
+    }
+
+    if (this.specs.some((spec) => spec.priceUzs === amountUzs)) {
+      throw new BadRequestException(
+        'Тестовая сумма совпадает с ценой тарифа — возьмите любую другую',
       );
     }
 
     const shop = await this.repository.findShopById(shopId);
     if (!shop) throw new NotFoundException('Активный магазин не найден');
 
+    const windowMinutes = this.testWindowMinutes(provider);
+
     const order = await this.openOrder({
       shopId: shop.id,
+      provider,
       plan: 'free',
-      amount: this.testPriceUzs,
+      amount: amountUzs,
       initiatorId: adminId,
       test: true,
+      reuseMinutes: windowMinutes,
     });
 
     this.logger.log(
-      `Заведён счёт проверки кассы ${order.merchantBillingId}: магазин ${shop.id}, ${this.testPriceUzs} UZS`,
+      `Заведён счёт проверки кассы ${provider} ${order.merchantBillingId}: магазин ${shop.id}, ${amountUzs} UZS`,
     );
 
     return {
-      amountUzs: this.testPriceUzs,
+      provider,
+      orderId: order.merchantBillingId,
+      amountUzs,
+      amountTiyin: uzsToTiyin(amountUzs),
+      accountField: this.paymeAccountField(),
+      merchantId:
+        provider === 'payme'
+          ? (this.paymeMerchantId() ?? null)
+          : (this.config.get<string>('click.merchantId') ?? null),
       armedUntil: new Date(
-        order.createdAt.getTime() + TEST_WINDOW_MINUTES * 60_000,
+        order.createdAt.getTime() + windowMinutes * 60_000,
       ).toISOString(),
-      url: this.payUrl(this.testPriceUzs, order.merchantBillingId),
+      url: this.providerUrl(provider, amountUzs, order.merchantBillingId),
     };
   }
 
@@ -227,6 +274,7 @@ export class SubscriptionsService implements OnModuleInit {
 
     const order = await this.openOrder({
       shopId: shop.id,
+      provider: 'click',
       plan: spec.id,
       amount: spec.priceUzs,
       initiatorId: ownerId,
@@ -300,16 +348,73 @@ export class SubscriptionsService implements OnModuleInit {
     });
   }
 
+  /** Имя поля account, под которым касса Payme ждёт номер заказа. */
+  paymeAccountField(): string {
+    return this.config.get<string>('payme.accountField') ?? 'order_id';
+  }
+
+  paymeMerchantId(): string | undefined {
+    return this.config.get<string>('payme.merchantId');
+  }
+
+  private paymeUrl(amountUzs: number, merchantBillingId: number): string {
+    return createPaymeCheckoutUrl({
+      checkoutUrl: this.config.get<string>('payme.checkoutUrl')!,
+      merchantId: this.config.get<string>('payme.merchantId')!,
+      accountField: this.paymeAccountField(),
+      orderId: merchantBillingId,
+      amountTiyin: uzsToTiyin(amountUzs),
+    });
+  }
+
+  private providerUrl(
+    provider: PaymentProvider,
+    amountUzs: number,
+    merchantBillingId: number,
+  ): string {
+    return provider === 'payme'
+      ? this.paymeUrl(amountUzs, merchantBillingId)
+      : this.payUrl(amountUzs, merchantBillingId);
+  }
+
+  private requirePaymeConfigured(): void {
+    const configured = Boolean(
+      this.config.get<string>('payme.merchantId') &&
+      this.config.get<string>('payme.key'),
+    );
+
+    if (!configured) {
+      this.logger.error(
+        'Оплата через Payme запрошена, но касса не настроена: нет PAYME_MERCHANT_ID / PAYME_KEY',
+      );
+      throw new ServiceUnavailableException(
+        'Оплата через Payme временно недоступна',
+      );
+    }
+  }
+
+  private requireProviderConfigured(provider: PaymentProvider): void {
+    if (provider === 'payme') {
+      this.requirePaymeConfigured();
+      return;
+    }
+    this.requireClickConfigured();
+  }
+
   private async openOrder(input: {
     shopId: number;
+    provider: PaymentProvider;
     plan: SubscriptionPlanId;
     amount: number;
     initiatorId: number | null;
     test: boolean;
+    reuseMinutes?: number;
   }): Promise<SubscriptionPayment> {
-    const since = new Date(Date.now() - ORDER_REUSE_MINUTES * 60_000);
+    const reuseMinutes = input.reuseMinutes ?? ORDER_REUSE_MINUTES;
+    const since = new Date(Date.now() - reuseMinutes * 60_000);
     const existing = await this.repository.findReusableOrder({
       shopId: input.shopId,
+      provider: input.provider,
       plan: input.plan,
       amount: input.amount,
       test: input.test,
@@ -319,6 +424,7 @@ export class SubscriptionsService implements OnModuleInit {
 
     return this.repository.createOrder({
       shopId: input.shopId,
+      provider: input.provider,
       plan: input.plan,
       amount: input.amount,
       initiatorId: input.initiatorId,
@@ -355,14 +461,19 @@ export class SubscriptionsService implements OnModuleInit {
     }
   }
 
-  async checkout(ownerId: number, plan: PaidPlan): Promise<PaymentLinkDto> {
+  async checkout(
+    ownerId: number,
+    plan: PaidPlan,
+    provider: PaymentProvider = 'click',
+  ): Promise<PaymentLinkDto> {
     const spec = this.specOf(plan);
-    this.requireClickConfigured();
+    this.requireProviderConfigured(provider);
 
     const shop = await this.shopOfOwner(ownerId);
 
     const order = await this.openOrder({
       shopId: shop.id,
+      provider,
       plan: spec.id,
       amount: spec.priceUzs,
       initiatorId: ownerId,
@@ -370,10 +481,10 @@ export class SubscriptionsService implements OnModuleInit {
     });
 
     return {
-      provider: 'click',
+      provider,
       plan: spec.id,
       amountUzs: spec.priceUzs,
-      url: this.payUrl(spec.priceUzs, order.merchantBillingId),
+      url: this.providerUrl(provider, spec.priceUzs, order.merchantBillingId),
     };
   }
 
@@ -488,6 +599,7 @@ export class SubscriptionsService implements OnModuleInit {
       async (tx) => {
         const payment = await this.repository.lockByProviderTransaction(
           tx,
+          'click',
           input.providerTransactionId,
         );
         if (!payment) return { kind: 'not_found' };
@@ -553,58 +665,7 @@ export class SubscriptionsService implements OnModuleInit {
           return { kind: 'shop_gone' };
         }
 
-        if (payment.meta?.test) {
-          const updated = await this.repository.markPaid(tx, payment.id, {
-            activatedFrom: null,
-            activatedUntil: null,
-            grantedCredits: 0,
-            burnedCredits: 0,
-            paidAt: now,
-          });
-
-          return {
-            kind: 'paid',
-            payment: updated,
-            ownerId: shop.owner,
-            shopName: shop.name,
-            test: true,
-          };
-        }
-
-        if (!isPaidPlan(payment.plan)) {
-          this.logger.error(
-            `Платёж ${payment.id} записан с непокупаемым тарифом «${payment.plan}» — выдавать нечего`,
-          );
-          return { kind: 'mismatch' };
-        }
-        const spec = this.specOf(payment.plan);
-
-        const grant = await this.credits.grantSubscriptionCredits(
-          {
-            shopId: shop.id,
-            plan: spec.id,
-            months: spec.months,
-            credits: spec.credits,
-            paymentId: payment.id,
-            now,
-          },
-          tx,
-        );
-
-        const updated = await this.repository.markPaid(tx, payment.id, {
-          activatedFrom: grant.from,
-          activatedUntil: grant.until,
-          grantedCredits: grant.granted,
-          burnedCredits: grant.burned,
-          paidAt: now,
-        });
-
-        return {
-          kind: 'paid',
-          payment: updated,
-          ownerId: shop.owner,
-          shopName: shop.name,
-        };
+        return this.settlePaidOrder(tx, payment, shop, now);
       },
     );
 
@@ -625,6 +686,76 @@ export class SubscriptionsService implements OnModuleInit {
     }
 
     return result;
+  }
+
+  /**
+   * Выдача оплаченного счёта — общая часть для всех провайдеров. Зовётся
+   * внутри транзакции, когда провайдер подтвердил списание: тестовый счёт
+   * просто закрывается, боевой выдаёт период и кредиты.
+   */
+  async settlePaidOrder(
+    tx: Tx,
+    payment: SubscriptionPayment,
+    shop: { id: number; name: string; owner: number },
+    now: Date,
+  ): Promise<SettleResult> {
+    if (payment.meta?.test) {
+      const updated = await this.repository.markPaid(tx, payment.id, {
+        activatedFrom: null,
+        activatedUntil: null,
+        grantedCredits: 0,
+        burnedCredits: 0,
+        paidAt: now,
+      });
+
+      return {
+        kind: 'paid',
+        payment: updated,
+        ownerId: shop.owner,
+        shopName: shop.name,
+        test: true,
+      };
+    }
+
+    if (!isPaidPlan(payment.plan)) {
+      this.logger.error(
+        `Платёж ${payment.id} записан с непокупаемым тарифом «${payment.plan}» — выдавать нечего`,
+      );
+      return { kind: 'mismatch' };
+    }
+    const spec = this.specOf(payment.plan);
+
+    const grant = await this.credits.grantSubscriptionCredits(
+      {
+        shopId: shop.id,
+        plan: spec.id,
+        months: spec.months,
+        credits: spec.credits,
+        paymentId: payment.id,
+        now,
+      },
+      tx,
+    );
+
+    const updated = await this.repository.markPaid(tx, payment.id, {
+      activatedFrom: grant.from,
+      activatedUntil: grant.until,
+      grantedCredits: grant.granted,
+      burnedCredits: grant.burned,
+      paidAt: now,
+    });
+
+    return {
+      kind: 'paid',
+      payment: updated,
+      ownerId: shop.owner,
+      shopName: shop.name,
+    };
+  }
+
+  /** Сообщить продавцу о выданной подписке. Зовётся после коммита. */
+  notifyGranted(ownerId: number, payment: SubscriptionPayment): void {
+    this.announceGranted(ownerId, payment);
   }
 
   async recordFailedComplete(input: {
@@ -649,6 +780,7 @@ export class SubscriptionsService implements OnModuleInit {
       await this.repository.transaction(async (tx) => {
         const existing = await this.repository.lockByProviderTransaction(
           tx,
+          'click',
           input.providerTransactionId,
         );
 

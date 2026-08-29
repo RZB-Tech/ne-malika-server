@@ -34,6 +34,20 @@ export interface SubscriptionPaymentMeta {
   invoicePhone?: string;
   adminId?: number;
   note?: string;
+
+  /**
+   * Транзакция Payme. Состояние протокола живёт рядом со счётом: у одного
+   * заказа не может быть двух транзакций, поэтому отдельной таблицы нет.
+   * Времена — в миллисекундах, как их считает Payme.
+   */
+  paymeState?: number;
+  paymeReason?: number | null;
+  /** Время транзакции на стороне Payme (params.time из CreateTransaction). */
+  paymeTime?: number;
+  /** Когда транзакцию завёл наш биллинг — это уходит в create_time. */
+  paymeCreateTime?: number;
+  paymePerformTime?: number;
+  paymeCancelTime?: number;
 }
 
 export const subscriptionPayments = pgTable(

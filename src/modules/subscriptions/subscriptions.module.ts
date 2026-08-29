@@ -4,12 +4,14 @@ import { NotificationsModule } from '../notifications/notifications.module';
 import { SearchStatsModule } from '../search-stats/search-stats.module';
 import { SubscriptionsController } from './subscriptions.controller';
 import { ClickController } from './click.controller';
+import { PaymeController } from './payme.controller';
 import { SellerSubscriptionsController } from './seller-subscriptions.controller';
 import {
   AdminShopSubscriptionController,
   AdminSubscriptionsController,
 } from './admin-subscriptions.controller';
 import { ClickMerchantService } from './click-merchant.service';
+import { PaymeService } from './payme.service';
 import { SubscriptionRemindersService } from './subscription-reminders.service';
 import { SubscriptionsRepository } from './subscriptions.repository';
 import { SubscriptionsService } from './subscriptions.service';
@@ -19,6 +21,7 @@ import { SubscriptionsService } from './subscriptions.service';
   controllers: [
     SubscriptionsController,
     ClickController,
+    PaymeController,
     SellerSubscriptionsController,
     AdminSubscriptionsController,
     AdminShopSubscriptionController,
@@ -27,6 +30,7 @@ import { SubscriptionsService } from './subscriptions.service';
     SubscriptionsRepository,
     SubscriptionsService,
     ClickMerchantService,
+    PaymeService,
     SubscriptionRemindersService,
   ],
 })

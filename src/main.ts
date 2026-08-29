@@ -6,6 +6,7 @@ import { SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { I18nExceptionFilter } from './common/filters/i18n-exception.filter';
 import { CLICK_UNVERSIONED_CALLBACK_ROUTES } from './modules/subscriptions/click-routes';
+import { PAYME_UNVERSIONED_CALLBACK_ROUTES } from './modules/subscriptions/payme-routes';
 import { swaggerConfig } from './swagger.config';
 
 async function bootstrap() {
@@ -18,7 +19,10 @@ async function bootstrap() {
   const corsOrigins = config.get<string[]>('corsOrigins')!;
 
   app.setGlobalPrefix(apiPrefix, {
-    exclude: CLICK_UNVERSIONED_CALLBACK_ROUTES,
+    exclude: [
+      ...CLICK_UNVERSIONED_CALLBACK_ROUTES,
+      ...PAYME_UNVERSIONED_CALLBACK_ROUTES,
+    ],
   });
   app.use(cookieParser());
   app.enableCors({

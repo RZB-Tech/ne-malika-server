@@ -17,6 +17,13 @@ export function formatDate(value: Date): string {
 export const PAID_PLANS = ['start', 'pro', 'max'] as const;
 export type PaidPlan = (typeof PAID_PLANS)[number];
 
+/**
+ * Кассы, через которые продавец может заплатить. `manual` в списке нет:
+ * такую подписку выдаёт администратор руками.
+ */
+export const CHECKOUT_PROVIDERS = ['click', 'payme'] as const;
+export type CheckoutProvider = (typeof CHECKOUT_PROVIDERS)[number];
+
 export type SubscriptionPlanId = Shop['subscriptionPlan'];
 
 export function isPaidPlan(value: unknown): value is PaidPlan {

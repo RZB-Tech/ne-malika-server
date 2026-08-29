@@ -165,19 +165,54 @@ export class PaymentLinkDto {
 }
 
 export class TestPaymentLinkDto {
+  @ApiProperty({
+    enum: PAYMENT_PROVIDER_VALUES,
+    description: 'Касса, для которой заведён счёт',
+    example: 'payme',
+  })
+  provider: string;
+
+  @ApiProperty({
+    description:
+      'Номер заказа в нашем биллинге: у Click он же merchant_trans_id, ' +
+      'у Payme — значение account.<accountField>',
+    example: 100042,
+  })
+  orderId: number;
+
   @ApiProperty({ description: 'Сумма проверки в сумах', example: 1000 })
   amountUzs: number;
 
   @ApiProperty({
+    description: 'Та же сумма в тийинах — в этих единицах её ждёт Payme',
+    example: 100000,
+  })
+  amountTiyin: number;
+
+  @ApiProperty({
+    description: 'Имя поля account, под которым касса Payme ждёт номер заказа',
+    example: 'order_id',
+  })
+  accountField: string;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'ID кассы провайдера — нужен для запросов в песочницу',
+    example: '5e730e8e0b852a417aa49ceb',
+  })
+  merchantId: string | null;
+
+  @ApiProperty({
     description:
-      'До какого момента открыто окно: позже эта же сумма будет отбита кодом -2',
+      'До какого момента открыт счёт: позже оплата этой суммы будет отбита',
     example: '2026-08-27T14:35:00.000Z',
   })
   armedUntil: string;
 
   @ApiProperty({
     description: 'Адрес кассы провайдера — открывается в новой вкладке',
-    example: 'https://my.click.uz/services/pay?service_id=...',
+    example: 'https://checkout.paycom.uz/bT01ODdmNzJjNzJjYWMwZDE2...',
   })
   url: string;
 }
