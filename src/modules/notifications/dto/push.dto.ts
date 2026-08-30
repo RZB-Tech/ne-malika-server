@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsPushEndpoint } from '../push-endpoint';
 
 export class PushConfigDto {
   @ApiProperty({ description: 'Настроены ли ключи VAPID на сервере' })
@@ -20,11 +21,15 @@ export class PushStateDto {
 
 export class SubscribePushDto {
   @ApiProperty({
-    description: 'Адрес push-сервиса браузера из PushSubscription.endpoint',
+    description:
+      'Адрес push-сервиса браузера из PushSubscription.endpoint. ' +
+      'Принимается только https-адрес известного push-сервиса: по этому ' +
+      'адресу ходит сам сервер, и произвольный хост означал бы SSRF',
   })
   @IsString()
   @MinLength(10)
   @MaxLength(2000)
+  @IsPushEndpoint()
   endpoint: string;
 
   @ApiProperty({ description: 'Ключ p256dh из PushSubscription.getKey' })

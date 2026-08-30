@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import webpush from 'web-push';
 import { PushRepository, type PushTarget } from './push.repository';
 import type { BroadcastAudience } from './dto/create-broadcast.dto';
+import { isAllowedPushEndpoint } from './push-endpoint';
 import { errorMessage } from '../../common/errors';
 
 interface PushPayload {
@@ -114,12 +115,27 @@ export class PushService implements OnModuleInit {
   }
 
   private async sendAll(
-    targets: PushTarget[],
+    all: PushTarget[],
     payload: PushPayload,
   ): Promise<PushCounters> {
     let delivered = 0;
     let failed = 0;
     const dead: number[] = [];
+
+    // Второй рубеж against SSRF: строки могли попасть в базу до того, как
+    // проверку адреса добавили в DTO. Такие подписки не отправляем и чистим.
+    const targets: PushTarget[] = [];
+    for (const target of all) {
+      if (isAllowedPushEndpoint(target.endpoint)) {
+        targets.push(target);
+        continue;
+      }
+      failed += 1;
+      dead.push(target.id);
+      this.logger.error(
+        `Подписка ${target.id} указывает на чужой адрес — не отправляем и удаляем`,
+      );
+    }
 
     for (let i = 0; i < targets.length; i += BATCH_SIZE) {
       const batch = targets.slice(i, i + BATCH_SIZE);
