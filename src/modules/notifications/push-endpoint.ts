@@ -1,6 +1,5 @@
 import {
   registerDecorator,
-  type ValidationArguments,
   type ValidationOptions,
 } from 'class-validator';
 
@@ -68,7 +67,7 @@ export function IsPushEndpoint(options?: ValidationOptions) {
       options,
       validator: {
         validate: (value: unknown) => isAllowedPushEndpoint(value),
-        defaultMessage: (_args: ValidationArguments) =>
+        defaultMessage: () =>
           'endpoint должен быть https-адресом известного push-сервиса браузера',
       },
     });
