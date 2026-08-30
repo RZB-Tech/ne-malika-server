@@ -1,7 +1,4 @@
-import {
-  registerDecorator,
-  type ValidationOptions,
-} from 'class-validator';
+import { registerDecorator, type ValidationOptions } from 'class-validator';
 
 /**
  * Адрес push-сервиса приходит от клиента и попадает прямо в web-push, который
