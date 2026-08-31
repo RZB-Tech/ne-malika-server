@@ -1,4 +1,4 @@
-import { createHash } from 'crypto';
+import { listCacheKey } from '../../common/cache-key';
 
 export const PRODUCT_CACHE_PREFIX = 'pc:';
 
@@ -10,12 +10,5 @@ export function productItemKey(id: number): string {
 }
 
 export function productListKey(query: Record<string, unknown>): string {
-  const normalized = Object.entries(query)
-    .filter(([, v]) => v !== undefined && v !== null && v !== '')
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([k, v]) => `${k}=${String(v)}`)
-    .join('&');
-
-  const hash = createHash('sha1').update(normalized).digest('hex').slice(0, 16);
-  return `${PRODUCT_CACHE_PREFIX}list:${hash}`;
+  return listCacheKey(PRODUCT_CACHE_PREFIX, query);
 }

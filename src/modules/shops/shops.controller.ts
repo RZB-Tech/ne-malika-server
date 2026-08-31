@@ -1,14 +1,41 @@
-import { Controller, Get, Param, ParseIntPipe } from '@nestjs/common';
+import { Controller, Get, Param, ParseIntPipe, Query } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Public } from '../../common/decorators/public.decorator';
 import { ShopsService } from './shops.service';
+import { FindPublicShopsQueryDto } from './dto/find-public-shops-query.dto';
+import {
+  PaginatedPublicShopsDto,
+  ShopSitemapEntryDto,
+} from './dto/public-shop.dto';
 
 @ApiTags('shops-public')
+@Public()
 @Controller('shops')
 export class ShopsController {
   constructor(private readonly shopsService: ShopsService) {}
 
-  @Public()
+  @Get()
+  @ApiOperation({
+    summary: 'Каталог магазинов: только активные и только с товарами',
+    description:
+      'Магазины без единого активного товара в выдачу не попадают. Телефон ' +
+      'в списке не отдаётся — он есть в карточке магазина, где раскрывается ' +
+      'по нажатию и учитывается как контакт.',
+  })
+  @ApiResponse({ status: 200, type: PaginatedPublicShopsDto })
+  findAll(@Query() query: FindPublicShopsQueryDto) {
+    return this.shopsService.findPublicList(query);
+  }
+
+  @Get('sitemap')
+  @ApiOperation({
+    summary: 'id и дата изменения магазинов с товарами (для sitemap)',
+  })
+  @ApiResponse({ status: 200, type: [ShopSitemapEntryDto] })
+  sitemap() {
+    return this.shopsService.listPublicIds();
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Карточка магазина с его активными товарами' })
   @ApiParam({ name: 'id', type: Number })

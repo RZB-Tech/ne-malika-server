@@ -1,10 +1,55 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, ilike, or, sql } from 'drizzle-orm';
+import { SQL, and, asc, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import { resolvePage } from '../../common/dto/pagination-query.dto';
 import { DRIZZLE, type DrizzleDb } from '../../db/db.provider';
 import { NewShop, Shop, productCards, shops, users } from '../../db/schema';
 import { FindAdminShopsQueryDto } from './dto/find-admin-shops-query.dto';
+import {
+  FindPublicShopsQueryDto,
+  PublicShopSort,
+} from './dto/find-public-shops-query.dto';
 import { escapeLike } from '../product-cards/product-search';
+
+/**
+ * Магазин без единого активного товара в публичной выдаче не нужен: покупателю
+ * там нечего смотреть, а поисковику такая страница уходит как пустая.
+ */
+const hasActiveProducts = sql`exists (
+  select 1 from ${productCards}
+  where ${eq(productCards.shopId, shops.id)}
+    and ${eq(productCards.status, 'active')}
+)`;
+
+const activeProductCount = sql<number>`(
+  select count(*)::int from ${productCards}
+  where ${eq(productCards.shopId, shops.id)}
+    and ${eq(productCards.status, 'active')}
+)`;
+
+/**
+ * Порядок в публичном каталоге. Последним столбцом всегда id: без него две
+ * страницы подряд могут вернуть один и тот же магазин, если у соседей
+ * совпали оценки или число товаров.
+ */
+function publicShopOrder(sort: PublicShopSort): SQL[] {
+  switch (sort) {
+    case 'rating':
+      return [
+        // Магазины без отзывов уходят в конец: нулевая оценка — это «неизвестно»,
+        // а не «плохо», и держать их выше магазина с двумя сотнями отзывов нечестно.
+        sql`${shops.ratingCount} = 0`,
+        desc(shops.ratingAvg),
+        desc(shops.ratingCount),
+        asc(shops.id),
+      ];
+    case 'newest':
+      return [desc(shops.createdAt), asc(shops.id)];
+    case 'name':
+      return [asc(shops.name), asc(shops.id)];
+    default:
+      return [desc(activeProductCount), desc(shops.ratingAvg), asc(shops.id)];
+  }
+}
 
 @Injectable()
 export class ShopsRepository {
@@ -53,6 +98,26 @@ export class ShopsRepository {
   findPublicById(id: number) {
     return this.db.query.shops.findFirst({
       where: and(eq(shops.id, id), eq(shops.status, 'active')),
+      // Список колонок задан явно: у магазина в той же строке лежат баланс
+      // кредитов, тариф и расход автозаполнений — на публичном эндпоинте
+      // им делать нечего.
+      columns: {
+        id: true,
+        owner: true,
+        name: true,
+        description: true,
+        photo: true,
+        telegramLink: true,
+        contact: true,
+        address: true,
+        workSchedule: true,
+        location: true,
+        ratingAvg: true,
+        ratingCount: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+      },
       with: {
         productCards: {
           where: eq(productCards.status, 'active'),
@@ -60,6 +125,56 @@ export class ShopsRepository {
         },
       },
     });
+  }
+
+  async findPublicList(query: FindPublicShopsQueryDto) {
+    const { page, limit, offset } = resolvePage(query);
+
+    const search = query.q?.trim();
+    const pattern = search ? `%${escapeLike(search)}%` : null;
+
+    const where = and(
+      eq(shops.status, 'active'),
+      hasActiveProducts,
+      pattern
+        ? or(ilike(shops.name, pattern), ilike(shops.address, pattern))
+        : undefined,
+    );
+
+    const data = await this.db
+      .select({
+        id: shops.id,
+        name: shops.name,
+        description: shops.description,
+        photo: shops.photo,
+        address: shops.address,
+        telegramLink: shops.telegramLink,
+        workSchedule: shops.workSchedule,
+        ratingAvg: shops.ratingAvg,
+        ratingCount: shops.ratingCount,
+        productCount: activeProductCount,
+        createdAt: shops.createdAt,
+      })
+      .from(shops)
+      .where(where)
+      .orderBy(...publicShopOrder(query.sort ?? 'products'))
+      .limit(limit)
+      .offset(offset);
+
+    const totalRows = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(shops)
+      .where(where);
+
+    return { data, total: totalRows[0]?.count ?? 0, page, limit };
+  }
+
+  findPublicIds(): Promise<{ id: number; updatedAt: Date }[]> {
+    return this.db
+      .select({ id: shops.id, updatedAt: shops.updatedAt })
+      .from(shops)
+      .where(and(eq(shops.status, 'active'), hasActiveProducts))
+      .orderBy(desc(shops.updatedAt));
   }
 
   update(id: number, data: Partial<NewShop>): Promise<Shop> {

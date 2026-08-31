@@ -12,12 +12,20 @@ import { RedisService } from '../redis/redis.service';
 import { CreditsService } from '../credits/credits.service';
 import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
 import { PRODUCT_CACHE_PREFIX } from '../product-cards/product-cards.cache';
+import {
+  SHOP_CACHE_PREFIX,
+  SHOP_LIST_TTL_SEC,
+  shopListKey,
+} from './shops.cache';
 import { CreateShopDto } from './dto/create-shop.dto';
 import { UpdateShopDto } from './dto/update-shop.dto';
 import { FindAdminShopsQueryDto } from './dto/find-admin-shops-query.dto';
+import { FindPublicShopsQueryDto } from './dto/find-public-shops-query.dto';
 import { Shop } from '../../db/schema';
 import { isUniqueViolation } from '../../db/errors';
 import { errorMessage } from '../../common/errors';
+
+type PublicShopList = Awaited<ReturnType<ShopsRepository['findPublicList']>>;
 
 @Injectable()
 export class ShopsService {
@@ -117,6 +125,7 @@ export class ShopsService {
     if (!updated) {
       throw new NotFoundException('Магазин не найден');
     }
+    await this.invalidateShopCache();
     return updated;
   }
 
@@ -128,6 +137,7 @@ export class ShopsService {
     if (!deleted) {
       throw new NotFoundException('Магазин не найден');
     }
+    await this.invalidateShopCache();
     await this.redis.delByPrefix(PRODUCT_CACHE_PREFIX);
   }
 
@@ -139,6 +149,22 @@ export class ShopsService {
     return shop;
   }
 
+  async findPublicList(query: FindPublicShopsQueryDto) {
+    const key = shopListKey({ ...query });
+    const cached = await this.redis.get<PublicShopList>(key);
+    const result = cached ?? (await this.shopsRepository.findPublicList(query));
+    if (!cached) {
+      await this.redis.set(key, result, SHOP_LIST_TTL_SEC);
+    }
+
+    const { data, total, page, limit } = result;
+    return buildPaginatedResult(data, total, page, limit);
+  }
+
+  listPublicIds() {
+    return this.shopsRepository.findPublicIds();
+  }
+
   async adminList(query: FindAdminShopsQueryDto) {
     const { data, total, page, limit } =
       await this.shopsRepository.findAllWithProductCount(query);
@@ -148,6 +174,7 @@ export class ShopsService {
   async adminAbolish(shopId: number, reason: string) {
     await this.getOrThrow(shopId);
     const shop = await this.shopsRepository.abolish(shopId, reason);
+    await this.invalidateShopCache();
     await this.redis.delByPrefix(PRODUCT_CACHE_PREFIX);
     return shop;
   }
@@ -155,6 +182,7 @@ export class ShopsService {
   async adminRestore(shopId: number) {
     await this.getOrThrow(shopId);
     const shop = await this.shopsRepository.restore(shopId);
+    await this.invalidateShopCache();
     await this.redis.delByPrefix(PRODUCT_CACHE_PREFIX);
     return shop;
   }
@@ -180,6 +208,7 @@ export class ShopsService {
     if (!deleted) {
       throw new NotFoundException('Магазин не найден');
     }
+    await this.invalidateShopCache();
     await this.redis.delByPrefix(PRODUCT_CACHE_PREFIX);
   }
 
@@ -221,6 +250,10 @@ export class ShopsService {
     );
     if (!shop) throw createError();
     return shop;
+  }
+
+  private invalidateShopCache() {
+    return this.redis.delByPrefix(SHOP_CACHE_PREFIX);
   }
 
   private deriveTelegramLink(owner: { telegramUsername: string | null }) {
