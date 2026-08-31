@@ -75,6 +75,7 @@ export class ReviewsController {
 
   @AnyRole()
   @ApiBearerAuth('access-token')
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @Patch(':id')
   @ApiOperation({
     summary: 'Изменить свой отзыв — он снова уходит на проверку',

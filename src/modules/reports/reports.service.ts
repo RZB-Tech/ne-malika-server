@@ -1,5 +1,7 @@
 import {
   BadRequestException,
+  ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -10,6 +12,7 @@ import { CreateReportDto } from './dto/create-report.dto';
 import { FindReportsQueryDto } from './dto/find-reports-query.dto';
 import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
 import { NotificationsService } from '../notifications/notifications.service';
+import { isUniqueViolation } from '../../db/errors';
 import { escapeHtml, excerpt } from '../bot/telegram-html';
 
 @Injectable()
@@ -21,10 +24,14 @@ export class ReportsService {
     private readonly notifications: NotificationsService,
   ) {}
 
-  async create(dto: CreateReportDto) {
+  async create(userId: number, dto: CreateReportDto) {
     const shop = await this.shopsRepository.findById(dto.shop_id);
     if (!shop) {
       throw new NotFoundException('Магазин не найден');
+    }
+
+    if (shop.owner === userId) {
+      throw new ForbiddenException('Нельзя пожаловаться на свой магазин');
     }
 
     if (dto.product_card_id) {
@@ -41,12 +48,24 @@ export class ReportsService {
       }
     }
 
-    const report = await this.reportsRepository.create({
-      context: dto.context,
-      shopId: dto.shop_id,
-      productCardId: dto.product_card_id,
-    });
+    let report: Awaited<ReturnType<ReportsRepository['create']>>;
+    try {
+      report = await this.reportsRepository.create({
+        context: dto.context,
+        authorId: userId,
+        shopId: dto.shop_id,
+        productCardId: dto.product_card_id,
+      });
+    } catch (err) {
+      // Уникальный индекс — единственное место, где гонка двух одновременных
+      // запросов ловится честно: предварительный SELECT её пропускает.
+      if (isUniqueViolation(err)) {
+        throw new ConflictException('Вы уже жаловались на это');
+      }
+      throw err;
+    }
 
+    // Уведомление после вставки: дубль до админов уже не доедет.
     void this.notifications.notifyAdmins(
       newReportText(shop.name, dto.product_card_id, dto.context),
     );

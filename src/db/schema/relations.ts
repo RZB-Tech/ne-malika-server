@@ -106,6 +106,10 @@ export const productViewsRelations = relations(productViews, ({ one }) => ({
 }));
 
 export const reportsRelations = relations(reports, ({ one }) => ({
+  author: one(users, {
+    fields: [reports.authorId],
+    references: [users.id],
+  }),
   shop: one(shops, {
     fields: [reports.shopId],
     references: [shops.id],

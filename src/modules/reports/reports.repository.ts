@@ -46,6 +46,9 @@ export class ReportsRepository {
         limit,
         offset,
         with: {
+          author: {
+            columns: { id: true, fullname: true, telegramUsername: true },
+          },
           shop: { columns: { id: true, name: true } },
           productCard: { columns: { id: true, name: true } },
         },

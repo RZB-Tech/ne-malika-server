@@ -65,9 +65,18 @@ export class ReviewsService {
   async updateOwn(userId: number, id: number, dto: UpdateReviewDto) {
     const review = await this.getOwnOrThrow(userId, id);
 
+    const rating = dto.rating ?? review.rating;
+    const text = dto.text === undefined ? review.text : dto.text.trim() || null;
+
+    // Правка, ничего не меняющая, не должна снимать отзыв с публикации и
+    // гонять его через платную ИИ-проверку заново.
+    if (rating === review.rating && text === review.text) {
+      return review;
+    }
+
     const updated = await this.repository.update(review.id, {
-      rating: dto.rating ?? review.rating,
-      text: dto.text === undefined ? review.text : dto.text.trim() || null,
+      rating,
+      text,
       status: 'pending',
       moderationNote: null,
       moderatedBy: null,
