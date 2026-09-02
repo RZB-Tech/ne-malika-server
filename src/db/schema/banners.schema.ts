@@ -22,9 +22,16 @@ export const banners = pgTable(
 
     title: varchar('title', { length: 200 }).notNull(),
 
+    /**
+     * Картинка на каждый язык витрины: текст акции нарисован прямо на ней, и
+     * русская плашка на узбекской версии сайта читалась бы как недоделка.
+     *
+     * Языка два, а не три. Узбекская кириллица здесь была третьей копией той же
+     * картинки, которую никто не рисовал отдельно, — на витрине она показывалась
+     * латиницей и без неё.
+     */
     photoRu: uuid('photo_ru').notNull(),
     photoUzLatn: uuid('photo_uz_latn').notNull(),
-    photoUzCyrl: uuid('photo_uz_cyrl').notNull(),
 
     linkUrl: varchar('link_url', { length: 500 }),
 

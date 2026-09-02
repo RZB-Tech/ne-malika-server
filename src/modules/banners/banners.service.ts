@@ -76,7 +76,6 @@ export class BannersService {
       title: dto.title,
       photoRu: dto.photoRu,
       photoUzLatn: dto.photoUzLatn,
-      photoUzCyrl: dto.photoUzCyrl,
       linkUrl: dto.linkUrl || null,
       isActive: dto.isActive ?? true,
       expiresAt: expiryDate(dto.expiresAt),
@@ -112,7 +111,6 @@ export class BannersService {
       title: dto.title,
       photoRu: dto.photoRu,
       photoUzLatn: dto.photoUzLatn,
-      photoUzCyrl: dto.photoUzCyrl,
       linkUrl: dto.linkUrl || null,
       isActive: dto.isActive ?? true,
       expiresAt: expiryDate(dto.expiresAt),
@@ -195,7 +193,6 @@ export class BannersService {
       title: dto.title,
       photoRu: dto.photoRu,
       photoUzLatn: dto.photoUzLatn,
-      photoUzCyrl: dto.photoUzCyrl,
       linkUrl: dto.linkUrl || null,
       status: 'pending',
       isActive: true,
@@ -276,11 +273,10 @@ export class BannersService {
   private async assertPhotosExist(dto: {
     photoRu?: string;
     photoUzLatn?: string;
-    photoUzCyrl?: string;
   }): Promise<void> {
-    const keys = [
-      ...new Set([dto.photoRu, dto.photoUzLatn, dto.photoUzCyrl]),
-    ].filter((key): key is string => typeof key === 'string');
+    const keys = [...new Set([dto.photoRu, dto.photoUzLatn])].filter(
+      (key): key is string => typeof key === 'string',
+    );
 
     if (keys.length === 0) return;
 

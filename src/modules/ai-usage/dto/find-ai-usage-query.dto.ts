@@ -2,9 +2,9 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import { IsBoolean, IsIn, IsInt, IsOptional, Min } from 'class-validator';
 import { PaginationQueryDto } from '../../../common/dto/pagination-query.dto';
+import { AI_OPERATIONS, type AiOperation } from '../../../db/schema';
 
-const AI_OPERATIONS = ['prompt', 'description', 'image', 'autofill'] as const;
-export type AiOperation = (typeof AI_OPERATIONS)[number];
+export { AI_OPERATIONS, type AiOperation };
 
 export class FindAiUsageQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional({ description: 'Только по одному магазину' })

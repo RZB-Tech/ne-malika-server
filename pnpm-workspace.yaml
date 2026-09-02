@@ -9,6 +9,8 @@ allowBuilds:
   '@scarf/scarf': false
   # ставит платформенный бинарник; нужен tsx и drizzle-kit (миграции).
   esbuild: true
+  # подтягивает платформенный libvips; нужен кропу баннера под 1942×809.
+  sharp: true
 
 # Nest and Swagger currently allow vulnerable patch versions transitively.
 # Pin patched drop-in releases until their next upstream releases catch up.

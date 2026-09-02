@@ -5,6 +5,12 @@ const BANNER_FORMATS = [
   { width: 1240, height: 400 },
 ] as const;
 
+/**
+ * Основной формат: по нему карусель считает высоту слота, к нему же
+ * приводится всё, что рисует ИИ.
+ */
+export const BANNER_FORMAT = BANNER_FORMATS[0];
+
 export const BANNER_FORMATS_LABEL = BANNER_FORMATS.map(
   (f) => `${f.width}×${f.height}`,
 ).join(' / ');
@@ -30,3 +36,26 @@ export const BANNER_MODERATION_DECISIONS = [
 ] as const satisfies readonly BannerModerationStatus[];
 export type BannerModerationDecision =
   (typeof BANNER_MODERATION_DECISIONS)[number];
+
+/**
+ * Размер, который просим у модели.
+ *
+ * Ровно 1942×809 у генератора не спросишь: он рисует в своей сетке размеров.
+ * Просим то же соотношение 2.4:1 круглыми числами, а результат всё равно
+ * приводим к формату баннера обрезкой — тогда неточность модели стоит нам
+ * полей по краям, а не растянутой картинки на витрине.
+ */
+export const BANNER_GEN_SIZE = '1920x800';
+
+/**
+ * Качество генерации. `high` при таком размере вчетверо дороже, а баннер
+ * смотрят с расстояния ленты — разницы там не видно, в отличие от счёта.
+ */
+export const BANNER_GEN_QUALITY = 'medium';
+
+/**
+ * Сколько товаров показать модели. Больше трёх она начинает раскладывать их
+ * мелкой сеткой, и баннер перестаёт читаться на бегу; меньше двух — витрина
+ * выглядит пустой.
+ */
+export const BANNER_SOURCE_PRODUCTS = 3;

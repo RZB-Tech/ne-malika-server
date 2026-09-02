@@ -44,13 +44,6 @@ export class CreateBannerDto {
   @IsUUID('4')
   photoUzLatn: string;
 
-  @ApiProperty({
-    format: 'uuid',
-    description: `${PHOTO_DESCRIPTION} Узбекская кириллица.`,
-  })
-  @IsUUID('4')
-  photoUzCyrl: string;
-
   @ApiPropertyOptional({
     maxLength: 500,
     example: '/product/12',

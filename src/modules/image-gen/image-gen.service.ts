@@ -9,6 +9,10 @@ import { ConfigService } from '@nestjs/config';
 import type OpenAI from 'openai';
 import { OPENROUTER_CLIENT } from '../openrouter/openrouter-client.provider';
 import { describeError, usageCost } from '../openrouter/openrouter.util';
+import type {
+  ImageReference,
+  OpenRouterImagesResponse,
+} from '../openrouter/openrouter.images';
 import { errorMessage } from '../../common/errors';
 import { FilesService } from '../files/files.service';
 import { ImageGenRepository } from './image-gen.repository';
@@ -26,16 +30,6 @@ import {
   MAX_GENERATED_IMAGES,
   RewriteDescriptionDto,
 } from './dto/generate-images.dto';
-
-interface ImageReference {
-  type: 'image_url';
-  image_url: { url: string };
-}
-
-interface OpenRouterImagesResponse {
-  data?: { b64_json?: string; media_type?: string }[];
-  usage?: { cost?: number };
-}
 
 const HISTORY_LIMIT = 24;
 

@@ -119,6 +119,17 @@ export class CreditsService {
     return buildPaginatedResult(data, total, page, limit);
   }
 
+  /**
+   * Во сколько кредитов обойдётся запрос такой себестоимости.
+   *
+   * Нужна ценникам: продавец видит цену кнопки до нажатия, а не узнаёт её из
+   * истории списаний. Считается тем же путём, что и резерв, — иначе показанное
+   * и списанное разошлись бы при первой же правке множителя.
+   */
+  estimateCredits(usd: number): Promise<number> {
+    return this.toCredits(usd);
+  }
+
   private async toCredits(usd: number): Promise<number> {
     const markup = await this.settings.getCreditMarkup();
     return usdToCredits(usd * markup);

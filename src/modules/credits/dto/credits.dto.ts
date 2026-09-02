@@ -9,6 +9,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { AI_OPERATIONS, type AiOperation } from '../../../db/schema';
 import { PaginationMetaDto } from '../../../common/dto/paginated-response.dto';
 
 export class GrantCreditsDto {
@@ -65,10 +66,10 @@ export class SellerCreditsDto extends ShopCreditsDto {
 
 export class CreditTxnMetaDto {
   @ApiPropertyOptional({
-    enum: ['prompt', 'description', 'image', 'autofill'],
+    enum: AI_OPERATIONS,
     description: 'За что списано',
   })
-  operation?: 'prompt' | 'description' | 'image' | 'autofill';
+  operation?: AiOperation;
 
   @ApiPropertyOptional({ description: 'Сколько картинок нарисовано' })
   images?: number;

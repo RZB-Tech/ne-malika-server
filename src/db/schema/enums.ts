@@ -69,3 +69,21 @@ export const subscriptionReminderStageEnum = pgEnum(
   'subscription_reminder_stage',
   ['expiring_3d', 'expires_today'],
 );
+
+/**
+ * За что списаны кредиты и что записано в журнал ИИ.
+ *
+ * Обычный массив, а не pgEnum: `ai_usage.operation` — varchar именно затем,
+ * чтобы новая операция не требовала миграции, а в `credit_transactions.meta`
+ * значение и вовсе лежит в jsonb. Список всё равно нужен один: он же уходит в
+ * фильтр журнала и в описание истории списаний, и три копии успели бы
+ * разойтись при первой же новой операции.
+ */
+export const AI_OPERATIONS = [
+  'prompt',
+  'description',
+  'image',
+  'autofill',
+  'banner',
+] as const;
+export type AiOperation = (typeof AI_OPERATIONS)[number];

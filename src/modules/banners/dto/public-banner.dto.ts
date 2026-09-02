@@ -13,9 +13,6 @@ export class PublicBannerDto {
   @ApiProperty({ format: 'uuid' })
   photoUzLatn: string;
 
-  @ApiProperty({ format: 'uuid' })
-  photoUzCyrl: string;
-
   @ApiProperty({ type: String, nullable: true, example: '/product/12' })
   linkUrl: string | null;
 }

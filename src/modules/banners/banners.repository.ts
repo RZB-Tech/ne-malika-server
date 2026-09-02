@@ -12,7 +12,6 @@ const PUBLIC_COLUMNS = {
   title: banners.title,
   photoRu: banners.photoRu,
   photoUzLatn: banners.photoUzLatn,
-  photoUzCyrl: banners.photoUzCyrl,
   linkUrl: banners.linkUrl,
 } as const;
 

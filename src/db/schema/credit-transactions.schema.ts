@@ -8,12 +8,12 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
-import { creditTxnKindEnum } from './enums';
+import { creditTxnKindEnum, type AiOperation } from './enums';
 import { shops } from './shops.schema';
 import { users } from './users.schema';
 
 export interface CreditTxnMeta {
-  operation?: 'prompt' | 'description' | 'image' | 'autofill';
+  operation?: AiOperation;
   model?: string;
   usd?: number;
   images?: number;
