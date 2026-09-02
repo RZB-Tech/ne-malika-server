@@ -30,6 +30,8 @@ export const banners = pgTable(
 
     isActive: boolean('is_active').notNull().default(true),
 
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+
     sortOrder: integer('sort_order').notNull().default(0),
 
     shopId: bigint('shop_id', { mode: 'number' }).references(() => shops.id, {

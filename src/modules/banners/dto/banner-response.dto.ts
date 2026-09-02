@@ -13,6 +13,14 @@ export class BannerDto extends PublicBannerDto {
   @ApiProperty({ example: 0 })
   sortOrder: number;
 
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description: 'Срок показа: после этой метки баннер скрыт. null — бессрочно',
+  })
+  expiresAt: Date | null;
+
   @ApiProperty({ type: Number, nullable: true, example: 12 })
   shopId: number | null;
 

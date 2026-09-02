@@ -9,7 +9,10 @@ import {
 import { ShopsService } from '../shops/shops.service';
 import { FilesService } from '../files/files.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { effectiveLimits } from '../subscriptions/subscriptions.constants';
+import {
+  effectiveLimits,
+  formatDate,
+} from '../subscriptions/subscriptions.constants';
 import { escapeHtml, excerpt } from '../bot/telegram-html';
 import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
 import { errorMessage } from '../../common/errors';
@@ -29,6 +32,10 @@ import { FindShopBannersQueryDto } from './dto/find-shop-banners-query.dto';
 const PLAN_REQUIRED = 'Баннер доступен на тарифе MAX';
 
 const SELLER_BANNER_PATH = '/seller/banner';
+
+function expiryDate(value: string | null | undefined): Date | null {
+  return value ? new Date(value) : null;
+}
 
 @Injectable()
 export class BannersService {
@@ -57,7 +64,11 @@ export class BannersService {
     return this.repository.findAll();
   }
 
-  async create(dto: CreateBannerDto) {
+  async create(dto: CreateBannerDto, adminId: number) {
+    if (dto.shopId) {
+      return this.issueToShop(dto.shopId, dto, adminId);
+    }
+
     const sortOrder =
       dto.sortOrder ?? (await this.repository.maxSortOrder()) + 1;
 
@@ -68,18 +79,68 @@ export class BannersService {
       photoUzCyrl: dto.photoUzCyrl,
       linkUrl: dto.linkUrl || null,
       isActive: dto.isActive ?? true,
+      expiresAt: expiryDate(dto.expiresAt),
       sortOrder,
     });
+  }
+
+  /**
+   * Баннер, выданный магазину площадкой: модерацию проходить не нужно —
+   * его собрал администратор, — но показывается он по правилам баннеров
+   * магазинов: пока действует тариф MAX и пока не вышел срок.
+   */
+  private async issueToShop(
+    shopId: number,
+    dto: CreateBannerDto,
+    adminId: number,
+  ) {
+    const shop = await this.shopsService.getOrThrow(shopId);
+
+    // Слотов у тарифа один, а витрина продавца показывает один баннер:
+    // второй просто негде было бы ни увидеть, ни отредактировать.
+    const used = await this.repository.countOwned(shop.id);
+    if (used >= Math.max(effectiveLimits(shop).bannerSlots, 1)) {
+      throw new ConflictException(
+        'У магазина уже есть баннер — измените существующий или удалите его',
+      );
+    }
+
+    await this.assertPhotosExist(dto);
+
+    const banner = await this.repository.create({
+      shopId: shop.id,
+      title: dto.title,
+      photoRu: dto.photoRu,
+      photoUzLatn: dto.photoUzLatn,
+      photoUzCyrl: dto.photoUzCyrl,
+      linkUrl: dto.linkUrl || null,
+      isActive: dto.isActive ?? true,
+      expiresAt: expiryDate(dto.expiresAt),
+      status: 'approved',
+      moderatedBy: adminId,
+      moderatedAt: new Date(),
+      sortOrder: 0,
+    });
+
+    this.notifyIssued(shop.owner, banner.id, banner.expiresAt);
+
+    return banner;
   }
 
   async update(id: number, dto: UpdateBannerDto) {
     await this.getOrFail(id);
 
-    const { linkUrl, ...rest } = dto;
+    const { linkUrl, expiresAt, shopId, ...rest } = dto;
+
+    if (shopId) {
+      await this.shopsService.getOrThrow(shopId);
+    }
 
     return this.repository.update(id, {
       ...rest,
       ...(linkUrl === undefined ? {} : { linkUrl: linkUrl || null }),
+      ...(expiresAt === undefined ? {} : { expiresAt: expiryDate(expiresAt) }),
+      ...(shopId === undefined ? {} : { shopId: shopId ?? null }),
     });
   }
 
@@ -255,6 +316,37 @@ export class BannersService {
         body: approved
           ? 'Баннер показывается на главной странице'
           : excerpt(rejectReason, 120),
+        url: SELLER_BANNER_PATH,
+        tag: `banner-${bannerId}`,
+      })
+      .catch((err: unknown) => this.logNotifyFailure('push', ownerId, err));
+  }
+
+  private notifyIssued(
+    ownerId: number,
+    bannerId: number,
+    expiresAt: Date | null,
+  ): void {
+    const until = expiresAt
+      ? `Он показывается до ${formatDate(expiresAt)}.`
+      : 'Он показывается без ограничения по сроку.';
+
+    this.notifications
+      .notifyUser(
+        ownerId,
+        '🎁 <b>Площадка выдала вам баннер</b>\n\n' +
+          `${until}\n\n` +
+          'Баннер уже в карусели на главной — посмотреть его можно в ' +
+          'разделе «Баннер».',
+      )
+      .catch((err: unknown) => this.logNotifyFailure('telegram', ownerId, err));
+
+    this.notifications
+      .pushToUser(ownerId, {
+        title: 'Площадка выдала вам баннер',
+        body: expiresAt
+          ? `Показывается до ${formatDate(expiresAt)}`
+          : 'Показывается в карусели на главной',
         url: SELLER_BANNER_PATH,
         tag: `banner-${bannerId}`,
       })

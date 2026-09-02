@@ -18,6 +18,8 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { AdminOnly } from '../../common/decorators/roles.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { type AuthenticatedUser } from '../../common/types/auth.types';
 import { BannersService } from './banners.service';
 import { BannerDto } from './dto/banner-response.dto';
 import { CreateBannerDto } from './dto/create-banner.dto';
@@ -39,10 +41,23 @@ export class AdminBannersController {
   }
 
   @Post()
-  @ApiOperation({ summary: 'Добавить баннер на главную' })
+  @ApiOperation({
+    summary: 'Добавить баннер на главную или выдать его магазину',
+    description:
+      'Без shopId — баннер площадки в общей карусели. С shopId баннер выдан ' +
+      'магазину: модерацию проходить не нужно, владелец получает уведомление, ' +
+      'а показывается такой баннер по правилам баннеров магазинов. ' +
+      'expiresAt задаёт срок, после которого баннер скрывается сам.',
+  })
   @ApiResponse({ status: 201, type: BannerDto })
-  create(@Body() dto: CreateBannerDto) {
-    return this.bannersService.create(dto);
+  @ApiResponse({ status: 400, description: 'Одна из картинок не загружена' })
+  @ApiResponse({ status: 404, description: 'Магазин не найден' })
+  @ApiResponse({ status: 409, description: 'У магазина уже есть баннер' })
+  create(
+    @CurrentUser() admin: AuthenticatedUser,
+    @Body() dto: CreateBannerDto,
+  ) {
+    return this.bannersService.create(dto, admin.id);
   }
 
   @Patch('reorder')
@@ -54,9 +69,15 @@ export class AdminBannersController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Изменить баннер' })
+  @ApiOperation({
+    summary: 'Изменить баннер',
+    description:
+      'Работает и для баннеров площадки, и для выданных магазинам: так ' +
+      'меняется срок показа (expiresAt: null снимает срок) и владелец ' +
+      '(shopId: null возвращает баннер площадке).',
+  })
   @ApiOkResponse({ type: BannerDto })
-  @ApiResponse({ status: 404, description: 'Баннер не найден' })
+  @ApiResponse({ status: 404, description: 'Баннер или магазин не найден' })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateBannerDto) {
     return this.bannersService.update(id, dto);
   }

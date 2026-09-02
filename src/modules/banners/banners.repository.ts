@@ -19,6 +19,7 @@ const PUBLIC_COLUMNS = {
 const BANNER_COLUMNS = {
   ...PUBLIC_COLUMNS,
   isActive: banners.isActive,
+  expiresAt: banners.expiresAt,
   sortOrder: banners.sortOrder,
   shopId: banners.shopId,
   status: banners.status,
@@ -27,6 +28,8 @@ const BANNER_COLUMNS = {
   createdAt: banners.createdAt,
   updatedAt: banners.updatedAt,
 } as const;
+
+const NOT_EXPIRED = sql`(${banners.expiresAt} is null or ${banners.expiresAt} > now())`;
 
 @Injectable()
 export class BannersRepository {
@@ -41,6 +44,7 @@ export class BannersRepository {
           isNull(banners.shopId),
           eq(banners.isActive, true),
           eq(banners.status, 'approved'),
+          NOT_EXPIRED,
         ),
       )
       .orderBy(asc(banners.sortOrder), asc(banners.id))
@@ -56,6 +60,7 @@ export class BannersRepository {
         and(
           eq(banners.isActive, true),
           eq(banners.status, 'approved'),
+          NOT_EXPIRED,
           eq(shops.status, 'active'),
           eq(shops.subscriptionPlan, 'max'),
           SUBSCRIPTION_ACTIVE,

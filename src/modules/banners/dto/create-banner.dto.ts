@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsBoolean,
+  IsDateString,
   IsInt,
   IsOptional,
   IsString,
@@ -72,6 +73,32 @@ export class CreateBannerDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    example: 12,
+    description:
+      'Кому принадлежит баннер: id магазина — баннер выдан магазину и ' +
+      'показывается по правилам баннеров магазинов, пусто — баннер площадки',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  shopId?: number | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    example: '2026-10-01T00:00:00.000Z',
+    description:
+      'Когда баннер сам скроется с витрины. Пусто — показывается бессрочно. ' +
+      'Прошедшая дата скрывает баннер сразу, из админки он не исчезает',
+  })
+  @IsOptional()
+  @IsDateString()
+  expiresAt?: string | null;
 
   @ApiPropertyOptional({
     default: 0,
