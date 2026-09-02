@@ -1,14 +1,19 @@
 import { BANNER_FORMAT } from './banners.constants';
 
 /**
- * Сборка задания для генератора баннера.
+ * Задание для генератора баннера.
  *
- * Задание пишется по-английски, а надписи, которые модель обязана нарисовать
- * дословно, идут в кавычках внутри английского текста — тот же приём, что и в
- * промптах карточек товара: генераторы изображений обучены на английских
- * описаниях, но кириллицу и латиницу переносят в картинку как есть.
+ * Творческую часть пишет не этот модуль, а модель: она смотрит на магазин —
+ * название, разделы каталога, товары и их фотографии — и придумывает, что и как
+ * нарисовать. Собранный вручную шаблон этого не умел: у продавца ноутбуков и у
+ * мастерской по ремонту получался один и тот же баннер с подставленным именем.
  *
- * Модуль чистый — ни сети, ни зависимостей Nest: сборку промпта проверяет тест.
+ * За кодом остаётся то, чему модель доверять нельзя: формат, язык надписей и
+ * запреты. Эти правила дописываются к любому придуманному тексту — иначе
+ * очередной удачный промпт однажды приезжал бы с ценой на картинке или с
+ * текстом, который срежет обрезка.
+ *
+ * Модуль чистый — ни сети, ни зависимостей Nest: сборку проверяет тест.
  */
 
 /** Язык надписей на баннере. Их два: кириллица третьей копией не нужна. */
@@ -20,11 +25,22 @@ export interface BannerShop {
   description?: string | null;
 }
 
-/** Товар, попадающий в баннер: чем он торгует, видно по названиям и разделам. */
+/** Товар, попадающий в баннер: чем магазин торгует, видно по нему. */
 export interface BannerProduct {
   name: string;
   categoryName?: string | null;
 }
+
+/** Что придумала модель, разобрав магазин. */
+export interface BannerBrief {
+  /** Творческая часть задания — по-английски, как её просили написать. */
+  prompt: string;
+  /** Название баннера для админки и alt изображения — по-русски. */
+  title: string;
+}
+
+/** Столько влезает в `banners.title`; модели говорим тот же предел. */
+export const BANNER_TITLE_MAX = 200;
 
 const LANGUAGE_RULES: Record<BannerLanguage, string> = {
   ru: 'All text on the banner must be in RUSSIAN, written in correct Cyrillic.',
@@ -34,52 +50,87 @@ const LANGUAGE_RULES: Record<BannerLanguage, string> = {
 };
 
 /**
- * Художественные решения. Без них все баннеры приезжают в одной сине-белой
- * гамме: и составитель промпта, и рисующая модель по умолчанию тянутся к
- * «технологичному синему», а компьютерная техника усиливает этот перекос.
+ * Задание тому, кто разбирает магазин и пишет промпт.
  *
- * Решение выбирается по названию магазина: у одного магазина баннер держит
- * узнаваемый вид от перегенерации к перегенерации, а у разных магазинов на
- * витрине он разный.
+ * Просим именно промпт, а не картинку словами: дальше текст уходит рисующей
+ * модели, и она понимает английские описания сцены куда лучше, чем пересказ
+ * на русском. Русским остаётся только то, что попадёт на саму картинку.
  */
-const DIRECTIONS = [
-  'charcoal-to-black background with a warm amber glow behind the goods; ' +
-    'headline block on the left, product cluster on the right',
-  'graphite background with a magenta-to-violet neon rim and a faint tech ' +
-    'grid; headline on the left, goods floating on the right',
-  'bright studio background, soft grey-to-white gradient with long soft ' +
-    'shadows; near-black heavy headline on the left',
-  'deep emerald-to-teal gradient with a lime accent and a diagonal band ' +
-    'behind the headline',
-  'warm sand and cream background with a soft peach glow and a dark brown ' +
-    'headline',
-  'crimson-to-black background with a hot orange rim light and drifting ' +
-    'smoke behind the goods',
-  'icy white-to-pale-blue background with crisp geometric shapes and a navy ' +
-    'headline',
-  'matte purple-to-indigo background with a hard spotlight from above',
-];
+export const BANNER_BRIEF_SYSTEM = `You are an art director for a computer-hardware marketplace. You are given a shop: its name, what it sells, a few of its goods and their photos. Work out what this shop is about and write a prompt for an image generator that will draw a wide promotional banner for it.
+
+Return strictly JSON and nothing else:
+{"prompt":"...","title":"..."}
+
+prompt — the image prompt, in English, 60-120 words. Describe:
+- which goods to show and how they are arranged;
+- the background, palette and lighting, chosen to fit this particular shop rather than a generic tech look;
+- where the text blocks sit.
+
+Quote verbatim, in double quotes, every word that must appear on the banner: the shop name and a short headline of two or three words. Write those quoted words in Russian. Invent the headline from what the shop actually sells — no empty "лучшие цены" when nothing in the data says so.
+
+Judge the shop by its data, not by wishful thinking:
+- a shop with two products is a small shop; do not draw a hypermarket;
+- a repair or setup service is not a goods shop: show the work, a workbench, a master at the desk — not a boxed product;
+- if the goods are all from one category, build the banner around that category.
+
+title — a short Russian name for this banner for the admin list, up to ${BANNER_TITLE_MAX} characters. Not a slogan: it must say which shop and which banner this is.
+
+Never put prices, phone numbers, links or promises of discounts into either field: the shop did not promise them.`;
 
 /**
- * Общие требования к картинке. Держатся отдельно от художественного решения:
- * решение меняется от магазина к магазину, а эти правила — никогда.
+ * Что модель узнаёт о магазине. По-русски и списком: это данные, а не задание,
+ * и разбирать их модели проще в том же виде, в каком они лежат у нас.
  */
-const RULES = [
-  `Wide horizontal marketplace hero banner, aspect ratio ${ratio()}, ` +
-    'built to be read at a glance while scrolling.',
-  /**
-   * Про центральную треть — не украшательство: картинка приводится к формату
-   * баннера обрезкой по центру, и текст у самого края её не переживёт.
-   */
-  'Keep the headline, the shop name and every word inside the central band ' +
-    'of the frame, well away from all four edges: the outer edges get cropped.',
-  'Photoreal goods composited on a designed background: glow and rim light ' +
-    'behind them, realistic contact shadow. Never a bare white studio shot.',
-  'Render every letter sharply and correctly — no invented glyphs, no ' +
-    'misspellings, no gibberish text, no lorem ipsum.',
-  'No prices, no phone numbers, no links, no QR codes, no marketplace logos, ' +
-    'no watermarks, no borders.',
-];
+export function buildShopBrief(input: {
+  shop: BannerShop;
+  products: BannerProduct[];
+  hasPhotos: boolean;
+}): string {
+  const { shop, products, hasPhotos } = input;
+  const goods = assortment(products);
+
+  return [
+    `Магазин: ${shop.name}`,
+    shop.description?.trim() ? `О себе: ${shop.description.trim()}` : null,
+    goods.length > 0
+      ? `Разделы каталога: ${goods.join(', ')}`
+      : 'Разделы каталога: не указаны',
+    products.length > 0
+      ? `Товары: ${products.map((product) => product.name).join('; ')}`
+      : 'Товаров в каталоге пока нет',
+    hasPhotos
+      ? 'Ниже приложены фотографии этих товаров — на баннере должны быть именно они.'
+      : 'Фотографий товаров нет: опиши типовые товары этих разделов, без выдуманных брендов.',
+  ]
+    .filter((line) => line !== null)
+    .join('\n');
+}
+
+/**
+ * Правила, которые дописываются к придуманному моделью тексту.
+ *
+ * Держатся здесь, а не в задании художнику: их нарушение стоит нам баннера, и
+ * зависеть от того, вспомнит ли о них модель в этот раз, они не должны.
+ */
+function rules(language: BannerLanguage): string[] {
+  return [
+    `Wide horizontal marketplace hero banner, aspect ratio ${ratio()}, ` +
+      'built to be read at a glance while scrolling.',
+    /**
+     * Про центральную полосу — не украшательство: картинка приводится к формату
+     * баннера обрезкой по центру, и текст у самого края её не переживёт.
+     */
+    'Keep the headline, the shop name and every word inside the central band ' +
+      'of the frame, well away from all four edges: the outer edges get cropped.',
+    'Photoreal goods composited on a designed background: glow and rim light ' +
+      'behind them, realistic contact shadow. Never a bare white studio shot.',
+    LANGUAGE_RULES[language],
+    'Render every letter sharply and correctly — no invented glyphs, no ' +
+      'misspellings, no gibberish text, no lorem ipsum.',
+    'No prices, no phone numbers, no links, no QR codes, no marketplace logos, ' +
+      'no watermarks, no borders.',
+  ];
+}
 
 /**
  * Соотношение сторон десятичной дробью, а не «1942:809»: у баннера стороны
@@ -87,15 +138,15 @@ const RULES = [
  * пропорция.
  */
 function ratio(): string {
-  const value = BANNER_FORMAT.width / BANNER_FORMAT.height;
-  return `${value.toFixed(1)}:1`;
+  return `${(BANNER_FORMAT.width / BANNER_FORMAT.height).toFixed(1)}:1`;
 }
 
-/** Устойчивый выбор решения по названию: тот же магазин — тот же вид. */
-function directionFor(shopName: string): string {
-  let hash = 0;
-  for (const char of shopName) hash = (hash * 31 + char.codePointAt(0)!) | 0;
-  return DIRECTIONS[Math.abs(hash) % DIRECTIONS.length];
+/** Готовое задание рисующей модели: замысел плюс наши правила. */
+export function composeBannerPrompt(
+  creative: string,
+  language: BannerLanguage,
+): string {
+  return [creative.trim(), '', ...rules(language)].join('\n');
 }
 
 /**
@@ -113,59 +164,71 @@ function assortment(products: BannerProduct[]): string[] {
 }
 
 /**
- * Задание на первый баннер.
+ * Замысел на случай, когда разобрать магазин не удалось.
  *
- * Фотографии товаров уходят отдельно, референсами: сюда попадает только текст.
- * `hasPhotos` разводит два случая, которые модель иначе не различит, — товаров
- * у магазина нет вовсе и товары есть, но их снимки не приложены.
+ * Модель-художник дешёвая и иногда не отвечает — 429, обрыв, мусор вместо
+ * JSON. Ронять из-за этого генерацию не за что: баннер по названию и разделам
+ * выйдет безликим, но рабочим, а продавец увидит картинку, а не ошибку.
  */
-export function buildBannerPrompt(input: {
+export function fallbackBrief(input: {
   shop: BannerShop;
   products: BannerProduct[];
-  language: BannerLanguage;
   hasPhotos: boolean;
-  /** Пожелание продавца: «осенняя распродажа», «новинки Apple». */
-  accent?: string;
-}): string {
-  const { shop, products, language, hasPhotos, accent } = input;
-
+}): BannerBrief {
+  const { shop, products, hasPhotos } = input;
   const goods = assortment(products);
-  const names = products.map((product) => product.name).filter(Boolean);
 
-  return [
+  const prompt = [
     'Design a wide promotional banner for an online shop on a computer-hardware marketplace.',
-    '',
-    `Shop name, render it verbatim as the brand line: "${shop.name}"`,
+    `Show the shop name as a small brand line: "${shop.name}"`,
     goods.length > 0
       ? `The shop sells: ${goods.join(', ')}.`
       : 'The shop sells computer hardware and accessories.',
-    names.length > 0 ? `Featured goods: ${names.join('; ')}.` : null,
-    shop.description?.trim()
-      ? `About the shop: ${shop.description.trim()}`
+    products.length > 0
+      ? `Featured goods: ${products.map((product) => product.name).join('; ')}.`
       : null,
-    accent?.trim() ? `The banner is about: ${accent.trim()}` : null,
-    '',
     hasPhotos
       ? 'The attached photos are the real goods of this shop: reproduce them ' +
-        'faithfully — same models, shapes, colours and markings — and compose ' +
-        'them into the banner. Do not invent different products.'
-      : goods.length > 0
-        ? 'No product photos are attached: draw typical goods of the ' +
-          'categories named above, generic and unbranded.'
-        : 'No product photos are attached: draw generic, unbranded computer ' +
-          'hardware — a laptop, a keyboard, a mouse.',
-    '',
-    'Text on the banner, kept short enough to read while scrolling:',
-    '- the shop name as a small brand line;',
-    '- one bold headline of two or three words naming the benefit;',
-    '- at most one short supporting line under it.',
-    LANGUAGE_RULES[language],
-    '',
-    `Art direction: ${directionFor(shop.name)}.`,
-    ...RULES,
+        'faithfully and compose them into the banner.'
+      : 'Draw generic, unbranded computer hardware — a laptop, a keyboard, a mouse.',
+    'Goods on the right, a bold two-word Russian headline on the left over a ' +
+      'dark background with a warm glow behind the goods.',
   ]
     .filter((line) => line !== null)
     .join('\n');
+
+  return {
+    prompt,
+    title: `Баннер магазина «${shop.name}»`.slice(0, BANNER_TITLE_MAX),
+  };
+}
+
+/**
+ * Разбор ответа художника. Форме не доверяем: пустой или битый ответ — повод
+ * взять запасной замысел, а не отдать продавцу картинку по мусорному заданию.
+ */
+export function parseBannerBrief(
+  raw: string | null | undefined,
+): BannerBrief | null {
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(raw ?? '') as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== 'object') return null;
+
+  const prompt = text(parsed.prompt);
+  if (!prompt) return null;
+
+  return {
+    prompt,
+    title: text(parsed.title).slice(0, BANNER_TITLE_MAX),
+  };
+}
+
+function text(raw: unknown): string {
+  return typeof raw === 'string' ? raw.trim() : '';
 }
 
 /**

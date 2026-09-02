@@ -21,6 +21,7 @@ import {
   bucketKey,
   MAX_ACTIVE_BANNERS,
   SHOP_BANNER_SLOTS,
+  shopBannerLink,
 } from './banners.constants';
 import { CreateBannerDto } from './dto/create-banner.dto';
 import { UpdateBannerDto } from './dto/update-banner.dto';
@@ -111,7 +112,7 @@ export class BannersService {
       title: dto.title,
       photoRu: dto.photoRu,
       photoUzLatn: dto.photoUzLatn,
-      linkUrl: dto.linkUrl || null,
+      linkUrl: dto.linkUrl || shopBannerLink(shop.id),
       isActive: dto.isActive ?? true,
       expiresAt: expiryDate(dto.expiresAt),
       status: 'approved',
@@ -192,8 +193,14 @@ export class BannersService {
       shopId: shop.id,
       title: dto.title,
       photoRu: dto.photoRu,
+      /**
+       * Пусто — ведём на страницу самого магазина: баннер и так про него, а
+       * набирать собственный адрес руками продавцу незачем. Стереть ссылку
+       * совсем нельзя намеренно — оплаченное место на главной должно
+       * куда-то вести.
+       */
       photoUzLatn: dto.photoUzLatn,
-      linkUrl: dto.linkUrl || null,
+      linkUrl: dto.linkUrl || shopBannerLink(shop.id),
       status: 'pending',
       isActive: true,
       sortOrder: 0,

@@ -1,9 +1,16 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import sharp from 'sharp';
-import { BANNER_FORMAT } from './banners.constants';
+import { BANNER_FORMAT, shopBannerLink } from './banners.constants';
 import { toBannerFormat } from './banner-image';
-import { buildBannerPrompt, buildTranslationPrompt } from './banner-prompt';
+import {
+  BANNER_TITLE_MAX,
+  buildShopBrief,
+  buildTranslationPrompt,
+  composeBannerPrompt,
+  fallbackBrief,
+  parseBannerBrief,
+} from './banner-prompt';
 
 const SHOP = { name: 'ТехноМаркет', description: 'Ноутбуки с 2015 года' };
 
@@ -13,101 +20,142 @@ const PRODUCTS = [
   { name: 'Мышь Logitech MX', categoryName: 'Мыши' },
 ];
 
-function ru(overrides: Partial<Parameters<typeof buildBannerPrompt>[0]> = {}) {
-  return buildBannerPrompt({
+describe('досье магазина для разбора моделью', () => {
+  const brief = buildShopBrief({
     shop: SHOP,
     products: PRODUCTS,
-    language: 'ru',
     hasPhotos: true,
-    ...overrides,
   });
-}
 
-describe('промпт баннера', () => {
-  it('передаёт название магазина дословно — его модель рисует как есть', () => {
-    assert.match(ru(), /"ТехноМаркет"/);
+  it('называет магазин и то, что он о себе написал', () => {
+    assert.match(brief, /Магазин: ТехноМаркет/);
+    assert.match(brief, /О себе: Ноутбуки с 2015 года/);
   });
 
   /**
    * Разделы каталога — это ответ на «чем торгует магазин». Три ноутбука подряд
-   * не должны превращаться в «ноутбуки, ноутбуки, ноутбуки»: модель повторит
-   * перечисление на самой картинке.
+   * не должны превращаться в «ноутбуки, ноутбуки, ноутбуки».
    */
   it('перечисляет разделы каталога без повторов', () => {
-    const line = ru()
-      .split('\n')
-      .find((row) => row.startsWith('The shop sells:'));
-
-    assert.equal(line, 'The shop sells: Ноутбуки, Мыши.');
+    assert.match(brief, /Разделы каталога: Ноутбуки, Мыши$/m);
   });
 
-  it('называет сами товары — по ним модель понимает, что рисовать', () => {
-    assert.match(ru(), /MacBook Air M2; Lenovo IdeaPad 3; Мышь Logitech MX/);
-  });
-
-  it('требует кириллицу для русского баннера', () => {
-    assert.match(ru(), /RUSSIAN, written in correct Cyrillic/);
+  it('перечисляет сами товары', () => {
+    assert.match(brief, /MacBook Air M2; Lenovo IdeaPad 3; Мышь Logitech MX/);
   });
 
   it('разводит «фото приложены» и «фотографий нет»', () => {
-    assert.match(ru({ hasPhotos: true }), /attached photos are the real goods/);
-    assert.match(ru({ hasPhotos: false }), /No product photos are attached/);
+    assert.match(brief, /приложены фотографии/);
+    assert.match(
+      buildShopBrief({ shop: SHOP, products: PRODUCTS, hasPhotos: false }),
+      /Фотографий товаров нет/,
+    );
+  });
+
+  it('у магазина без товаров говорит об этом прямо, а не молчит', () => {
+    const empty = buildShopBrief({
+      shop: { name: 'Новый' },
+      products: [],
+      hasPhotos: false,
+    });
+
+    assert.match(empty, /Товаров в каталоге пока нет/);
+    assert.match(empty, /Разделы каталога: не указаны/);
+  });
+});
+
+describe('разбор ответа модели', () => {
+  it('берёт замысел и название', () => {
+    const brief = parseBannerBrief(
+      JSON.stringify({ prompt: 'Laptops on a dark background', title: 'Баннер' }),
+    );
+
+    assert.deepEqual(brief, {
+      prompt: 'Laptops on a dark background',
+      title: 'Баннер',
+    });
+  });
+
+  it('обрезает слишком длинное название под колонку', () => {
+    const brief = parseBannerBrief(
+      JSON.stringify({ prompt: 'x', title: 'я'.repeat(BANNER_TITLE_MAX + 50) }),
+    );
+
+    assert.equal(brief?.title.length, BANNER_TITLE_MAX);
+  });
+
+  /** Пустой замысел рисовать нечем — вызывающий возьмёт запасной. */
+  it('отвергает ответ без замысла', () => {
+    assert.equal(parseBannerBrief(JSON.stringify({ title: 'Баннер' })), null);
+    assert.equal(parseBannerBrief('не json'), null);
+    assert.equal(parseBannerBrief(null), null);
+  });
+});
+
+describe('запасной замысел', () => {
+  const brief = fallbackBrief({
+    shop: SHOP,
+    products: PRODUCTS,
+    hasPhotos: true,
+  });
+
+  it('всё равно называет магазин и его товары', () => {
+    assert.match(brief.prompt, /"ТехноМаркет"/);
+    assert.match(brief.prompt, /The shop sells: Ноутбуки, Мыши\./);
+  });
+
+  it('даёт название, которое влезает в колонку', () => {
+    assert.ok(brief.title.length > 0);
+    assert.ok(brief.title.length <= BANNER_TITLE_MAX);
+  });
+
+  it('у магазина без товаров не ссылается на несуществующие разделы', () => {
+    const empty = fallbackBrief({
+      shop: { name: 'Новый' },
+      products: [],
+      hasPhotos: false,
+    });
+
+    assert.match(empty.prompt, /generic, unbranded computer hardware/);
+    assert.doesNotMatch(empty.prompt, /Featured goods/);
+  });
+});
+
+describe('сборка задания рисующей модели', () => {
+  const prompt = composeBannerPrompt('Laptops on a dark background', 'ru');
+
+  it('сохраняет замысел модели целиком', () => {
+    assert.match(prompt, /^Laptops on a dark background/);
   });
 
   /**
-   * Картинка приводится к формату баннера обрезкой по центру, поэтому текст у
-   * края её не переживёт. Требование держать надписи в центре — не пожелание,
-   * а условие того, что баннер вообще будет читаемым.
+   * Правила дописываются кодом, а не остаются на совести модели: их нарушение
+   * стоит нам баннера, и зависеть от того, вспомнит ли она о них, нельзя.
    */
-  it('запрещает ставить текст к краям — их срежет обрезка', () => {
-    assert.match(ru(), /central band of the frame/);
-    assert.match(ru(), /outer edges get cropped/);
-  });
-
-  it('у магазина без товаров всё равно говорит, что рисовать', () => {
-    const prompt = ru({ products: [], hasPhotos: false });
-
-    assert.match(prompt, /The shop sells computer hardware and accessories\./);
-    assert.doesNotMatch(prompt, /Featured goods/);
-    // Ссылаться на «названные выше разделы» здесь нечем — их нет.
-    assert.doesNotMatch(prompt, /categories named above/);
-  });
-
-  it('подхватывает пожелание продавца', () => {
-    assert.match(ru({ accent: 'Осенняя распродажа' }), /Осенняя распродажа/);
-  });
-
-  /** Один магазин — один узнаваемый вид, сколько бы раз ни перегенерировали. */
-  it('даёт одному магазину одно и то же художественное решение', () => {
-    assert.equal(ru(), ru());
-  });
-
-  it('разным магазинам даёт разные решения', () => {
-    const directionOf = (name: string) =>
-      buildBannerPrompt({
-        shop: { name },
-        products: PRODUCTS,
-        language: 'ru',
-        hasPhotos: true,
-      })
-        .split('\n')
-        .find((row) => row.startsWith('Art direction:'));
-
-    const directions = new Set(
-      ['Альфа', 'Бета', 'Гамма', 'Дельта', 'Эпсилон', 'Дзета'].map(
-        directionOf,
-      ),
+  it('требует кириллицу для русского и латиницу для узбекского', () => {
+    assert.match(prompt, /RUSSIAN, written in correct Cyrillic/);
+    assert.match(
+      composeBannerPrompt('x', 'uz-Latn'),
+      /UZBEK, written in LATIN script/,
     );
+  });
 
-    assert.ok(directions.size > 1, 'все магазины получили один и тот же вид');
+  it('запрещает ставить текст к краям — их срежет обрезка', () => {
+    assert.match(prompt, /central band of the frame/);
+    assert.match(prompt, /outer edges get cropped/);
+  });
+
+  it('запрещает цены и контакты, что бы ни придумала модель', () => {
+    assert.match(prompt, /No prices, no phone numbers/);
+  });
+
+  it('называет пропорцию понятной дробью, а не парой сторон', () => {
+    assert.match(prompt, /aspect ratio 2\.4:1/);
   });
 });
 
 describe('промпт перевода баннера', () => {
-  const prompt = buildTranslationPrompt({
-    shop: SHOP,
-    language: 'uz-Latn',
-  });
+  const prompt = buildTranslationPrompt({ shop: SHOP, language: 'uz-Latn' });
 
   it('требует латиницу и прямо запрещает кириллицу', () => {
     assert.match(prompt, /LATIN script/);
@@ -115,13 +163,19 @@ describe('промпт перевода баннера', () => {
   });
 
   it('оставляет название магазина непереведённым', () => {
-    assert.match(prompt, /stays exactly as it is and is not translated: "ТехноМаркет"/);
+    assert.match(prompt, /is not translated: "ТехноМаркет"/);
   });
 
   /** Иначе на витрине у магазина оказались бы два разных баннера. */
   it('требует повторить вёрстку, а не нарисовать заново', () => {
     assert.match(prompt, /Reproduce it exactly, changing only the language/);
     assert.match(prompt, /Do not add, remove or move any element/);
+  });
+});
+
+describe('ссылка баннера магазина', () => {
+  it('ведёт на страницу самого магазина', () => {
+    assert.equal(shopBannerLink(12), '/store/12');
   });
 });
 
@@ -139,19 +193,20 @@ describe('приведение картинки к формату баннера
       .toBuffer();
   }
 
+  const sizeOf = async (image: Buffer) => {
+    const meta = await sharp(await toBannerFormat(image)).metadata();
+    return { width: meta.width, height: meta.height, format: meta.format };
+  };
+
   it('режет то, что модель вернула в своих пропорциях', async () => {
-    const meta = await sharp(await toBannerFormat(await draw(1024, 1024)))
-      .metadata()
-      .then((m) => m);
+    const meta = await sizeOf(await draw(1024, 1024));
 
     assert.equal(meta.width, BANNER_FORMAT.width);
     assert.equal(meta.height, BANNER_FORMAT.height);
   });
 
   it('доводит до точного размера и то, что уже нужных пропорций', async () => {
-    const meta = await sharp(await toBannerFormat(await draw(1920, 800)))
-      .metadata()
-      .then((m) => m);
+    const meta = await sizeOf(await draw(1920, 800));
 
     assert.equal(meta.width, BANNER_FORMAT.width);
     assert.equal(meta.height, BANNER_FORMAT.height);
@@ -159,10 +214,6 @@ describe('приведение картинки к формату баннера
 
   /** В S3 кладём jpeg: png такого размера весит втрое больше без выигрыша. */
   it('отдаёт jpeg', async () => {
-    const meta = await sharp(await toBannerFormat(await draw(1920, 800)))
-      .metadata()
-      .then((m) => m);
-
-    assert.equal(meta.format, 'jpeg');
+    assert.equal((await sizeOf(await draw(1920, 800))).format, 'jpeg');
   });
 });

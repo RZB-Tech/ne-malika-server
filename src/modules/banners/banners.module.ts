@@ -13,6 +13,7 @@ import { BannersController } from './banners.controller';
 import { AdminBannersController } from './admin-banners.controller';
 import { SellerBannersController } from './seller-banners.controller';
 import { SellerBannerAiController } from './seller-banner-ai.controller';
+import { AdminBannerAiController } from './admin-banner-ai.controller';
 import { AdminShopBannersController } from './admin-shop-banners.controller';
 
 @Module({
@@ -30,6 +31,7 @@ import { AdminShopBannersController } from './admin-shop-banners.controller';
     AdminBannersController,
     SellerBannersController,
     SellerBannerAiController,
+    AdminBannerAiController,
     AdminShopBannersController,
   ],
   providers: [BannersRepository, BannersService, BannerAiService],

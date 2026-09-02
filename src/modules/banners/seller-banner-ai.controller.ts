@@ -25,6 +25,9 @@ import {
   TranslateBannerDto,
 } from './dto/generate-banner.dto';
 
+/** Продавец рисует только своему магазину — id берётся из его владения. */
+const asSeller = (user: AuthenticatedUser) => ({ id: user.id, isAdmin: false });
+
 /**
  * Рисование баннера моделью.
  *
@@ -48,7 +51,7 @@ export class SellerBannerAiController {
   @ApiOkResponse({ type: BannerAiPriceDto })
   @ApiResponse({ status: 404, description: 'Магазин не найден' })
   price(@CurrentUser() user: AuthenticatedUser): Promise<BannerAiPriceDto> {
-    return this.bannerAi.price(user.id);
+    return this.bannerAi.price(asSeller(user));
   }
 
   /**
@@ -61,8 +64,9 @@ export class SellerBannerAiController {
   @ApiOperation({
     summary: 'Нарисовать баннер на русском',
     description:
-      'Берёт название магазина, его разделы каталога и до трёх товаров с ' +
-      'фотографиями. Не нравится — вызовите ещё раз, каждый вызов платный.',
+      'Модель разбирает магазин — название, разделы каталога, товары и их ' +
+      'фотографии — и сама придумывает, что нарисовать и как назвать баннер. ' +
+      'Вводить ничего не нужно. Не нравится — вызовите ещё раз, каждый вызов платный.',
   })
   @ApiOkResponse({ type: GeneratedBannerDto })
   @ApiResponse({ status: 403, description: 'Тариф не даёт баннер' })
@@ -72,7 +76,7 @@ export class SellerBannerAiController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: GenerateBannerDto,
   ): Promise<GeneratedBannerDto> {
-    return this.bannerAi.generateRu(user.id, dto);
+    return this.bannerAi.generateRu(asSeller(user), dto.productIds);
   }
 
   @Post('uz')
@@ -92,6 +96,6 @@ export class SellerBannerAiController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: TranslateBannerDto,
   ): Promise<GeneratedBannerDto> {
-    return this.bannerAi.generateUz(user.id, dto);
+    return this.bannerAi.generateUz(asSeller(user), dto.photoKey);
   }
 }
