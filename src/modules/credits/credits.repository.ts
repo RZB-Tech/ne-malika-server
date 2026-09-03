@@ -374,7 +374,7 @@ export class CreditsRepository {
       amount: data.credits,
       balanceAfter,
       subscriptionAfter: 0,
-      note: ` `,
+      note: `${SUBSCRIPTION_GRANT_NOTE} ${data.plan.toUpperCase()}`,
       meta: {
         promo: 'subscription',
         plan: data.plan,
