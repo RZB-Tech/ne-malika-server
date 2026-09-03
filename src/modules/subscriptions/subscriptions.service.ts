@@ -1042,6 +1042,7 @@ export class SubscriptionsService implements OnModuleInit {
         active,
         until: row.until,
         daysLeft: daysLeftUntil(row.until, now, active),
+        creditsBalance: row.creditsBalance,
         subscriptionCredits: row.subscriptionCredits,
         lastPaidAt: row.lastPaidAt,
         stuckPrepared: row.stuckPrepared,

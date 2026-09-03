@@ -134,6 +134,7 @@ export interface AdminSubscriptionRow {
   ownerUsername: string | null;
   storedPlan: SubscriptionPlanId;
   until: Date | null;
+  creditsBalance: number;
   subscriptionCredits: number;
   lastPaidAt: Date | null;
   stuckPrepared: boolean;
@@ -738,7 +739,8 @@ export class SubscriptionsRepository {
         ownerUsername: users.telegramUsername,
         storedPlan: shops.subscriptionPlan,
         until: shops.subscriptionUntil,
-        subscriptionCredits: sql<number>`${shops.subscriptionCredits}::int`,
+        creditsBalance: sql<number>`(${shops.creditsBalance} + ${shops.subscriptionCredits})::int`,
+        subscriptionCredits: sql<number>`(${shops.creditsBalance} + ${shops.subscriptionCredits})::int`,
         lastPaidAt: sql<Date | null>`(select max(${subscriptionPayments.paidAt}) from ${subscriptionPayments} where ${subscriptionPayments.shopId} = ${shops.id} and ${subscriptionPayments.status} = 'paid')`,
         stuckPrepared,
         needsManualReview,

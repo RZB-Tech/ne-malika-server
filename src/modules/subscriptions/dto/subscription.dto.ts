@@ -363,7 +363,12 @@ export class AdminSubscriptionRowDto {
   @ApiProperty({ type: Number, nullable: true })
   daysLeft: number | null;
 
-  @ApiProperty({ description: 'Подписочные кредиты магазина' })
+  @ApiProperty({ description: 'Кредиты на балансе магазина' })
+  creditsBalance: number;
+
+  @ApiProperty({
+    description: 'Подписочные кредиты магазина (дублирует creditsBalance)',
+  })
   subscriptionCredits: number;
 
   @ApiProperty({
