@@ -15,10 +15,12 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import type { Response } from 'express';
+import { SkipThrottle } from '@nestjs/throttler';
 import { Public } from '../../common/decorators/public.decorator';
 import { FilesService } from './files.service';
 
 @ApiTags('files')
+@SkipThrottle()
 @Controller('files')
 export class FilesController {
   constructor(private readonly filesService: FilesService) {}
