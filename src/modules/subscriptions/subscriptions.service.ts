@@ -878,13 +878,14 @@ export class SubscriptionsService implements OnModuleInit {
       ? Math.max(0, (limits.freeAutofills ?? 0) - row.autofillUsed)
       : null;
 
+    const totalBalance = (row.creditsBalance ?? 0) + (row.subscriptionCredits ?? 0);
     return {
       plan: limits.id,
       active,
       until,
       daysLeft: daysLeftUntil(until, now, active),
-      subscriptionCredits: row.subscriptionCredits,
-      creditsBalance: row.creditsBalance,
+      subscriptionCredits: 0,
+      creditsBalance: totalBalance,
       creditsReserved: row.creditsReserved,
       available: Math.max(0, row.available),
       autofill: {

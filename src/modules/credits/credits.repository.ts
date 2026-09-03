@@ -137,23 +137,12 @@ export class CreditsRepository {
     meta: CreditTxnMeta,
   ): Promise<{ balance: number; subscription: number }> {
     return this.db.transaction(async (tx) => {
-      const before = await tx
-        .select({ usable: sql<number>`${USABLE_SUBSCRIPTION_CREDITS}::int` })
-        .from(shops)
-        .where(eq(shops.id, shopId))
-        .for('update');
-
-      const { fromSubscription, fromBalance } = splitSpend(
-        credits,
-        before[0]?.usable ?? 0,
-      );
-
       const rows = await tx
         .update(shops)
         .set({
           creditsReserved: sql`greatest(0, ${shops.creditsReserved} - ${reserved})`,
-          subscriptionCredits: sql`greatest(0, ${shops.subscriptionCredits} - ${fromSubscription})`,
-          creditsBalance: sql`greatest(0, ${shops.creditsBalance} - ${fromBalance})`,
+          creditsBalance: sql`greatest(0, ${shops.creditsBalance} + ${shops.subscriptionCredits} - ${credits})`,
+          subscriptionCredits: 0,
         })
         .where(eq(shops.id, shopId))
         .returning({
@@ -162,7 +151,7 @@ export class CreditsRepository {
         });
 
       const balance = rows[0]?.balance ?? 0;
-      const subscription = rows[0]?.subscription ?? 0;
+      const subscription = 0;
 
       if (credits > 0) {
         await tx.insert(creditTransactions).values({
@@ -170,8 +159,8 @@ export class CreditsRepository {
           kind: 'spend',
           amount: -credits,
           balanceAfter: balance,
-          subscriptionAfter: subscription,
-          meta: { ...meta, fromSubscription },
+          subscriptionAfter: 0,
+          meta: { ...meta, fromSubscription: 0 },
         });
       }
 
@@ -364,39 +353,20 @@ export class CreditsRepository {
     const from = alive && row.until ? row.until : now;
     const until = addMonths(from, data.months);
 
-    const burned = alive ? 0 : (row.subscription ?? 0);
-    const subscriptionAfter =
-      (alive ? (row.subscription ?? 0) : 0) + data.credits;
-
     const updated = await tx
       .update(shops)
       .set({
         subscriptionPlan: data.plan,
         subscriptionUntil: until,
-        subscriptionCredits: subscriptionAfter,
+        creditsBalance: sql` +  + `,
+        subscriptionCredits: 0,
         updatedAt: now,
       })
       .where(eq(shops.id, data.shopId))
       .returning({ balance: shops.creditsBalance });
 
-    const balanceAfter = updated[0]?.balance ?? row.balance ?? 0;
-
-    if (burned > 0) {
-      await tx.insert(creditTransactions).values({
-        shopId: data.shopId,
-        authorId: null,
-        kind: 'adjust',
-        amount: -burned,
-        balanceAfter,
-        subscriptionAfter: 0,
-        note: SUBSCRIPTION_BURN_NOTE,
-        meta: {
-          promo: 'subscription_burn',
-          plan: data.plan,
-          paymentId: data.paymentId ?? undefined,
-        },
-      });
-    }
+    const balanceAfter =
+      updated[0]?.balance ?? (row.balance ?? 0) + (row.subscription ?? 0) + data.credits;
 
     await tx.insert(creditTransactions).values({
       shopId: data.shopId,
@@ -404,8 +374,8 @@ export class CreditsRepository {
       kind: 'grant',
       amount: data.credits,
       balanceAfter,
-      subscriptionAfter,
-      note: `${SUBSCRIPTION_GRANT_NOTE} ${data.plan.toUpperCase()}`,
+      subscriptionAfter: 0,
+      note: ` `,
       meta: {
         promo: 'subscription',
         plan: data.plan,
@@ -420,12 +390,12 @@ export class CreditsRepository {
           activatedFrom: from,
           activatedUntil: until,
           grantedCredits: data.credits,
-          burnedCredits: burned,
+          burnedCredits: 0,
         })
         .where(eq(subscriptionPayments.id, data.paymentId));
     }
 
-    return { burned, granted: data.credits, from, until };
+    return { burned: 0, granted: data.credits, from, until };
   }
 
   async history(shopId: number, query: PaginationQueryDto) {
