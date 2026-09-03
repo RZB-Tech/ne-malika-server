@@ -60,10 +60,10 @@ const LANGUAGE_RULES: Record<BannerLanguage, string> = {
  */
 export const BANNER_BRIEF_SYSTEM = `You are a world-class commercial art director designing an ultra-clean, high-converting promotional hero banner for an online computer & electronics store on the NeMalika marketplace (Tashkent, Malika market).
 
-CRITICAL REQUIREMENT: CREATIVE DIVERSITY & VARIETY.
-Every banner must be visually distinct and unique! Never reuse the same layout, color accents, or headlines. Vary the visual presentation boldly based on the provided creative direction and shop data.
+CRITICAL REQUIREMENT: CREATIVE DIVERSITY & ANTI-REPETITION.
+Every banner must be visually distinct, accurate, and free of repetitive text.
 
-Always follow this commercial advertising framework while being creative and diverse:
+Always follow this commercial advertising framework:
 
 1. Right side — Multi-product showcase ensemble (4 to 6 items):
 - An attractive commercial 3D arrangement / ensemble of MULTIPLE real products sold by the shop (e.g. laptop, bag/sleeve, mouse, keyboard, projector, accessories, gadgets).
@@ -86,7 +86,8 @@ Always follow this commercial advertising framework while being creative and div
 - Top-right corner: neat branding badge reading verbatim: "NEMALIKA Проверенные магазины".
 
 3. Left side — Marketing & trust column:
-- Top shop badge: pill-shaped tag with the shop's market location / identifier: e.g. "[A14] на Malika" or "[ShopName] на Malika".
+- Top shop badge: pill-shaped tag with the EXACT store identifier given in the shop data (e.g. "[ShopName] на Malika").
+  * STRICT RULE: NEVER invent random pavilion letters or numbers (NEVER write "A14" or other store codes unless explicitly given in the shop data!).
 - Bold headline (2-3 words in large, bold sans-serif Cyrillic typography):
   * INVENT A FRESH, PUNCHY, UNIQUE RUSSIAN HEADLINE suited to what the store sells. Never repeat the same slogan!
   * E.g. for gaming: "МОЩЬ ДЛЯ ИГР", "ТВОЙ ПУТЬ К ПОБЕДЕ", "ИГРОВОЙ АРСЕНАЛ", "ПРОКАЧАЙ СЕЙВ"
@@ -94,7 +95,9 @@ Always follow this commercial advertising framework while being creative and div
   * E.g. for accessories/peripherals: "КОМФОРТ В ДЕТАЛЯХ", "ИДЕАЛЬНЫЙ СЕТАП", "ТОЧНОСТЬ И СТИЛЬ"
   * E.g. for audio/video: "КИНОТЕАТР ДОМА", "НОВЫЙ ВЗГЛЯД", "ЧИСТЫЙ ЗВУК И ЦВЕТ"
   * E.g. for general tech: "ТЕХНОЛОГИИ БУДУЩЕГО", "ВЫБИРАЙ ЛУЧШЕЕ", "ТВОЙ УМНЫЙ ВЫБОР", "ТЕХНОЛОГИИ ДЛЯ ТЕБЯ"
-- 3 to 4 category feature pills with minimal line icons and short 2-line labels matching what the store sells.
+- Exactly 4 category/feature pills:
+  * STRICT ANTI-REPETITION: You MUST use 4 completely DIFFERENT categories/features (use the 4 distinct pills provided in the shop data).
+  * STRICTLY FORBIDDEN to repeat any category name or description! NEVER write "Периферия" or any single category across multiple pills! Every pill must have its own distinct title and subtitle.
 - Trust badges row: 4 minimalist icons with labels: "Гарантия качества", "Проверенные бренды", "Быстрая доставка", "Поддержка 24/7".
 - Call to action: vibrant blue rounded button with a Telegram paper plane icon: "Подпишись на магазин [ShopName] и будь в курсе новинок и скидок!".
 
@@ -126,6 +129,147 @@ const HEADLINE_MOODS = [
   'Заголовок в стиле премиального качества, проверенной надежности и идеального выбора.',
 ];
 
+export interface CategoryPill {
+  title: string;
+  subtitle: string;
+}
+
+const PRODUCT_KEYWORD_MAP: Array<{
+  regex: RegExp;
+  title: string;
+  subtitle: string;
+}> = [
+  {
+    regex:
+      /ноутбук|laptop|macbook|ultrabook|ideapad|thinkpad|zenbook|vivobook|victus|tuf|rog|aspire|nitro/i,
+    title: 'Ноутбуки',
+    subtitle: 'для работы и игр',
+  },
+  {
+    regex: /наушник|гарнитур|headset|headphone|airpods|earbuds/i,
+    title: 'Аудио',
+    subtitle: 'чистый объёмный звук',
+  },
+  {
+    regex: /мышь|мышка|mouse/i,
+    title: 'Мыши',
+    subtitle: 'точность и скорость',
+  },
+  {
+    regex: /клавиатур|keyboard/i,
+    title: 'Клавиатуры',
+    subtitle: 'быстрый отклик',
+  },
+  {
+    regex: /рюкзак|сумка|чехол|backpack|case|sleeve/i,
+    title: 'Рюкзаки и чехлы',
+    subtitle: 'защита и комфорт',
+  },
+  {
+    regex: /монитор|экран|дисплей|monitor|display/i,
+    title: 'Мониторы',
+    subtitle: 'чёткое изображение',
+  },
+  {
+    regex: /проектор|projector/i,
+    title: 'Проекторы',
+    subtitle: 'для дома и офиса',
+  },
+  {
+    regex: /компьютер|системн|пк|desktop|pc/i,
+    title: 'Компьютеры',
+    subtitle: 'максимальная мощь',
+  },
+  {
+    regex: /видеокарт|gpu|rtx|gtx|radeon/i,
+    title: 'Видеокарты',
+    subtitle: 'графика нового уровня',
+  },
+  {
+    regex: /накопител|ssd|hdd|диск|памят|ram/i,
+    title: 'Накопители и память',
+    subtitle: 'мгновенная скорость',
+  },
+  {
+    regex: /коврик|mousepad/i,
+    title: 'Коврики и аксессуары',
+    subtitle: 'идеальное скольжение',
+  },
+];
+
+const DEFAULT_FEATURE_PILLS: CategoryPill[] = [
+  { title: 'Оригинальная техника', subtitle: '100% гарантия качества' },
+  { title: 'Широкий выбор', subtitle: 'всегда в наличии' },
+  { title: 'Актуальные новинки', subtitle: 'свежие поступления' },
+  { title: 'Выгодные предложения', subtitle: 'лучшие цены' },
+  { title: 'Премиум сервис', subtitle: 'помощь с выбором' },
+  { title: 'Быстрая доставка', subtitle: 'прямо до двери' },
+];
+
+export function resolveStoreBadge(shop: BannerShop): string {
+  const addr = shop.address?.trim();
+  if (addr) {
+    const pavilionMatch = addr.match(
+      /^(?:павильон\s*|ряд\s*|магазин\s*|бокс\s*)?([A-Za-zА-Яа-яЁё]?\s*[-–]?\s*\d+[A-Za-zА-Яа-яЁё]?)$/i,
+    );
+    if (pavilionMatch && pavilionMatch[1]) {
+      return `[${pavilionMatch[1].replace(/\s+/g, '')}] на Malika`;
+    }
+  }
+  return `[${shop.name}] на Malika`;
+}
+
+export function resolveCategoryPills(
+  products: BannerProduct[],
+): CategoryPill[] {
+  const result: CategoryPill[] = [];
+  const usedTitles = new Set<string>();
+
+  // 1. Из категорий товаров
+  for (const product of products) {
+    const cat = product.categoryName?.trim();
+    if (cat && !usedTitles.has(cat.toLowerCase())) {
+      const lower = cat.toLowerCase();
+      const subtitle = lower.includes('ноут')
+        ? 'для работы и игр'
+        : lower.includes('мышь') || lower.includes('мыши')
+          ? 'точность и комфорт'
+          : lower.includes('клав')
+            ? 'быстрый отклик'
+            : lower.includes('периф')
+              ? 'для удобной работы'
+              : 'надёжные решения';
+      result.push({ title: cat, subtitle });
+      usedTitles.add(cat.toLowerCase());
+      if (result.length >= 4) break;
+    }
+  }
+
+  // 2. Из названий товаров по ключевым словам
+  for (const product of products) {
+    if (result.length >= 4) break;
+    const name = product.name;
+    for (const kw of PRODUCT_KEYWORD_MAP) {
+      if (kw.regex.test(name) && !usedTitles.has(kw.title.toLowerCase())) {
+        result.push({ title: kw.title, subtitle: kw.subtitle });
+        usedTitles.add(kw.title.toLowerCase());
+        if (result.length >= 4) break;
+      }
+    }
+  }
+
+  // 3. Дополняем преимуществами магазина, исключая повторы
+  for (const pill of DEFAULT_FEATURE_PILLS) {
+    if (result.length >= 4) break;
+    if (!usedTitles.has(pill.title.toLowerCase())) {
+      result.push(pill);
+      usedTitles.add(pill.title.toLowerCase());
+    }
+  }
+
+  return result.slice(0, 4);
+}
+
 export function buildShopBrief(input: {
   shop: BannerShop;
   products: BannerProduct[];
@@ -136,6 +280,9 @@ export function buildShopBrief(input: {
   const location = shop.address?.trim()
     ? `Павильон/адрес: ${shop.address.trim()}`
     : null;
+  const badge = resolveStoreBadge(shop);
+  const pills = resolveCategoryPills(products);
+
   const direction =
     CREATIVE_DIRECTIONS[Math.floor(Math.random() * CREATIVE_DIRECTIONS.length)];
   const mood =
@@ -155,6 +302,9 @@ export function buildShopBrief(input: {
     hasPhotos
       ? 'Ниже приложены фотографии этих товаров — на баннере должны быть именно они в виде красивой общей композиции.'
       : 'Фотографий товаров нет: опиши типовые товары этих разделов, без выдуманных брендов.',
+    `Плашка магазина в верхнем углу (писать СТРОГО этот текст): "${badge}"`,
+    'Плашки категорий (писать строго эти 4 разные плашки, НЕ повторять слова!):',
+    ...pills.map((p, i) => `  Плашка ${i + 1}: "${p.title}" / "${p.subtitle}"`),
     `Творческий стиль этой генерации: ${direction}`,
     `Акцент слогана: ${mood}`,
     `Сид разнообразия: #${seed}. Сделай эту вариацию неповторимой по цветам, композиции и заголовку.`,
@@ -179,9 +329,10 @@ function rules(language: BannerLanguage): string[] {
      */
     'Keep the headline, the shop name and every word inside the central band ' +
       'of the frame, well away from all four edges: the outer edges get cropped.',
-    'Clean, bright commercial high-key studio aesthetic: white and soft light-blue ambient lighting, polished light reflective surface with realistic soft contact shadows.',
+    'Clean, bright commercial high-key studio aesthetic with distinct, high-quality lighting and polished reflective surfaces.',
     'Multi-product showcase on the right side: compose multiple distinct products together into a cohesive commercial lineup.',
     'Structured marketing column on the left with shop badge, bold headline, category highlights, trust badges row, and Telegram CTA button.',
+    'STRICT ANTI-REPETITION: Every pill and text element must be distinct. Strictly forbidden to repeat any category name or description across multiple pills (never repeat words like "Периферия"!). Never invent pavilion codes like "A14" unless provided.',
     LANGUAGE_RULES[language],
     'Render every letter sharply and correctly — no invented glyphs, no ' +
       'misspellings, no gibberish text, no lorem ipsum.',
@@ -258,9 +409,8 @@ export function fallbackBrief(input: {
 }): BannerBrief {
   const { shop, products, hasPhotos } = input;
   const goods = assortment(products);
-  const shopTag = shop.address?.trim()
-    ? `[${shop.address.trim()}] на Malika`
-    : `[${shop.name}] на Malika`;
+  const badge = resolveStoreBadge(shop);
+  const pills = resolveCategoryPills(products);
 
   const headline =
     FALLBACK_HEADLINES[Math.floor(Math.random() * FALLBACK_HEADLINES.length)];
@@ -274,11 +424,13 @@ export function fallbackBrief(input: {
     style,
     'Top right corner branding badge: "NEMALIKA Проверенные магазины".',
     'Left side structured marketing column:',
-    `- Store badge pill: "${shopTag}", shop: "${shop.name}"`,
+    `- Store badge pill: "${badge}", shop: "${shop.name}"`,
     `- Large bold two-line Cyrillic headline: "${headline}"`,
     goods.length > 0
       ? `The shop sells: ${goods.join(', ')}.`
       : 'The shop sells computer hardware and accessories.',
+    '- 4 distinct category feature pills with icons (never repeating words):',
+    ...pills.map((p) => `  * "${p.title}" / "${p.subtitle}"`),
     '- Trust badges row: "Гарантия качества", "Проверенные бренды", "Быстрая доставка", "Поддержка 24/7"',
     `- Blue rounded Telegram CTA button: "Подпишись на магазин ${shop.name} и будь в курсе новинок и скидок!"`,
     'Right side multi-product showcase ensemble:',
@@ -298,10 +450,6 @@ export function fallbackBrief(input: {
   };
 }
 
-/**
- * Разбор ответа художника. Форме не доверяем: пустой или битый ответ — повод
- * взять запасной замысел, а не отдать продавцу картинку по мусорному заданию.
- */
 export function parseBannerBrief(
   raw: string | null | undefined,
 ): BannerBrief | null {
