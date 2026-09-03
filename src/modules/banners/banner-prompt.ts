@@ -23,6 +23,8 @@ export type BannerLanguage = (typeof BANNER_LANGUAGES)[number];
 export interface BannerShop {
   name: string;
   description?: string | null;
+  address?: string | null;
+  telegramLink?: string | null;
 }
 
 /** Товар, попадающий в баннер: чем магазин торгует, видно по нему. */
@@ -56,24 +58,31 @@ const LANGUAGE_RULES: Record<BannerLanguage, string> = {
  * модели, и она понимает английские описания сцены куда лучше, чем пересказ
  * на русском. Русским остаётся только то, что попадёт на саму картинку.
  */
-export const BANNER_BRIEF_SYSTEM = `You are an art director for a computer-hardware marketplace. You are given a shop: its name, what it sells, a few of its goods and their photos. Work out what this shop is about and write a prompt for an image generator that will draw a wide promotional banner for it.
+export const BANNER_BRIEF_SYSTEM = `You are a world-class commercial art director designing an ultra-clean, high-converting promotional hero banner for an online computer & electronics store on the NeMalika marketplace (Tashkent, Malika market).
+
+The banner MUST strictly follow this commercial advertising layout:
+1. Overall aesthetic:
+- Wide horizontal banner, clean, modern, high-key commercial studio aesthetic.
+- Light bright background: crisp white to soft light-blue / silver gradient with subtle elegant curved geometric lines. Bright, clean, professional ambient studio lighting.
+- Top-right corner: small neat marketplace branding badge reading verbatim: "NEMALIKA Проверенные магазины".
+
+2. Right side — Multi-product showcase ensemble:
+- An attractive commercial 3D arrangement / ensemble of MULTIPLE real products sold by the shop (4 to 6 items: e.g. laptop, bag/sleeve, mouse, keyboard, projector, accessories, gadgets).
+- Arranged cleanly on a polished light reflective desk surface with realistic soft contact shadows and crisp material textures.
+- NEVER draw just a single product. It MUST be a cohesive ensemble of several distinct products representing the shop's catalog.
+
+3. Left side — Marketing & trust column:
+- Top shop badge: pill-shaped tag with the shop's market location / identifier: e.g. "[A14] на Malika" or "[ShopName] на Malika".
+- Big bold headline: 2-3 words in large, bold sans-serif Cyrillic typography (e.g. "ТЕХНОЛОГИИ ДЛЯ ТЕБЯ", "ВСЁ ДЛЯ ИГР И РАБОТЫ", "МИР НОУТБУКОВ И ПК").
+- 3 to 4 category feature pills with minimal line icons and short 2-line labels matching what the store sells (e.g. "Периферия / для игр и работы", "Проекторы / для дома и офиса", "Чехлы / для MacBook", "Сумки / для ноутбуков").
+- Trust badges row: 4 minimalist icons with labels: "Гарантия качества", "Проверенные бренды", "Быстрая доставка", "Поддержка 24/7".
+- Call to action: vibrant blue rounded button with a Telegram paper plane icon: "Подпишись на магазин [ShopName] и будь в курсе новинок и скидок!".
 
 Return strictly JSON and nothing else:
 {"prompt":"...","title":"..."}
 
-prompt — the image prompt, in English, 60-120 words. Describe:
-- which goods to show and how they are arranged;
-- the background, palette and lighting, chosen to fit this particular shop rather than a generic tech look;
-- where the text blocks sit.
-
-Quote verbatim, in double quotes, every word that must appear on the banner: the shop name and a short headline of two or three words. Write those quoted words in Russian. Invent the headline from what the shop actually sells — no empty "лучшие цены" when nothing in the data says so.
-
-Judge the shop by its data, not by wishful thinking:
-- a shop with two products is a small shop; do not draw a hypermarket;
-- a repair or setup service is not a goods shop: show the work, a workbench, a master at the desk — not a boxed product;
-- if the goods are all from one category, build the banner around that category.
-
-title — a short Russian name for this banner for the admin list, up to ${BANNER_TITLE_MAX} characters. Not a slogan: it must say which shop and which banner this is.
+prompt — detailed image generator prompt in English (80-160 words), specifying the clean light multi-product composition, exact layout, lighting, and quoting all Russian text verbatim in double quotes.
+title — short Russian title for the banner for admin list, up to ${BANNER_TITLE_MAX} characters. Not a slogan: it must say which shop and which banner this is.
 
 Never put prices, phone numbers, links or promises of discounts into either field: the shop did not promise them.`;
 
@@ -88,9 +97,11 @@ export function buildShopBrief(input: {
 }): string {
   const { shop, products, hasPhotos } = input;
   const goods = assortment(products);
+  const location = shop.address?.trim() ? `Павильон/адрес: ${shop.address.trim()}` : null;
 
   return [
     `Магазин: ${shop.name}`,
+    location,
     shop.description?.trim() ? `О себе: ${shop.description.trim()}` : null,
     goods.length > 0
       ? `Разделы каталога: ${goods.join(', ')}`
@@ -99,7 +110,7 @@ export function buildShopBrief(input: {
       ? `Товары: ${products.map((product) => product.name).join('; ')}`
       : 'Товаров в каталоге пока нет',
     hasPhotos
-      ? 'Ниже приложены фотографии этих товаров — на баннере должны быть именно они.'
+      ? 'Ниже приложены фотографии этих товаров — на баннере должны быть именно они в виде красивой общей композиции.'
       : 'Фотографий товаров нет: опиши типовые товары этих разделов, без выдуманных брендов.',
   ]
     .filter((line) => line !== null)
@@ -122,13 +133,13 @@ function rules(language: BannerLanguage): string[] {
      */
     'Keep the headline, the shop name and every word inside the central band ' +
       'of the frame, well away from all four edges: the outer edges get cropped.',
-    'Photoreal goods composited on a designed background: glow and rim light ' +
-      'behind them, realistic contact shadow. Never a bare white studio shot.',
+    'Clean, bright commercial high-key studio aesthetic: white and soft light-blue ambient lighting, polished light reflective surface with realistic soft contact shadows.',
+    'Multi-product showcase on the right side: compose multiple distinct products together into a cohesive commercial lineup.',
+    'Structured marketing column on the left with shop badge, bold headline, category highlights, trust badges row, and Telegram CTA button.',
     LANGUAGE_RULES[language],
     'Render every letter sharply and correctly — no invented glyphs, no ' +
       'misspellings, no gibberish text, no lorem ipsum.',
-    'No prices, no phone numbers, no links, no QR codes, no marketplace logos, ' +
-      'no watermarks, no borders.',
+    'No prices, no phone numbers, no links, no QR codes, no watermarks, no borders.',
   ];
 }
 
@@ -177,22 +188,27 @@ export function fallbackBrief(input: {
 }): BannerBrief {
   const { shop, products, hasPhotos } = input;
   const goods = assortment(products);
+  const shopTag = shop.address?.trim() ? `[${shop.address.trim()}] на Malika` : `[${shop.name}] на Malika`;
 
   const prompt = [
-    'Design a wide promotional banner for an online shop on a computer-hardware marketplace.',
-    `Show the shop name as a small brand line: "${shop.name}"`,
+    'Ultra-clean modern horizontal commercial hero banner for an electronics marketplace store.',
+    'Bright high-key studio lighting, soft white-to-light-blue gradient background with smooth subtle curved tech waves.',
+    'Top right corner branding badge: "NEMALIKA Проверенные магазины".',
+    'Left side structured marketing column:',
+    `- Store badge pill: "${shopTag}", shop: "${shop.name}"`,
+    '- Large bold two-line Cyrillic headline: "ТЕХНОЛОГИИ ДЛЯ ТЕБЯ"',
     goods.length > 0
       ? `The shop sells: ${goods.join(', ')}.`
       : 'The shop sells computer hardware and accessories.',
+    '- Trust badges row: "Гарантия качества", "Проверенные бренды", "Быстрая доставка", "Поддержка 24/7"',
+    `- Blue rounded Telegram CTA button: "Подпишись на магазин ${shop.name} и будь в курсе новинок и скидок!"`,
+    'Right side multi-product showcase ensemble:',
+    hasPhotos
+      ? 'A photorealistic commercial arrangement of multiple actual products from the shop on a polished light reflective surface with soft shadows.'
+      : 'Draw generic, unbranded computer hardware — a laptop, a keyboard, a mouse.',
     products.length > 0
       ? `Featured goods: ${products.map((product) => product.name).join('; ')}.`
       : null,
-    hasPhotos
-      ? 'The attached photos are the real goods of this shop: reproduce them ' +
-        'faithfully and compose them into the banner.'
-      : 'Draw generic, unbranded computer hardware — a laptop, a keyboard, a mouse.',
-    'Goods on the right, a bold two-word Russian headline on the left over a ' +
-      'dark background with a warm glow behind the goods.',
   ]
     .filter((line) => line !== null)
     .join('\n');
@@ -255,8 +271,9 @@ export function buildTranslationPrompt(input: {
     'Do not add, remove or move any element. Do not redraw the goods.',
     '',
     LANGUAGE_RULES[language],
-    'Translate the wording faithfully and keep it about the same length, so ' +
-      'that it fits the same blocks.',
+    'Translate the wording faithfully and keep it about the same length, so that it fits the same blocks.',
+    '- Trust badges translate to Uzbek Latin: "Sifat kafolati", "Ishonchli brendlar", "Tezkor yetkazib berish", "24/7 qo‘llab-quvvatlash".',
+    `- Telegram CTA button translates to: "${shop.name} do‘koniga obuna bo‘ling va yangiliklardan xabardor bo‘ling!".`,
     `The shop name stays exactly as it is and is not translated: "${shop.name}"`,
     '',
     'Render every letter sharply and correctly — no invented glyphs, no ' +

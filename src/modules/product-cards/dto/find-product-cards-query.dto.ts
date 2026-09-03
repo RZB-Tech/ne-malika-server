@@ -5,12 +5,10 @@ import {
   IsArray,
   IsIn,
   IsInt,
-  IsNumber,
   IsOptional,
   IsString,
   Matches,
   MaxLength,
-  Min,
 } from 'class-validator';
 import { PaginationQueryDto } from '../../../common/dto/pagination-query.dto';
 
@@ -42,25 +40,6 @@ export class FindProductCardsQueryDto extends PaginationQueryDto {
   @MaxLength(200)
   q?: string;
 
-  @ApiPropertyOptional({ minimum: 0, example: 100 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  price_min?: number;
-
-  @ApiPropertyOptional({ minimum: 0, example: 1500 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(0)
-  price_max?: number;
-
-  @ApiPropertyOptional({ enum: ['new', 'old'] })
-  @IsOptional()
-  @IsIn(['new', 'old'])
-  state?: 'new' | 'old';
-
   @ApiPropertyOptional({ example: 1 })
   @IsOptional()
   @Type(() => Number)
@@ -86,15 +65,15 @@ export class FindProductCardsQueryDto extends PaginationQueryDto {
   category?: string;
 
   @ApiPropertyOptional({
-    enum: ['price_asc', 'price_desc', 'newest', 'random'],
+    enum: ['newest', 'random'],
     default: 'newest',
     description:
       'random — вперемешку: витрина не должна каждый раз открываться одними и ' +
       'теми же товарами сверху. Порядок задаёт seed.',
   })
   @IsOptional()
-  @IsIn(['price_asc', 'price_desc', 'newest', 'random'])
-  sort?: 'price_asc' | 'price_desc' | 'newest' | 'random';
+  @IsIn(['newest', 'random'])
+  sort?: 'newest' | 'random';
 
   @ApiPropertyOptional({
     example: 'k3f9d1a7',

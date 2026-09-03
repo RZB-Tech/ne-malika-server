@@ -58,7 +58,7 @@ export const BANNER_GEN_QUALITY = 'medium';
  * мелкой сеткой, и баннер перестаёт читаться на бегу; меньше двух — витрина
  * выглядит пустой.
  */
-export const BANNER_SOURCE_PRODUCTS = 3;
+export const BANNER_SOURCE_PRODUCTS = 6;
 
 /**
  * Куда ведёт клик по баннеру магазина.

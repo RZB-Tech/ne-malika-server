@@ -84,9 +84,6 @@ describe('граница включения продвижения', () => {
     ['ветка каталога', RANDOM, [12, 13]],
     ['несуществующая категория', RANDOM, []],
     ['конкретный магазин', { ...RANDOM, shop_id: 7 }, undefined],
-    ['нижняя граница цены', { ...RANDOM, price_min: 100 }, undefined],
-    ['верхняя граница цены', { ...RANDOM, price_max: 100 }, undefined],
-    ['состояние товара', { ...RANDOM, state: 'new' as const }, undefined],
     ['список id', { ...RANDOM, ids: [1, 2] }, undefined],
     ['пустой список id', { ...RANDOM, ids: [] }, undefined],
   ] as [string, FindProductCardsQueryDto, number[] | undefined][]) {
@@ -98,7 +95,7 @@ describe('граница включения продвижения', () => {
     });
   }
 
-  for (const sort of ['newest', 'price_asc', 'price_desc'] as const) {
+  for (const sort of ['newest'] as const) {
     it(`сортировка ${sort} продвижения не знает`, async () => {
       const { text } = await listSql({ sort });
       assert.doesNotMatch(text, /power\(/);

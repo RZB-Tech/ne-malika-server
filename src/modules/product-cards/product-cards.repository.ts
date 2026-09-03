@@ -6,11 +6,9 @@ import {
   desc,
   eq,
   gt,
-  gte,
   ilike,
   inArray,
   isNull,
-  lte,
   or,
   sql,
 } from 'drizzle-orm';
@@ -123,10 +121,7 @@ function isGeneralCatalog(
     !query.q &&
     categoryIds === undefined &&
     query.ids === undefined &&
-    query.shop_id === undefined &&
-    query.price_min === undefined &&
-    query.price_max === undefined &&
-    !query.state
+    query.shop_id === undefined
   );
 }
 
@@ -137,12 +132,6 @@ function resolveSort(
 ): SQL[] {
   if (query.sort === 'random') {
     return randomOrder(query.seed ?? '', promo);
-  }
-  if (query.sort === 'price_asc') {
-    return [sql`${productCards.price} asc nulls last`];
-  }
-  if (query.sort === 'price_desc') {
-    return [sql`${productCards.price} desc nulls last`];
   }
 
   if (!search) return [desc(productCards.createdAt)];
@@ -371,15 +360,6 @@ function publicConditions(
   }
   if (query.q) {
     conditions.push(search ? searchCondition(search) : sql`false`);
-  }
-  if (query.price_min !== undefined) {
-    conditions.push(gte(productCards.price, query.price_min.toString()));
-  }
-  if (query.price_max !== undefined) {
-    conditions.push(lte(productCards.price, query.price_max.toString()));
-  }
-  if (query.state) {
-    conditions.push(eq(productCards.state, query.state));
   }
   if (query.shop_id) {
     conditions.push(eq(productCards.shopId, query.shop_id));
