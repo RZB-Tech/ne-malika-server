@@ -14,12 +14,10 @@ import {
 } from '../../db/subscriptions';
 import {
   addMonths,
-  SUBSCRIPTION_BURN_NOTE,
   SUBSCRIPTION_GRANT_NOTE,
   type PaidPlan,
   type SubscriptionPlanId,
 } from '../subscriptions/subscriptions.constants';
-import { splitSpend } from './credits.constants';
 import {
   PaginationQueryDto,
   resolvePage,
@@ -366,7 +364,8 @@ export class CreditsRepository {
       .returning({ balance: shops.creditsBalance });
 
     const balanceAfter =
-      updated[0]?.balance ?? (row.balance ?? 0) + (row.subscription ?? 0) + data.credits;
+      updated[0]?.balance ??
+      (row.balance ?? 0) + (row.subscription ?? 0) + data.credits;
 
     await tx.insert(creditTransactions).values({
       shopId: data.shopId,
