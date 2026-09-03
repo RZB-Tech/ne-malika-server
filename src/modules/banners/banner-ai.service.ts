@@ -217,6 +217,7 @@ export class BannerAiService {
       const completion = await this.router!.chat.completions.create(
         {
           model,
+          temperature: 0.95,
           max_completion_tokens: BRIEF_MAX_TOKENS,
           response_format: { type: 'json_object' },
           messages: [
@@ -341,6 +342,7 @@ export class BannerAiService {
         size: BANNER_GEN_SIZE,
         quality: BANNER_GEN_QUALITY,
         input_references: references,
+        seed: Math.floor(Math.random() * 2147483647),
       },
       timeout: IMAGE_TIMEOUT_MS,
       maxRetries: MAX_RETRIES,

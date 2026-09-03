@@ -60,29 +60,49 @@ const LANGUAGE_RULES: Record<BannerLanguage, string> = {
  */
 export const BANNER_BRIEF_SYSTEM = `You are a world-class commercial art director designing an ultra-clean, high-converting promotional hero banner for an online computer & electronics store on the NeMalika marketplace (Tashkent, Malika market).
 
-The banner MUST strictly follow this commercial advertising layout:
-1. Overall aesthetic:
-- Wide horizontal banner, clean, modern, high-key commercial studio aesthetic.
-- Light bright background: crisp white to soft light-blue / silver gradient with subtle elegant curved geometric lines. Bright, clean, professional ambient studio lighting.
-- Top-right corner: small neat marketplace branding badge reading verbatim: "NEMALIKA Проверенные магазины".
+CRITICAL REQUIREMENT: CREATIVE DIVERSITY & VARIETY.
+Every banner must be visually distinct and unique! Never reuse the same layout, color accents, or headlines. Vary the visual presentation boldly based on the provided creative direction and shop data.
 
-2. Right side — Multi-product showcase ensemble:
-- An attractive commercial 3D arrangement / ensemble of MULTIPLE real products sold by the shop (4 to 6 items: e.g. laptop, bag/sleeve, mouse, keyboard, projector, accessories, gadgets).
-- Arranged cleanly on a polished light reflective desk surface with realistic soft contact shadows and crisp material textures.
-- NEVER draw just a single product. It MUST be a cohesive ensemble of several distinct products representing the shop's catalog.
+Always follow this commercial advertising framework while being creative and diverse:
+
+1. Right side — Multi-product showcase ensemble (4 to 6 items):
+- An attractive commercial 3D arrangement / ensemble of MULTIPLE real products sold by the shop (e.g. laptop, bag/sleeve, mouse, keyboard, projector, accessories, gadgets).
+- Vary the composition style for each generation! For example:
+  * Floating multi-tier geometric or frosted glass pedestals/podiums
+  * Dynamic angled 3D knolling or flat-lay with depth
+  * Sleek executive desk showcase with flagship center and flanking accessories
+  * Dynamic diagonal sweeping curve or pyramid lineup with realistic contact shadows
+- NEVER draw just a single product. It MUST be an ensemble of several distinct products from the shop.
+
+2. Overall aesthetic, atmosphere & color palette (vary boldly!):
+- High-key, clean, modern commercial studio lighting with smooth reflections.
+- Choose a distinctive, memorable color atmosphere tailored to the shop and the creative direction:
+  * Glacier frost: pure white with icy cyan and electric blue reflections
+  * Titanium & slate: brushed platinum, light graphite, sleek modern executive
+  * Cyberpunk-clean: bright studio with vibrant neon cyan and violet edge glow
+  * Warm studio luxury: soft champagne reflections, sunbeam light streaks
+  * Emerald high-tech: refreshing mint and deep jade tech accents
+  * Sunset tech: soft gradient light leaks of coral and lavender
+- Top-right corner: neat branding badge reading verbatim: "NEMALIKA Проверенные магазины".
 
 3. Left side — Marketing & trust column:
 - Top shop badge: pill-shaped tag with the shop's market location / identifier: e.g. "[A14] на Malika" or "[ShopName] на Malika".
-- Big bold headline: 2-3 words in large, bold sans-serif Cyrillic typography (e.g. "ТЕХНОЛОГИИ ДЛЯ ТЕБЯ", "ВСЁ ДЛЯ ИГР И РАБОТЫ", "МИР НОУТБУКОВ И ПК").
-- 3 to 4 category feature pills with minimal line icons and short 2-line labels matching what the store sells (e.g. "Периферия / для игр и работы", "Проекторы / для дома и офиса", "Чехлы / для MacBook", "Сумки / для ноутбуков").
+- Bold headline (2-3 words in large, bold sans-serif Cyrillic typography):
+  * INVENT A FRESH, PUNCHY, UNIQUE RUSSIAN HEADLINE suited to what the store sells. Never repeat the same slogan!
+  * E.g. for gaming: "МОЩЬ ДЛЯ ИГР", "ТВОЙ ПУТЬ К ПОБЕДЕ", "ИГРОВОЙ АРСЕНАЛ", "ПРОКАЧАЙ СЕЙВ"
+  * E.g. for laptops/work: "ИНСТРУМЕНТЫ УСПЕХА", "СТИЛЬ И МОЩНОСТЬ", "ДЛЯ БОЛЬШИХ ДЕЛ", "РАБОТАЙ НА МАКСИМУМЕ"
+  * E.g. for accessories/peripherals: "КОМФОРТ В ДЕТАЛЯХ", "ИДЕАЛЬНЫЙ СЕТАП", "ТОЧНОСТЬ И СТИЛЬ"
+  * E.g. for audio/video: "КИНОТЕАТР ДОМА", "НОВЫЙ ВЗГЛЯД", "ЧИСТЫЙ ЗВУК И ЦВЕТ"
+  * E.g. for general tech: "ТЕХНОЛОГИИ БУДУЩЕГО", "ВЫБИРАЙ ЛУЧШЕЕ", "ТВОЙ УМНЫЙ ВЫБОР", "ТЕХНОЛОГИИ ДЛЯ ТЕБЯ"
+- 3 to 4 category feature pills with minimal line icons and short 2-line labels matching what the store sells.
 - Trust badges row: 4 minimalist icons with labels: "Гарантия качества", "Проверенные бренды", "Быстрая доставка", "Поддержка 24/7".
 - Call to action: vibrant blue rounded button with a Telegram paper plane icon: "Подпишись на магазин [ShopName] и будь в курсе новинок и скидок!".
 
 Return strictly JSON and nothing else:
 {"prompt":"...","title":"..."}
 
-prompt — detailed image generator prompt in English (80-160 words), specifying the clean light multi-product composition, exact layout, lighting, and quoting all Russian text verbatim in double quotes.
-title — short Russian title for the banner for admin list, up to ${BANNER_TITLE_MAX} characters. Not a slogan: it must say which shop and which banner this is.
+prompt — detailed image generator prompt in English (80-160 words), specifying the unique color palette, composition layout, lighting, goods arrangement, and quoting all Russian text verbatim in double quotes.
+title — short Russian title for the banner for admin list, up to ${BANNER_TITLE_MAX} characters.
 
 Never put prices, phone numbers, links or promises of discounts into either field: the shop did not promise them.`;
 
@@ -90,6 +110,22 @@ Never put prices, phone numbers, links or promises of discounts into either fiel
  * Что модель узнаёт о магазине. По-русски и списком: это данные, а не задание,
  * и разбирать их модели проще в том же виде, в каком они лежат у нас.
  */
+const CREATIVE_DIRECTIONS = [
+  'Светлая ледяная студия: кристально белый фон, ледяные лазурные и неоново-синие отражения, парящие матовые стеклянные подиумы.',
+  'Титан и графит: премиальный технологичный стиль, матовые металлические акценты, мягкий естественный студийный свет из окна.',
+  'Кибер-чистый стиль: яркая студия с неоновыми бирюзовыми и мягкими фиолетовыми контурными бликами на товарах.',
+  'Изумруд и мята: свежие мятно-зеленые градиентные акценты, легкие геометрические призмы, технологичная чистота.',
+  'Теплый люксовый студийный свет: мягкие золотистые и янтарные блики, естественные контактные тени, ощущение эксклюзивности.',
+  'Сапфир и глянец: белоснежная основа, глубокие сапфировые плавные линии фона, ступенчатая пирамидальная расстановка товаров.',
+];
+
+const HEADLINE_MOODS = [
+  'Заголовок в стиле максимальной производительности, скорости и успеха в работе.',
+  'Заголовок в стиле побед, мощности и бескомпромиссного игрового процесса.',
+  'Заголовок в стиле умного стиля жизни, инноваций и комфорта в каждой детали.',
+  'Заголовок в стиле премиального качества, проверенной надежности и идеального выбора.',
+];
+
 export function buildShopBrief(input: {
   shop: BannerShop;
   products: BannerProduct[];
@@ -100,6 +136,11 @@ export function buildShopBrief(input: {
   const location = shop.address?.trim()
     ? `Павильон/адрес: ${shop.address.trim()}`
     : null;
+  const direction =
+    CREATIVE_DIRECTIONS[Math.floor(Math.random() * CREATIVE_DIRECTIONS.length)];
+  const mood =
+    HEADLINE_MOODS[Math.floor(Math.random() * HEADLINE_MOODS.length)];
+  const seed = Math.floor(Math.random() * 1000000);
 
   return [
     `Магазин: ${shop.name}`,
@@ -114,6 +155,9 @@ export function buildShopBrief(input: {
     hasPhotos
       ? 'Ниже приложены фотографии этих товаров — на баннере должны быть именно они в виде красивой общей композиции.'
       : 'Фотографий товаров нет: опиши типовые товары этих разделов, без выдуманных брендов.',
+    `Творческий стиль этой генерации: ${direction}`,
+    `Акцент слогана: ${mood}`,
+    `Сид разнообразия: #${seed}. Сделай эту вариацию неповторимой по цветам, композиции и заголовку.`,
   ]
     .filter((line) => line !== null)
     .join('\n');
@@ -183,6 +227,30 @@ function assortment(products: BannerProduct[]): string[] {
  * JSON. Ронять из-за этого генерацию не за что: баннер по названию и разделам
  * выйдет безликим, но рабочим, а продавец увидит картинку, а не ошибку.
  */
+const FALLBACK_HEADLINES = [
+  'ТЕХНОЛОГИИ ДЛЯ ТЕБЯ',
+  'ИНСТРУМЕНТЫ УСПЕХА',
+  'ВСЁ ДЛЯ ИДЕАЛЬНОГО СЕТАПА',
+  'МОЩЬ И СТИЛЬ',
+  'ТВОЙ УМНЫЙ ВЫБОР',
+  'ВЫБИРАЙ ЛУЧШЕЕ',
+];
+
+const FALLBACK_STYLES = [
+  'Bright high-key studio lighting, soft white-to-light-blue gradient background with smooth subtle curved tech waves.',
+  'High-key modern studio lighting with frosted glass podiums, icy cyan ambient reflections, and soft smooth ribbons.',
+  'Pristine commercial studio with brushed titanium surfaces, soft natural daylight, and minimalist geometric shapes.',
+  'Clean bright aesthetic with subtle neon cyan rim lighting on products and smooth floating translucent panels.',
+  'Warm high-tech studio environment with soft champagne reflections and natural contact shadows.',
+];
+
+const FALLBACK_STAGINGS = [
+  'A photorealistic commercial arrangement of multiple actual products on floating frosted glass pedestals with realistic shadows.',
+  'A dynamic 3D knolling ensemble of the products angled towards the camera on a polished reflective surface.',
+  'A multi-tier executive desk arrangement of the products with crisp textures and soft ambient contact shadows.',
+  'A cohesive showcase lineup of diverse goods with one flagship item center-stage and accessories dynamically arranged.',
+];
+
 export function fallbackBrief(input: {
   shop: BannerShop;
   products: BannerProduct[];
@@ -194,13 +262,20 @@ export function fallbackBrief(input: {
     ? `[${shop.address.trim()}] на Malika`
     : `[${shop.name}] на Malika`;
 
+  const headline =
+    FALLBACK_HEADLINES[Math.floor(Math.random() * FALLBACK_HEADLINES.length)];
+  const style =
+    FALLBACK_STYLES[Math.floor(Math.random() * FALLBACK_STYLES.length)];
+  const staging =
+    FALLBACK_STAGINGS[Math.floor(Math.random() * FALLBACK_STAGINGS.length)];
+
   const prompt = [
     'Ultra-clean modern horizontal commercial hero banner for an electronics marketplace store.',
-    'Bright high-key studio lighting, soft white-to-light-blue gradient background with smooth subtle curved tech waves.',
+    style,
     'Top right corner branding badge: "NEMALIKA Проверенные магазины".',
     'Left side structured marketing column:',
     `- Store badge pill: "${shopTag}", shop: "${shop.name}"`,
-    '- Large bold two-line Cyrillic headline: "ТЕХНОЛОГИИ ДЛЯ ТЕБЯ"',
+    `- Large bold two-line Cyrillic headline: "${headline}"`,
     goods.length > 0
       ? `The shop sells: ${goods.join(', ')}.`
       : 'The shop sells computer hardware and accessories.',
@@ -208,7 +283,7 @@ export function fallbackBrief(input: {
     `- Blue rounded Telegram CTA button: "Подпишись на магазин ${shop.name} и будь в курсе новинок и скидок!"`,
     'Right side multi-product showcase ensemble:',
     hasPhotos
-      ? 'A photorealistic commercial arrangement of multiple actual products from the shop on a polished light reflective surface with soft shadows.'
+      ? staging
       : 'Draw generic, unbranded computer hardware — a laptop, a keyboard, a mouse.',
     products.length > 0
       ? `Featured goods: ${products.map((product) => product.name).join('; ')}.`
