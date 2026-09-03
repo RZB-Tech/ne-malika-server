@@ -97,7 +97,9 @@ export function buildShopBrief(input: {
 }): string {
   const { shop, products, hasPhotos } = input;
   const goods = assortment(products);
-  const location = shop.address?.trim() ? `Павильон/адрес: ${shop.address.trim()}` : null;
+  const location = shop.address?.trim()
+    ? `Павильон/адрес: ${shop.address.trim()}`
+    : null;
 
   return [
     `Магазин: ${shop.name}`,
@@ -188,7 +190,9 @@ export function fallbackBrief(input: {
 }): BannerBrief {
   const { shop, products, hasPhotos } = input;
   const goods = assortment(products);
-  const shopTag = shop.address?.trim() ? `[${shop.address.trim()}] на Malika` : `[${shop.name}] на Malika`;
+  const shopTag = shop.address?.trim()
+    ? `[${shop.address.trim()}] на Malika`
+    : `[${shop.name}] на Malika`;
 
   const prompt = [
     'Ultra-clean modern horizontal commercial hero banner for an electronics marketplace store.',
