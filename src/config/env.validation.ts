@@ -221,12 +221,18 @@ class EnvironmentVariables {
   @Min(1)
   PAYME_SANDBOX_ORDER_TTL_MIN?: number;
 
-  @IsOptional()
+  @ValidateIf((env: EnvironmentVariables) => hasText(env.PAYME_FISCAL_IKPU))
   @IsString()
+  @Matches(/^\d{17}$/, {
+    message: 'PAYME_FISCAL_IKPU должен содержать 17 цифр',
+  })
   PAYME_FISCAL_IKPU?: string;
 
-  @IsOptional()
+  @ValidateIf((env: EnvironmentVariables) => hasText(env.PAYME_FISCAL_IKPU))
   @IsString()
+  @IsNotEmpty({
+    message: 'PAYME_FISCAL_PACKAGE_CODE обязателен вместе с PAYME_FISCAL_IKPU',
+  })
   PAYME_FISCAL_PACKAGE_CODE?: string;
 
   @Transform(optionalInt)

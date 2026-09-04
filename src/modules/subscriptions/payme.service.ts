@@ -162,7 +162,7 @@ export class PaymeService {
   private fiscalDetail(
     payment: SubscriptionPayment,
   ): PaymeFiscalDetail | undefined {
-    const ikpu = this.config.get<string>('payme.fiscal.ikpu');
+    const ikpu = this.config.get<string>('payme.fiscal.ikpu')?.trim();
     if (!ikpu) {
       this.logger.warn(
         'Фискальные данные не заданы (PAYME_FISCAL_IKPU) — detail в ответе не уйдёт. ' +
@@ -171,11 +171,21 @@ export class PaymeService {
       return undefined;
     }
 
+    const packageCode = this.config
+      .get<string>('payme.fiscal.packageCode')
+      ?.trim();
+    if (!packageCode) {
+      this.logger.error(
+        'PAYME_FISCAL_PACKAGE_CODE обязателен вместе с PAYME_FISCAL_IKPU — detail не отправлен',
+      );
+      return undefined;
+    }
+
     return buildFiscalDetail({
       title: this.itemTitle(payment),
       amountTiyin: uzsToTiyin(payment.amount),
       ikpu,
-      packageCode: this.config.get<string>('payme.fiscal.packageCode'),
+      packageCode,
       vatPercent: this.config.get<number>('payme.fiscal.vatPercent') ?? 12,
       receiptType: this.config.get<number>('payme.fiscal.receiptType') ?? 0,
     });
@@ -257,6 +267,10 @@ export class PaymeService {
 
         // Повторный вызов по той же транзакции: протокол требует идемпотентности.
         if (payment.providerTransactionId === transactionId) {
+          if (uzsToTiyin(payment.amount) !== amountTiyin) {
+            throw PAYME_ERROR.invalidAmount();
+          }
+
           if (this.state(payment) !== PAYME_STATE.created) {
             throw PAYME_ERROR.cannotPerform('Транзакция уже не в состоянии 1');
           }

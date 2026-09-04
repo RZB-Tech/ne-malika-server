@@ -2,6 +2,7 @@
 /dist
 /node_modules
 /build
+/backup/
 *.tsbuildinfo
 
 # Пакетный менеджер здесь только pnpm — им ставит и Dockerfile, и CI. Чужой

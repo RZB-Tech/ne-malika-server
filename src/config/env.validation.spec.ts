@@ -108,6 +108,41 @@ describe('environment validation', () => {
     );
   });
 
+  it('принимает Payme с фискальными данными', () => {
+    assert.doesNotThrow(() =>
+      validate({
+        ...baseConfig,
+        PAYME_MERCHANT_ID: 'merchant-id',
+        PAYME_KEY: 'cashbox-key',
+        PAYME_FISCAL_IKPU: '10305001001000000',
+        PAYME_FISCAL_PACKAGE_CODE: '1513162',
+      }),
+    );
+  });
+
+  it('требует код упаковки при передаче ИКПУ в чек Payme', () => {
+    assert.throws(
+      () =>
+        validate({
+          ...baseConfig,
+          PAYME_FISCAL_IKPU: '10305001001000000',
+        }),
+      /PAYME_FISCAL_PACKAGE_CODE обязателен вместе с PAYME_FISCAL_IKPU/,
+    );
+  });
+
+  it('проверяет формат ИКПУ Payme', () => {
+    assert.throws(
+      () =>
+        validate({
+          ...baseConfig,
+          PAYME_FISCAL_IKPU: '123',
+          PAYME_FISCAL_PACKAGE_CODE: '1513162',
+        }),
+      /PAYME_FISCAL_IKPU должен содержать 17 цифр/,
+    );
+  });
+
   it('считает пустые числовые переменные отсутствующими', () => {
     assert.doesNotThrow(() =>
       validate({

@@ -34,6 +34,7 @@ interface Options {
   createdAtMs?: number;
   test?: boolean;
   ikpu?: string | undefined;
+  packageCode?: string | undefined;
 }
 
 function build(options: Options = {}) {
@@ -148,6 +149,8 @@ function build(options: Options = {}) {
     get: (key: string) =>
       key === 'payme.fiscal.ikpu' && 'ikpu' in options
         ? options.ikpu
+        : key === 'payme.fiscal.packageCode' && 'packageCode' in options
+          ? options.packageCode
         : CONFIG[key],
   } as unknown as ConfigService;
 
@@ -272,6 +275,18 @@ describe('CreateTransaction', () => {
 
     assert.equal(second.create_time, first.create_time);
     assert.equal(second.state, PAYME_STATE.created);
+  });
+
+  it('повторный вызов с другой суммой отвечает -31001', async () => {
+    const { service } = build();
+
+    await service.handle('CreateTransaction', params);
+    await expectError(-31001, () =>
+      service.handle('CreateTransaction', {
+        ...params,
+        amount: AMOUNT_TIYIN + 1,
+      }),
+    );
   });
 
   it('вторую транзакцию по тому же заказу отбивает кодом -31008', async () => {

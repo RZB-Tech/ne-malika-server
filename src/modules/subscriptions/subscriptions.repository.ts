@@ -369,7 +369,10 @@ export class SubscriptionsRepository {
           sql`(${subscriptionPayments.meta} ->> 'paymeCreateTime')::bigint between ${fromMs} and ${toMs}`,
         ),
       )
-      .orderBy(subscriptionPayments.id);
+      .orderBy(
+        sql`(${subscriptionPayments.meta} ->> 'paymeCreateTime')::bigint ASC`,
+        subscriptionPayments.id,
+      );
   }
 
   async markPaid(
