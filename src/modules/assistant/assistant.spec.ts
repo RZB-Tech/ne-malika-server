@@ -45,15 +45,17 @@ function fixture(responses: unknown[], matches = [card]) {
     },
   } as unknown as OpenAI;
   const cards = {
-    findPublicList: () => Promise.resolve({ data: [card] }),
+    findPublicList: () => {
+      return Promise.resolve({ data: [card] });
+    },
     findForAssistant: (query: unknown) => {
       queries.push(query);
       return Promise.resolve(matches);
     },
   } as unknown as ProductCardsRepository;
   const categories = {
-    getTree: () =>
-      Promise.resolve([
+    getTree: () => {
+      return Promise.resolve([
         {
           id: 1,
           name: {
@@ -63,7 +65,8 @@ function fixture(responses: unknown[], matches = [card]) {
           },
           children: [],
         },
-      ]),
+      ]);
+    },
     findSubtreeIds: () => Promise.resolve([1, 2]),
   } as unknown as CategoriesService;
   return {
@@ -106,9 +109,108 @@ describe('assistant request boundaries', () => {
       cards,
       categories,
     );
-    await assert.rejects(
-      service.chat({ messages: [{ role: 'user', content: 'Hi' }] }, 'ru'),
-      /недоступен/,
+    for (const content of ['Нужен ноутбук', 'Привет', 'Спасибо']) {
+      await assert.rejects(
+        service.chat({ messages: [{ role: 'user', content }] }, 'ru'),
+        /недоступен/,
+      );
+    }
+  });
+});
+
+describe('assistant social messages', () => {
+  it('returns the model greeting and keeps the latest user message after catalog context', async () => {
+    for (const content of [
+      'привет',
+      '  ПРИВЕТ!!! 👋  ',
+      'Здравствуйте',
+      'Добрый день!',
+    ]) {
+      const modelReply = {
+        message: 'Я на связи! Чем могу помочь?',
+        suggestions: ['Расскажи о сайте'],
+      };
+      const { service, calls, queries } = fixture([
+        { search: null },
+        modelReply,
+      ]);
+      const result = await service.chat(
+        {
+          messages: [
+            {
+              role: 'user',
+              content: 'Нужен ноутбук ASUS Zenbook 14 до 5 млн сум',
+            },
+            {
+              role: 'assistant',
+              content: 'По вашему запросу предложения не найдены.',
+            },
+            { role: 'user', content },
+          ],
+          productIds: [7],
+        },
+        'ru',
+      );
+      assert.equal(result.message, modelReply.message);
+      assert.deepEqual(result.suggestions, modelReply.suggestions);
+      assert.deepEqual(result.products, []);
+      assert.deepEqual(queries, []);
+      assert.equal(calls.length, 2);
+      for (const call of calls) {
+        assert.deepEqual(call.messages.at(-1), { role: 'user', content });
+      }
+      assert.match(
+        String(calls[1].messages[1].content),
+        /"searchStatus":"not_requested"/,
+      );
+    }
+  });
+
+  it('passes greetings and thanks to the model with the selected language', async () => {
+    for (const [content, locale, language] of [
+      ['Привет!', 'ru', 'Отвечай на русском.'],
+      ['Assalomu alaykum!', 'uz-Latn', 'lotin yozuvida'],
+      ['Ассалому алайкум!', 'uz-Cyrl', 'кирилл ёзувида'],
+      ['Спасибо большое!', 'ru', 'Отвечай на русском.'],
+      ['Rahmat!', 'uz-Latn', 'lotin yozuvida'],
+      ['Катта раҳмат!', 'uz-Cyrl', 'кирилл ёзувида'],
+    ] as const) {
+      const modelMessage = `Model response for ${locale}: ${content}`;
+      const { service, calls, queries } = fixture([
+        { search: null },
+        { message: modelMessage },
+      ]);
+      const result = await service.chat(
+        { messages: [{ role: 'user', content }] },
+        locale,
+      );
+      assert.equal(result.message, modelMessage);
+      assert.deepEqual(result.products, []);
+      assert.deepEqual(queries, []);
+      assert.equal(calls.length, 2);
+      for (const call of calls) {
+        assert.ok(String(call.messages[0].content).includes(language));
+        assert.deepEqual(call.messages.at(-1), { role: 'user', content });
+      }
+    }
+  });
+
+  it('does not swallow a request accompanying a greeting or thanks', async () => {
+    const { service, calls, queries } = fixture([
+      { search: { categoryId: 1, maxPrice: 5000000 } },
+      { message: 'Вот подходящий ноутбук', productIds: [7] },
+    ]);
+    const message = {
+      role: 'user' as const,
+      content: 'Привет, нужен ноутбук до 5 млн сум',
+    };
+    const result = await service.chat({ messages: [message] }, 'ru');
+    assert.equal(queries.length, 1);
+    assert.equal(result.products[0].id, 7);
+    for (const call of calls) assert.deepEqual(call.messages.at(-1), message);
+    assert.match(
+      String(calls[1].messages[1].content),
+      /"searchStatus":"matches"/,
     );
   });
 });
@@ -146,7 +248,7 @@ describe('assistant recommendations', () => {
     assert.equal(calls.length, 2);
   });
   it('does not reuse old recommendations when a new search has no matches', async () => {
-    const { service } = fixture(
+    const { service, calls } = fixture(
       [
         { search: { categoryId: 1, maxPrice: 100 } },
         { message: 'Не найдено', productIds: [7] },
@@ -161,6 +263,10 @@ describe('assistant recommendations', () => {
       'ru',
     );
     assert.deepEqual(result.products, []);
+    assert.match(
+      String(calls[1].messages[1].content),
+      /"searchStatus":"no_matches"/,
+    );
   });
   it('answers site questions without searching and localizes navigation', async () => {
     const { service, queries, calls } = fixture([
@@ -174,11 +280,24 @@ describe('assistant recommendations', () => {
     assert.deepEqual(queries, []);
     assert.deepEqual(result.links, [{ href: '/stores', label: 'Do‘konlar' }]);
     assert.match(String(calls[0].messages[0].content), /lotin/);
+    assert.match(
+      String(calls[1].messages[1].content),
+      /"searchStatus":"not_requested"/,
+    );
+    for (const call of calls) {
+      assert.deepEqual(call.messages.at(-1), {
+        role: 'user',
+        content: 'Saytda nima bor?',
+      });
+    }
   });
   it('rejects malformed model responses', async () => {
     const { service } = fixture([{ search: null }, { message: '' }]);
     await assert.rejects(
-      service.chat({ messages: [{ role: 'user', content: 'Hello' }] }, 'ru'),
+      service.chat(
+        { messages: [{ role: 'user', content: 'Что есть на сайте?' }] },
+        'ru',
+      ),
       /невнятно/,
     );
     assert.equal(parseReply('not json'), null);
