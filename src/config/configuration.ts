@@ -34,6 +34,8 @@ export default () => ({
     model: process.env.OPENROUTER_MODEL ?? 'openai/gpt-4.1-mini',
     visionModel: process.env.OPENROUTER_VISION_MODEL ?? 'openai/gpt-4o-mini',
     compareModel: process.env.OPENROUTER_COMPARE_MODEL ?? 'openai/gpt-4.1-nano',
+    assistantModel:
+      envText(process.env.OPENROUTER_ASSISTANT_MODEL) ?? 'openai/gpt-4o-mini',
     autofillModel:
       process.env.OPENROUTER_AUTOFILL_MODEL ?? 'openai/gpt-4.1-mini',
     imageModel: process.env.OPENROUTER_IMAGE_MODEL ?? 'openai/gpt-image-2',

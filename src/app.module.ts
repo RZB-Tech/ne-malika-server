@@ -17,6 +17,7 @@ import { CategoriesModule } from './modules/categories/categories.module';
 import { ProductCardsModule } from './modules/product-cards/product-cards.module';
 import { ProductAutofillModule } from './modules/product-autofill/product-autofill.module';
 import { AiCompareModule } from './modules/ai-compare/ai-compare.module';
+import { AssistantModule } from './modules/assistant/assistant.module';
 import { ProductViewsModule } from './modules/product-views/product-views.module';
 import { ProductStatsModule } from './modules/product-stats/product-stats.module';
 import { FavoritesModule } from './modules/favorites/favorites.module';
@@ -50,6 +51,7 @@ import { AppService } from './app.service';
     ProductCardsModule,
     ProductAutofillModule,
     AiCompareModule,
+    AssistantModule,
     ProductViewsModule,
     ProductStatsModule,
     FavoritesModule,

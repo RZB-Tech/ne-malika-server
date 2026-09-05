@@ -6,9 +6,11 @@ import {
   desc,
   eq,
   gt,
+  gte,
   ilike,
   inArray,
   isNull,
+  lte,
   or,
   sql,
 } from 'drizzle-orm';
@@ -220,6 +222,35 @@ export class ProductCardsRepository {
     ]);
 
     return { data, total: totalRows[0]?.count ?? 0, page, limit };
+  }
+
+  findForAssistant(query: {
+    q?: string;
+    categoryIds?: number[];
+    minPrice?: number;
+    maxPrice?: number;
+    state?: 'new' | 'old';
+  }) {
+    const search = query.q ? buildProductSearch(query.q) : null;
+    const conditions = publicConditions(query, query.categoryIds, search);
+    if (query.minPrice !== undefined) {
+      conditions.push(gte(productCards.price, String(query.minPrice)));
+    }
+    if (query.maxPrice !== undefined) {
+      conditions.push(lte(productCards.price, String(query.maxPrice)));
+    }
+    if (query.state) conditions.push(eq(productCards.state, query.state));
+    return this.db
+      .select(PUBLIC_FIELDS)
+      .from(productCards)
+      .innerJoin(shops, eq(productCards.shopId, shops.id))
+      .leftJoin(categories, eq(productCards.categoryId, categories.id))
+      .where(and(...conditions))
+      .orderBy(
+        ...resolveSort({ q: query.q }, search, null),
+        asc(productCards.id),
+      )
+      .limit(12);
   }
 
   async findMatchingShopIds(

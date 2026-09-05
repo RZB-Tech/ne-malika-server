@@ -80,6 +80,10 @@ class EnvironmentVariables {
 
   @IsOptional()
   @IsString()
+  OPENROUTER_ASSISTANT_MODEL?: string;
+
+  @IsOptional()
+  @IsString()
   OPENROUTER_BASE_URL?: string;
 
   @IsString()
