@@ -24,18 +24,28 @@ const card = {
   description: '',
   characteristics: [],
 };
-function fixture(responses: unknown[], matches = [card]) {
+function fixture(
+  responses: unknown[],
+  matches = [card],
+  options: {
+    failures?: unknown[];
+    finishReasons?: string[];
+  } = {},
+) {
   const calls: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming[] = [];
   const queries: unknown[] = [];
   const ai = {
     chat: {
       completions: {
         create: (input: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming) => {
+          const callIndex = calls.length;
           calls.push(input);
+          const failure = options.failures?.[callIndex];
+          if (failure) return Promise.reject(failure);
           return Promise.resolve({
             choices: [
               {
-                finish_reason: 'stop',
+                finish_reason: options.finishReasons?.[callIndex] ?? 'stop',
                 message: { content: JSON.stringify(responses.shift()) },
               },
             ],
@@ -216,6 +226,43 @@ describe('assistant social messages', () => {
 });
 
 describe('assistant recommendations', () => {
+  it('retries temporary provider failures and accepts complete JSON marked as length', async () => {
+    const temporaryFailure = Object.assign(new Error('temporary'), {
+      status: 503,
+    });
+    const { service, calls } = fixture(
+      [{ search: null }, { message: 'Ответ готов' }],
+      [card],
+      {
+        failures: [undefined, temporaryFailure],
+        finishReasons: ['stop', 'stop', 'length'],
+      },
+    );
+    const result = await service.chat(
+      { messages: [{ role: 'user', content: 'Привет' }] },
+      'ru',
+    );
+    assert.equal(result.message, 'Ответ готов');
+    assert.equal(calls.length, 3);
+  });
+
+  it('returns a safe catalog fallback when the reply call fails', async () => {
+    const { service } = fixture(
+      [{ search: { categoryId: 1, maxPrice: 5000000 } }],
+      [card],
+      { failures: [undefined, new Error('temporary')] },
+    );
+    const result = await service.chat(
+      { messages: [{ role: 'user', content: 'Нужен ноутбук до 5 млн сум' }] },
+      'ru',
+    );
+    assert.match(result.message, /каталоге/);
+    assert.deepEqual(
+      result.products.map((product) => product.id),
+      [7],
+    );
+  });
+
   it('keeps the budget and category subtree; excludes invented IDs and links', async () => {
     const { service, queries, calls } = fixture([
       { search: { categoryId: 1, maxPrice: 5000000, state: 'new' } },
@@ -291,15 +338,14 @@ describe('assistant recommendations', () => {
       });
     }
   });
-  it('rejects malformed model responses', async () => {
+  it('returns a safe fallback for malformed model responses', async () => {
     const { service } = fixture([{ search: null }, { message: '' }]);
-    await assert.rejects(
-      service.chat(
-        { messages: [{ role: 'user', content: 'Что есть на сайте?' }] },
-        'ru',
-      ),
-      /невнятно/,
+    const result = await service.chat(
+      { messages: [{ role: 'user', content: 'Что есть на сайте?' }] },
+      'ru',
     );
+    assert.match(result.message, /не удалось сформировать/);
+    assert.deepEqual(result.products, []);
     assert.equal(parseReply('not json'), null);
     assert.throws(() => parseSearch({ categoryId: 99 }, new Set([1])));
     assert.throws(() => parseSearch({ q: 'Laptop', maxPrice: -1 }, new Set()));
