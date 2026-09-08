@@ -1,11 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { and, desc, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { DRIZZLE, type DrizzleDb } from '../../db/db.provider';
+import { recomputeShopRating } from '../../db/rating';
 import {
   aiProductChecks,
   AiProductCheck,
   ProductCard,
   productCards,
+  shops,
 } from '../../db/schema';
 
 export interface AiReviewRow extends Record<string, unknown> {
@@ -65,6 +67,54 @@ export class AiChecksRepository {
     return this.db.query.aiProductChecks.findFirst({
       where: eq(aiProductChecks.productCardId, productCardId),
       orderBy: desc(aiProductChecks.createdAt),
+    });
+  }
+
+  findProductById(productCardId: number): Promise<ProductCard | undefined> {
+    return this.db.query.productCards.findFirst({
+      where: eq(productCards.id, productCardId),
+    });
+  }
+
+  findAdminNotificationData(productCardId: number) {
+    return this.db
+      .select({
+        id: productCards.id,
+        name: productCards.name,
+        photos: productCards.photos,
+        shopName: shops.name,
+      })
+      .from(productCards)
+      .innerJoin(shops, eq(productCards.shopId, shops.id))
+      .where(eq(productCards.id, productCardId))
+      .limit(1)
+      .then((rows) => rows[0]);
+  }
+
+  restoreProduct(productCardId: number): Promise<ProductCard | undefined> {
+    return this.db
+      .update(productCards)
+      .set({
+        status: 'active',
+        abolishReason: null,
+        abolishedAt: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(productCards.id, productCardId))
+      .returning()
+      .then((rows) => rows[0]);
+  }
+
+  async deleteProduct(productCardId: number): Promise<boolean> {
+    return this.db.transaction(async (tx) => {
+      const [deleted] = await tx
+        .delete(productCards)
+        .where(eq(productCards.id, productCardId))
+        .returning({ shopId: productCards.shopId });
+
+      if (!deleted) return false;
+      await recomputeShopRating(tx, deleted.shopId);
+      return true;
     });
   }
 

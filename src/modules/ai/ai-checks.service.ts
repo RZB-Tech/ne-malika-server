@@ -10,7 +10,10 @@ import { RedisService } from '../redis/redis.service';
 import { FilesService } from '../files/files.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CategoriesService } from '../categories/categories.service';
-import { escapeHtml, excerpt } from '../bot/telegram-html';
+import {
+  AdminCallbackRegistry,
+  type AdminCallbackResult,
+} from '../bot/admin-callback.registry';
 import { PRODUCT_CACHE_PREFIX } from '../product-cards/product-cards.cache';
 import type { ProductCard } from '../../db/schema';
 import {
@@ -96,9 +99,14 @@ export class AiChecksService implements OnModuleInit {
     private readonly config: ConfigService,
     private readonly notifications: NotificationsService,
     private readonly categories: CategoriesService,
+    private readonly adminCallbacks: AdminCallbackRegistry,
   ) {}
 
   onModuleInit(): void {
+    this.adminCallbacks.register((_adminUserId, data) =>
+      this.handleAdminCallback(data),
+    );
+
     if (process.env.SKIP_STARTUP_JOBS) return;
 
     void this.requeueStuckPending().catch((err: Error) =>
@@ -217,7 +225,11 @@ export class AiChecksService implements OnModuleInit {
           level: 'warn',
           text: `Товар ${card.id} скрыт по вердикту ИИ-проверки`,
         },
-        aiFailureText(card, 'модель забраковала товар', result.summary),
+        {
+          reason: 'модель забраковала товар',
+          details: result.summary,
+          blocked: true,
+        },
       );
       return;
     }
@@ -270,7 +282,11 @@ export class AiChecksService implements OnModuleInit {
     decision: Parameters<AiChecksRepository['recordDecision']>[1],
     status: 'active' | 'hidden' | undefined,
     log: { level: 'log' | 'warn'; text: string },
-    notifyText?: string,
+    notification?: {
+      reason: string;
+      details?: string | null;
+      blocked?: boolean;
+    },
   ): Promise<void> {
     const applied = await this.repository.recordDecision(
       card,
@@ -283,9 +299,7 @@ export class AiChecksService implements OnModuleInit {
     // остаётся pending, публиковать её в кэше ещё нечего.
     if (status) await this.redis.delByPrefix(PRODUCT_CACHE_PREFIX);
     this.logger[log.level](log.text);
-    if (notifyText) {
-      void this.notifications.notifyAdmins(notifyText);
-    }
+    if (notification) void this.notifyAdminsAboutFailure(card, notification);
   }
 
   private async deferToManualReview(
@@ -305,7 +319,11 @@ export class AiChecksService implements OnModuleInit {
       },
       undefined,
       { level: 'warn', text: `Товар ${card.id} не опубликован: ${summary}` },
-      aiFailureText(card, 'требуется ручная проверка', `${summary}: ${error}`),
+      {
+        reason: 'требуется ручная проверка',
+        details: `${summary}: ${error}`,
+        blocked: false,
+      },
     );
   }
 
@@ -329,8 +347,83 @@ export class AiChecksService implements OnModuleInit {
         level: 'warn',
         text: `Товар ${card.id} отклонён до ИИ-проверки: ${reason}`,
       },
-      aiFailureText(card, 'карточка забракована', reason),
+      { reason: 'карточка забракована', details: reason, blocked: true },
     );
+  }
+
+  private async notifyAdminsAboutFailure(
+    card: ProductCard,
+    notification: {
+      reason: string;
+      details?: string | null;
+      blocked?: boolean;
+    },
+  ): Promise<void> {
+    try {
+      const target = await this.repository.findAdminNotificationData(card.id);
+      const photoKey = target?.photos?.[0] ?? card.photos?.[0];
+      const publicBase = this.config.get<string>('s3.publicBase');
+
+      await this.notifications.notifyAdminsAboutAiFailure({
+        productId: card.id,
+        productName: target?.name ?? card.name,
+        shopName: target?.shopName ?? `#${card.shopId}`,
+        reason: notification.reason,
+        details: notification.details,
+        blocked: notification.blocked,
+        photoUrl:
+          publicBase && photoKey
+            ? this.files.buildPublicUrl(photoKey)
+            : undefined,
+      });
+    } catch (err) {
+      this.logger.error(
+        `Не удалось подготовить уведомление о товаре ${card.id}: ${errorMessage(err)}`,
+      );
+    }
+  }
+
+  private async handleAdminCallback(
+    data: string,
+  ): Promise<AdminCallbackResult | null> {
+    const match = /^ai:(approve|recheck|delete):([1-9]\d*)$/.exec(data);
+    if (!match) return null;
+
+    const action = match[1];
+    const productCardId = Number(match[2]);
+    if (!Number.isSafeInteger(productCardId)) {
+      return { text: 'Некорректный номер товара' };
+    }
+
+    if (action === 'approve') {
+      const restored = await this.repository.restoreProduct(productCardId);
+      if (!restored) return { text: 'Товар уже удалён' };
+
+      await this.repository.markLatestReviewed(productCardId);
+      await this.redis.delByPrefix(PRODUCT_CACHE_PREFIX);
+      return {
+        text: `Товар #${productCardId} одобрен`,
+        removeButtons: true,
+      };
+    }
+
+    if (action === 'recheck') {
+      const card = await this.repository.findProductById(productCardId);
+      if (!card) return { text: 'Товар уже удалён' };
+
+      await this.repository.markLatestReviewed(productCardId);
+      this.runInBackground(card);
+      return {
+        text: `Повторная проверка товара #${productCardId} запущена`,
+        removeButtons: true,
+      };
+    }
+
+    const deleted = await this.repository.deleteProduct(productCardId);
+    if (!deleted) return { text: 'Товар уже удалён' };
+
+    await this.redis.delByPrefix(PRODUCT_CACHE_PREFIX);
+    return { text: `Товар #${productCardId} удалён`, removeButtons: true };
   }
 
   private logStale(card: ProductCard): void {
@@ -429,18 +522,4 @@ export function obviousContentViolation(card: ProductCard): string | null {
     return 'Название состоит из повторяющегося случайного набора символов';
   }
   return null;
-}
-
-function aiFailureText(
-  card: ProductCard,
-  reason: string,
-  details: string | null | undefined,
-): string {
-  const name = escapeHtml(card.name);
-  const tail = details ? `\n\n${escapeHtml(excerpt(details, 500))}` : '';
-  return (
-    `🤖 <b>ИИ-проверка</b>: ${reason}\n` +
-    `Товар #${card.id} — ${name}${tail}\n\n` +
-    `Разобрать: раздел «Проверка ИИ» в админке.`
-  );
 }

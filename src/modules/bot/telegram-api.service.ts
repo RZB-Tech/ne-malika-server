@@ -45,6 +45,43 @@ export class TelegramApiService {
     });
   }
 
+  async sendPhoto(
+    chatId: number,
+    photo: string,
+    caption: string,
+    options?: { replyMarkup?: unknown },
+  ): Promise<TelegramSendResult> {
+    return this.call('sendPhoto', {
+      chat_id: chatId,
+      photo,
+      caption,
+      parse_mode: 'HTML',
+      reply_markup: options?.replyMarkup,
+    });
+  }
+
+  answerCallbackQuery(
+    callbackQueryId: string,
+    text?: string,
+  ): Promise<TelegramSendResult> {
+    return this.call('answerCallbackQuery', {
+      callback_query_id: callbackQueryId,
+      text,
+    });
+  }
+
+  editMessageReplyMarkup(
+    chatId: number,
+    messageId: number,
+    replyMarkup: unknown,
+  ): Promise<TelegramSendResult> {
+    return this.call('editMessageReplyMarkup', {
+      chat_id: chatId,
+      message_id: messageId,
+      reply_markup: replyMarkup,
+    });
+  }
+
   requestContact(chatId: number, text: string): Promise<TelegramSendResult> {
     return this.sendMessage(chatId, text, {
       replyMarkup: {
@@ -67,7 +104,7 @@ export class TelegramApiService {
     return this.call('setWebhook', {
       url,
       secret_token: secretToken,
-      allowed_updates: ['message'],
+      allowed_updates: ['message', 'callback_query'],
     });
   }
 

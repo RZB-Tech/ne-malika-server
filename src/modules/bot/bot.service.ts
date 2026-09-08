@@ -1,7 +1,12 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { UsersRepository } from '../users/users.repository';
 import { TelegramApiService } from './telegram-api.service';
-import { TelegramMessage, TelegramUpdate } from './types/telegram-update.types';
+import { AdminCallbackRegistry } from './admin-callback.registry';
+import {
+  TelegramCallbackQuery,
+  TelegramMessage,
+  TelegramUpdate,
+} from './types/telegram-update.types';
 import { ConfigService } from '@nestjs/config';
 import { buildFullname } from '../../common/telegram';
 
@@ -31,6 +36,7 @@ export class BotService implements OnModuleInit {
     private readonly usersRepository: UsersRepository,
     private readonly telegramApi: TelegramApiService,
     private readonly configService: ConfigService,
+    private readonly adminCallbacks: AdminCallbackRegistry,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -58,6 +64,10 @@ export class BotService implements OnModuleInit {
   }
 
   async handleUpdate(update: TelegramUpdate): Promise<void> {
+    if (update.callback_query) {
+      return this.handleCallbackQuery(update.callback_query);
+    }
+
     const message = update.message;
     if (!message) return;
 
@@ -81,6 +91,56 @@ export class BotService implements OnModuleInit {
       message.chat.id,
       'Не понимаю эту команду. Отправьте /start, чтобы начать.',
     );
+  }
+
+  private async handleCallbackQuery(
+    callbackQuery: TelegramCallbackQuery,
+  ): Promise<void> {
+    const admin = await this.usersRepository.findByTelegramId(
+      callbackQuery.from.id,
+    );
+    if (!admin || admin.role !== 'admin' || admin.blockedAt) {
+      await this.telegramApi.answerCallbackQuery(
+        callbackQuery.id,
+        'Недостаточно прав',
+      );
+      return;
+    }
+
+    const data = callbackQuery.data?.trim();
+    if (!data) {
+      await this.telegramApi.answerCallbackQuery(callbackQuery.id);
+      return;
+    }
+
+    try {
+      const result = await this.adminCallbacks.handle(admin.id, data);
+      if (!result) {
+        await this.telegramApi.answerCallbackQuery(
+          callbackQuery.id,
+          'Действие устарело или неизвестно',
+        );
+        return;
+      }
+
+      await this.telegramApi.answerCallbackQuery(callbackQuery.id, result.text);
+      if (result.removeButtons && callbackQuery.message) {
+        await this.telegramApi.editMessageReplyMarkup(
+          callbackQuery.message.chat.id,
+          callbackQuery.message.message_id,
+          { inline_keyboard: [] },
+        );
+      }
+    } catch (err) {
+      this.logger.error(
+        `Не удалось обработать действие администратора: ${err instanceof Error ? err.message : String(err)}`,
+        err instanceof Error ? err.stack : undefined,
+      );
+      await this.telegramApi.answerCallbackQuery(
+        callbackQuery.id,
+        'Не удалось выполнить действие',
+      );
+    }
   }
 
   private async handleStart(message: TelegramMessage): Promise<void> {

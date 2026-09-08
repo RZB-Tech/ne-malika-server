@@ -8,7 +8,7 @@ import {
 import type { BroadcastAudience } from './dto/create-broadcast.dto';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
-import { clampMessage } from '../bot/telegram-html';
+import { clampMessage, escapeHtml } from '../bot/telegram-html';
 import { PushService } from './push.service';
 import { errorMessage } from '../../common/errors';
 
@@ -31,6 +31,16 @@ export interface DeliveryCounters {
   deliveredIds: number[];
 }
 
+export interface AiFailureAdminNotification {
+  productId: number;
+  productName: string;
+  shopName: string;
+  reason: string;
+  details?: string | null;
+  photoUrl?: string;
+  blocked?: boolean;
+}
+
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
@@ -48,6 +58,19 @@ export class NotificationsService {
     } catch (err) {
       this.logger.error(
         `Не удалось уведомить администраторов: ${errorMessage(err)}`,
+      );
+    }
+  }
+
+  async notifyAdminsAboutAiFailure(
+    notification: AiFailureAdminNotification,
+  ): Promise<void> {
+    try {
+      const admins = await this.repository.admins();
+      await this.deliverAiFailure(admins, notification);
+    } catch (err) {
+      this.logger.error(
+        `Не удалось уведомить администраторов о товаре ${notification.productId}: ${errorMessage(err)}`,
       );
     }
   }
@@ -250,4 +273,122 @@ export class NotificationsService {
       deliveredIds,
     };
   }
+
+  private async deliverAiFailure(
+    recipients: Recipient[],
+    notification: AiFailureAdminNotification,
+  ): Promise<void> {
+    const deliveredIds: number[] = [];
+    let badRequests = 0;
+
+    for (const [index, recipient] of recipients.entries()) {
+      if (index > 0) await sleep(BULK_DELAY_MS);
+
+      const caption = aiFailureCaption(notification);
+      const replyMarkup = aiFailureKeyboard(notification.productId);
+      const send = () =>
+        notification.photoUrl
+          ? this.telegram.sendPhoto(
+              recipient.chatId,
+              notification.photoUrl,
+              caption,
+              { replyMarkup },
+            )
+          : this.telegram.sendMessage(recipient.chatId, caption, {
+              replyMarkup,
+              disablePreview: true,
+            });
+
+      let result = await send();
+      if (!result.ok && result.errorCode === 429) {
+        await sleep((result.retryAfter ?? FALLBACK_RETRY_SEC) * 1000);
+        result = await send();
+      }
+
+      // If Telegram cannot fetch the S3 URL, still deliver the moderation
+      // decision and its buttons as a text message.
+      if (!result.ok && notification.photoUrl) {
+        result = await this.telegram.sendMessage(recipient.chatId, caption, {
+          replyMarkup,
+          disablePreview: true,
+        });
+      }
+
+      if (result.ok) {
+        deliveredIds.push(recipient.id);
+        badRequests = 0;
+        continue;
+      }
+
+      if (result.errorCode === 400) {
+        badRequests += 1;
+        if (badRequests >= MAX_BAD_REQUESTS) {
+          this.logger.error(
+            `Отправка уведомлений о модерации прервана: Telegram отклоняет сообщение (${result.description ?? 'без пояснения'})`,
+          );
+          break;
+        }
+      }
+
+      if (result.errorCode === 403) {
+        try {
+          await this.repository.disableNotifications(recipient.id);
+        } catch (err) {
+          this.logger.error(
+            `Не удалось снять подписку у ${recipient.id}: ${errorMessage(err)}`,
+          );
+        }
+      }
+    }
+
+    this.logger.log(
+      `Уведомление о модерации товара ${notification.productId}: ` +
+        `${deliveredIds.length} из ${recipients.length} администраторов`,
+    );
+  }
+}
+
+function aiFailureCaption(notification: AiFailureAdminNotification): string {
+  const details = notification.details
+    ? `\n<b>Детали:</b> ${escapedExcerpt(notification.details, 250)}`
+    : '';
+  return clampCaption(
+    `🤖 <b>${notification.blocked === false ? 'Товар ожидает ручной проверки' : 'Товар заблокирован ИИ-проверкой'}</b>\n` +
+      `<b>Магазин:</b> ${escapedExcerpt(notification.shopName, 150)}\n` +
+      `<b>Товар:</b> #${notification.productId} — ${escapedExcerpt(notification.productName, 180)}\n` +
+      `<b>Причина:</b> ${escapedExcerpt(notification.reason, 220)}${details}`,
+  );
+}
+
+function aiFailureKeyboard(productId: number) {
+  return {
+    inline_keyboard: [
+      [
+        {
+          text: '✅ Одобрить',
+          callback_data: `ai:approve:${productId}`,
+        },
+        {
+          text: '🔄 Перепроверить',
+          callback_data: `ai:recheck:${productId}`,
+        },
+      ],
+      [{ text: '🗑 Удалить', callback_data: `ai:delete:${productId}` }],
+    ],
+  };
+}
+
+function clampCaption(text: string): string {
+  // Telegram captions are limited to 1024 characters, unlike messages.
+  return text.length <= 1024 ? text : `${text.slice(0, 1023)}…`;
+}
+
+function escapedExcerpt(value: string, limit: number): string {
+  const escaped = escapeHtml(value.trim());
+  if (escaped.length <= limit) return escaped;
+
+  let cut = escaped.slice(0, limit - 1);
+  const entityStart = cut.lastIndexOf('&');
+  if (entityStart > cut.lastIndexOf(';')) cut = cut.slice(0, entityStart);
+  return `${cut}…`;
 }

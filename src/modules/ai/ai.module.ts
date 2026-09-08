@@ -4,6 +4,7 @@ import { SettingsModule } from '../settings/settings.module';
 import { FilesModule } from '../files/files.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { CategoriesModule } from '../categories/categories.module';
+import { BotModule } from '../bot/bot.module';
 import { AiChecksRepository } from './ai-checks.repository';
 import { AiChecksService } from './ai-checks.service';
 
@@ -14,6 +15,7 @@ import { AiChecksService } from './ai-checks.service';
     FilesModule,
     NotificationsModule,
     CategoriesModule,
+    BotModule,
   ],
   providers: [AiChecksRepository, AiChecksService],
   exports: [AiChecksService],
