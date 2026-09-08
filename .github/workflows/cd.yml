@@ -75,5 +75,14 @@ jobs:
             # например, записать статус, которого ещё нет в enum. Упавшая
             # миграция обрывает деплой (set -e), и прод остаётся на старой версии.
             docker compose -f docker-compose.prod.yml run --rm api node dist/db/migrate.js
-            docker compose -f docker-compose.prod.yml up -d
+            # Проверяем фактический результат миграции, а не только код выхода.
+            category_count=$(docker compose -f docker-compose.prod.yml exec -T postgres \
+              psql -U postgres -d nemalika -tAc \
+              "SELECT COUNT(*) FROM categories child JOIN categories root ON root.id = child.parent_id WHERE root.slug = 'services' AND root.parent_id IS NULL AND child.slug = 'it-services';" \
+              | tr -d '[:space:]')
+            test "$category_count" = "1"
+            docker compose -f docker-compose.prod.yml up -d --force-recreate
+            # Источник истины — БД, поэтому старые варианты ключа безопасно удалить.
+            docker compose -f docker-compose.prod.yml exec -T redis \
+              redis-cli DEL categories:tree categories:tree:v2
             docker image prune -f
