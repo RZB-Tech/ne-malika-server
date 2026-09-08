@@ -8,7 +8,9 @@ import { RedisService } from '../redis/redis.service';
 import { CategoryDto } from './dto/category.dto';
 import type { Category } from '../../db/schema';
 
-const TREE_CACHE_KEY = 'categories:tree';
+// Versioned so a deployed category migration cannot stay hidden behind the
+// old one-hour tree cache.
+const TREE_CACHE_KEY = 'categories:tree:v2';
 
 const SERVICES_ROOT_SLUG = 'services';
 const TREE_TTL_SEC = 3600;
