@@ -1,8 +1,11 @@
 import {
   Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   ParseIntPipe,
   Patch,
@@ -67,6 +70,20 @@ export class AdminUsersController {
   @ApiOperation({ summary: 'Снять блокировку с продавца' })
   unblock(@Param('id', ParseIntPipe) id: number) {
     return this.usersService.setBlocked(id, null);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary:
+      'Удалить пользователя вместе с его магазином, товарами и пользовательскими данными',
+  })
+  remove(
+    @CurrentUser() admin: AuthenticatedUser,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    this.assertNotSelf(admin, id, 'Нельзя удалить самого себя');
+    return this.usersService.remove(id);
   }
 
   private assertNotSelf(

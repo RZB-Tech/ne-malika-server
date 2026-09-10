@@ -130,6 +130,14 @@ export class UsersRepository {
       .then((rows) => rows[0]);
   }
 
+  delete(id: number): Promise<boolean> {
+    return this.db
+      .delete(users)
+      .where(eq(users.id, id))
+      .returning({ id: users.id })
+      .then((rows) => rows.length > 0);
+  }
+
   async bindChat(telegramId: number, chatId: number): Promise<boolean> {
     const rows = await this.db
       .update(users)

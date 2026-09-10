@@ -63,6 +63,13 @@ export class UsersService {
     return this.usersRepository.setBlocked(id, reason);
   }
 
+  async remove(id: number): Promise<void> {
+    const deleted = await this.usersRepository.delete(id);
+    if (!deleted) {
+      throw new NotFoundException('Пользователь не найден');
+    }
+  }
+
   async findOrCreateFromTelegram(payload: TelegramUserPayload): Promise<User> {
     const existing = await this.usersRepository.findByTelegramId(payload.id);
     if (existing) {
