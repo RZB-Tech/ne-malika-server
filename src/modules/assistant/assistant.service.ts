@@ -24,7 +24,7 @@ const LANGUAGES: Record<ApiLocale, string> = {
   'uz-Latn': 'O‘zbek tilida, lotin yozuvida javob ber.',
   'uz-Cyrl': 'Ўзбек тилида, кирилл ёзувида жавоб бер.',
 };
-const PROVIDER_TIMEOUT_MS = 15_000;
+const PROVIDER_TIMEOUT_MS = 25_000;
 const SECTIONS = {
   catalog: {
     href: '/',
@@ -112,7 +112,7 @@ export class AssistantService {
       categories: catalog,
       contextProducts: context.map(describe),
     });
-    let plan: ReturnType<typeof parseObject>;
+    let plan: ReturnType<typeof parseObject> = null;
     try {
       plan = parseObject(
         await this.complete(
@@ -127,12 +127,15 @@ export class AssistantService {
             },
             ...history,
           ],
-          350,
-          false,
+          500,
+          true,
         ),
       );
-    } catch {
-      return fallbackResponse(locale);
+    } catch (error) {
+      this.logger.warn(
+        `Assistant planning step failed, continuing with direct reply: ${error instanceof Error ? error.message : 'UnknownError'}`,
+      );
+      plan = null;
     }
 
     let search: ReturnType<typeof parseSearch>;
@@ -176,6 +179,7 @@ export class AssistantService {
             ...history,
           ],
           900,
+          true,
         ),
       );
     } catch {
@@ -215,7 +219,7 @@ export class AssistantService {
     retryOnTransient = true,
   ) {
     try {
-      const attempts = retryOnTransient ? 2 : 1;
+      const attempts = retryOnTransient ? 3 : 1;
       for (let attempt = 0; attempt < attempts; attempt += 1) {
         try {
           const response = await this.ai!.chat.completions.create(
@@ -240,11 +244,15 @@ export class AssistantService {
           return content;
         } catch (error) {
           if (
-            attempt === 0 &&
+            attempt < attempts - 1 &&
             retryOnTransient &&
             isRetryableProviderError(error)
-          )
+          ) {
+            await new Promise((resolve) =>
+              setTimeout(resolve, (attempt + 1) * 600),
+            );
             continue;
+          }
           throw error;
         }
       }
@@ -252,7 +260,7 @@ export class AssistantService {
     } catch (error) {
       // Do not log personal conversation text or provider response bodies.
       this.logger.warn(
-        `Assistant provider failed: ${error instanceof Error ? error.name : 'UnknownError'}`,
+        `Assistant provider failed: ${error instanceof Error ? error.message || error.name : 'UnknownError'}`,
       );
       throw new BadGatewayException('Помощник не ответил — попробуйте ещё раз');
     }
@@ -260,15 +268,23 @@ export class AssistantService {
 }
 
 function isRetryableProviderError(error: unknown): boolean {
-  const value = error as { name?: unknown; status?: unknown; code?: unknown };
+  const value = error as { name?: unknown; status?: unknown; code?: unknown; message?: unknown };
   const status = typeof value.status === 'number' ? value.status : undefined;
   if (status !== undefined)
-    return status === 408 || status === 409 || status === 429 || status >= 500;
+    return (
+      status === 408 ||
+      status === 409 ||
+      status === 424 ||
+      status === 429 ||
+      status >= 500
+    );
   const name = typeof value.name === 'string' ? value.name : '';
   const code = typeof value.code === 'string' ? value.code : '';
+  const message = typeof value.message === 'string' ? value.message : '';
   return (
     /APIConnection|APITimeout|Timeout/i.test(name) ||
-    /ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE/i.test(code)
+    /ECONNRESET|ECONNREFUSED|ETIMEDOUT|EPIPE|ENOTFOUND/i.test(code) ||
+    /timeout|connection|network|overload|rate limit|busy/i.test(message)
   );
 }
 
