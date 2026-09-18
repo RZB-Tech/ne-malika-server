@@ -268,7 +268,12 @@ export class AssistantService {
 }
 
 function isRetryableProviderError(error: unknown): boolean {
-  const value = error as { name?: unknown; status?: unknown; code?: unknown; message?: unknown };
+  const value = error as {
+    name?: unknown;
+    status?: unknown;
+    code?: unknown;
+    message?: unknown;
+  };
   const status = typeof value.status === 'number' ? value.status : undefined;
   if (status !== undefined)
     return (
