@@ -280,6 +280,9 @@ export class ProductCardsRepository {
     if (query.shop_id) {
       conditions.push(eq(productCards.shopId, query.shop_id));
     }
+    if (query.category_id) {
+      conditions.push(eq(productCards.categoryId, query.category_id));
+    }
     if (query.q) {
       const pattern = `%${escapeLike(query.q)}%`;
       conditions.push(

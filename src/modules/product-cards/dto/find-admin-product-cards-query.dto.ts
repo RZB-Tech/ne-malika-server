@@ -38,6 +38,12 @@ export class FindAdminProductCardsQueryDto extends PaginationQueryDto {
   @IsInt()
   shop_id?: number;
 
+  @ApiPropertyOptional({ example: 12, description: 'Фильтр по категории' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  category_id?: number;
+
   @ApiPropertyOptional({
     type: Boolean,
     example: true,
