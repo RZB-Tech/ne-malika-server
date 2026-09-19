@@ -208,15 +208,15 @@ export class ProductCardsService {
 
   async findPublicList(query: FindProductCardsQueryDto, userAgent?: string) {
     const { visitor_id: visitorId, ...cacheable } = query;
-    const key = query.sort === 'random' ? null : productListKey(cacheable);
-    const cached = key ? await this.redis.get<PublicList>(key) : null;
+    const key = productListKey(cacheable);
+    const cached = await this.redis.get<PublicList>(key);
     const categoryIds = cached
       ? undefined
       : await this.resolveCategoryIds(query);
     const result =
       cached ??
       (await this.productCardsRepository.findPublicList(query, categoryIds));
-    if (key && !cached) {
+    if (!cached) {
       await this.redis.set(key, result, PRODUCT_LIST_TTL_SEC);
     }
 

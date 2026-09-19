@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import { SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
@@ -18,6 +19,7 @@ async function bootstrap() {
   const isProd = config.get<string>('env') === 'production';
   const corsOrigins = config.get<string[]>('corsOrigins')!;
 
+  app.use(compression());
   app.setGlobalPrefix(apiPrefix, {
     exclude: [
       ...CLICK_UNVERSIONED_CALLBACK_ROUTES,

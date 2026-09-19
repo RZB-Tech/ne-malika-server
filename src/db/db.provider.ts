@@ -16,6 +16,9 @@ export const drizzleProvider: Provider = {
   useFactory: (config: ConfigService) => {
     const pool = new Pool({
       connectionString: config.get<string>('database.url'),
+      max: 20,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 5000,
     });
     return drizzle(pool, { schema });
   },

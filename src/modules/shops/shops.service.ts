@@ -16,6 +16,8 @@ import {
   SHOP_CACHE_PREFIX,
   SHOP_LIST_TTL_SEC,
   shopListKey,
+  shopItemKey,
+  SHOP_ITEM_TTL_SEC,
 } from './shops.cache';
 import { CreateShopDto } from './dto/create-shop.dto';
 import { UpdateShopDto } from './dto/update-shop.dto';
@@ -142,10 +144,18 @@ export class ShopsService {
   }
 
   async getPublicById(id: number) {
+    const key = shopItemKey(id);
+    const cached =
+      await this.redis.get<
+        Awaited<ReturnType<ShopsRepository['findPublicById']>>
+      >(key);
+    if (cached) return cached;
+
     const shop = await this.shopsRepository.findPublicById(id);
     if (!shop) {
       throw new NotFoundException('Магазин не найден');
     }
+    await this.redis.set(key, shop, SHOP_ITEM_TTL_SEC);
     return shop;
   }
 

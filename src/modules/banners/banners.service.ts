@@ -9,6 +9,7 @@ import {
 import { ShopsService } from '../shops/shops.service';
 import { FilesService } from '../files/files.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { RedisService } from '../redis/redis.service';
 import {
   effectiveLimits,
   formatDate,
@@ -34,6 +35,9 @@ const PLAN_REQUIRED = 'Баннер доступен на тарифе MAX';
 
 const SELLER_BANNER_PATH = '/seller/banner';
 
+const BANNERS_ACTIVE_CACHE_KEY = 'banners:active';
+const BANNERS_ACTIVE_TTL_SEC = 120;
+
 function expiryDate(value: string | null | undefined): Date | null {
   return value ? new Date(value) : null;
 }
@@ -47,9 +51,20 @@ export class BannersService {
     private readonly shopsService: ShopsService,
     private readonly files: FilesService,
     private readonly notifications: NotificationsService,
+    private readonly redis?: RedisService,
   ) {}
 
   async findActive() {
+    if (this.redis) {
+      type ActiveBanners = Awaited<
+        ReturnType<BannersRepository['findActivePlatform']>
+      >;
+      const cached = await this.redis.get<ActiveBanners>(
+        BANNERS_ACTIVE_CACHE_KEY,
+      );
+      if (cached) return cached;
+    }
+
     const [platform, shop] = await Promise.all([
       this.repository.findActivePlatform(MAX_ACTIVE_BANNERS),
       this.repository.findActiveShop(bucketKey(), SHOP_BANNER_SLOTS),
@@ -58,7 +73,19 @@ export class BannersService {
     const [lead, ...rest] = platform;
     const head = lead ? [lead] : [];
 
-    return [...head, ...shop, ...rest].slice(0, MAX_ACTIVE_BANNERS);
+    const result = [...head, ...shop, ...rest].slice(0, MAX_ACTIVE_BANNERS);
+    if (this.redis) {
+      await this.redis.set(
+        BANNERS_ACTIVE_CACHE_KEY,
+        result,
+        BANNERS_ACTIVE_TTL_SEC,
+      );
+    }
+    return result;
+  }
+
+  private invalidateCache() {
+    return this.redis?.del(BANNERS_ACTIVE_CACHE_KEY);
   }
 
   findAllForAdmin() {
@@ -73,6 +100,7 @@ export class BannersService {
     const sortOrder =
       dto.sortOrder ?? (await this.repository.maxSortOrder()) + 1;
 
+    await this.invalidateCache();
     return this.repository.create({
       title: dto.title,
       photoRu: dto.photoRu,
@@ -135,6 +163,7 @@ export class BannersService {
       await this.shopsService.getOrThrow(shopId);
     }
 
+    await this.invalidateCache();
     return this.repository.update(id, {
       ...rest,
       ...(linkUrl === undefined ? {} : { linkUrl: linkUrl || null }),
@@ -146,6 +175,7 @@ export class BannersService {
   async remove(id: number) {
     await this.getOrFail(id);
     await this.repository.delete(id);
+    await this.invalidateCache();
   }
 
   async reorder(ids: number[]) {

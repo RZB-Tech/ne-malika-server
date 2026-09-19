@@ -12,6 +12,7 @@ import {
   varchar,
 } from 'drizzle-orm/pg-core';
 import { pgTable } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
 import { shops } from './shops.schema';
 import { categories } from './categories.schema';
 import { entityStatusEnum, productStateEnum } from './enums';
@@ -66,6 +67,20 @@ export const productCards = pgTable(
     shopIdIdx: index('product_cards_shop_id_idx').on(table.shopId),
     statusIdx: index('product_cards_status_idx').on(table.status),
     categoryIdIdx: index('product_cards_category_id_idx').on(table.categoryId),
+    createdAtIdx: index('product_cards_created_at_idx').on(
+      table.createdAt.desc(),
+    ),
+    activeCreatedAtIdx: index('product_cards_active_created_at_idx')
+      .on(table.createdAt.desc())
+      .where(sql`${table.status} = 'active'`),
+    shopActiveCreatedAtIdx: index('product_cards_shop_active_created_idx')
+      .on(table.shopId, table.createdAt.desc())
+      .where(sql`${table.status} = 'active'`),
+    categoryActiveCreatedAtIdx: index(
+      'product_cards_category_active_created_idx',
+    )
+      .on(table.categoryId, table.createdAt.desc())
+      .where(sql`${table.status} = 'active'`),
   }),
 );
 

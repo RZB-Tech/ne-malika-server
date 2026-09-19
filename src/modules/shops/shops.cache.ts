@@ -12,3 +12,9 @@ export const SHOP_LIST_TTL_SEC = 120;
 export function shopListKey(query: Record<string, unknown>): string {
   return listCacheKey(SHOP_CACHE_PREFIX, query);
 }
+
+export const SHOP_ITEM_TTL_SEC = 300;
+
+export function shopItemKey(id: number): string {
+  return `${SHOP_CACHE_PREFIX}one:${id}`;
+}
