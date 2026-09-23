@@ -20,6 +20,7 @@ import { SellerOnly } from '../../common/decorators/roles.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { AuthenticatedUser } from '../../common/types/auth.types';
 import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
+import { ReasonDto } from '../../common/dto/reason.dto';
 import { SubscriptionsService } from './subscriptions.service';
 import { CreateCheckoutDto } from './dto/create-checkout.dto';
 import {
@@ -64,6 +65,24 @@ export class SellerSubscriptionsController {
     @Body() dto: CreateCheckoutDto,
   ): Promise<PaymentLinkDto> {
     return this.subscriptions.checkout(user.id, dto.plan, dto.provider);
+  }
+
+  @Post('cancel')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @ApiOperation({
+    summary: 'Немедленно отменить действующую подписку без возврата оплаты',
+  })
+  @ApiResponse({ status: 200, type: SellerSubscriptionDto })
+  @ApiResponse({
+    status: 409,
+    description: 'У магазина нет действующей подписки',
+  })
+  cancel(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ReasonDto,
+  ): Promise<SellerSubscriptionDto> {
+    return this.subscriptions.sellerCancel(user.id, dto.reason);
   }
 
   @Post('invoice')

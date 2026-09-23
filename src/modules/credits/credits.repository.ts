@@ -356,7 +356,7 @@ export class CreditsRepository {
       .set({
         subscriptionPlan: data.plan,
         subscriptionUntil: until,
-        creditsBalance: sql` +  + `,
+        creditsBalance: sql`${shops.creditsBalance} + ${shops.subscriptionCredits} + ${data.credits}`,
         subscriptionCredits: 0,
         updatedAt: now,
       })

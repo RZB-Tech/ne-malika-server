@@ -271,6 +271,7 @@ export class SubscriptionsService implements OnModuleInit {
     if (!normalized) throw new BadRequestException('Неверный номер телефона');
 
     const shop = await this.shopOfOwner(ownerId);
+    await this.assertPlanCanBePurchased(ownerId, plan);
 
     const order = await this.openOrder({
       shopId: shop.id,
@@ -470,6 +471,7 @@ export class SubscriptionsService implements OnModuleInit {
     this.requireProviderConfigured(provider);
 
     const shop = await this.shopOfOwner(ownerId);
+    await this.assertPlanCanBePurchased(ownerId, plan);
 
     const order = await this.openOrder({
       shopId: shop.id,
@@ -850,6 +852,55 @@ export class SubscriptionsService implements OnModuleInit {
       );
     }
     return shop;
+  }
+
+  private async assertPlanCanBePurchased(
+    ownerId: number,
+    plan: PaidPlan,
+  ): Promise<void> {
+    const current = await this.repository.subscriptionForOwner(ownerId);
+    if (current?.plan === plan && current.until && current.until > new Date()) {
+      throw new ConflictException(
+        'Этот тариф уже активен. Сначала отмените текущую подписку, чтобы купить его заново',
+      );
+    }
+  }
+
+  async sellerCancel(
+    ownerId: number,
+    reason: string,
+  ): Promise<SellerSubscriptionDto> {
+    const now = new Date();
+    const cancelled = await this.repository.transaction(async (tx) => {
+      const shop = await this.shopOfOwner(ownerId);
+      const locked = await this.repository.lockShop(tx, shop.id);
+      if (!locked || locked.owner !== ownerId || locked.status !== 'active') {
+        throw new ForbiddenException(
+          'Подписка доступна только владельцу активного магазина',
+        );
+      }
+      if (!locked.subscriptionUntil || locked.subscriptionUntil <= now) {
+        throw new ConflictException('У магазина нет действующей подписки');
+      }
+
+      await this.repository.expireSubscription(tx, locked.id, now);
+      return {
+        shopId: locked.id,
+        shopName: locked.name,
+        plan: locked.subscriptionPlan,
+      };
+    });
+
+    this.logger.warn(
+      `Владелец ${ownerId} отменил подписку магазина ${cancelled.shopId} (${cancelled.plan}); возврат средств не выполняется. Причина: ${excerpt(reason, 200)}`,
+    );
+    this.announceManual(
+      cancelled.shopId,
+      ownerId,
+      `Подписка ${cancelled.plan.toUpperCase()} отменена владельцем. Оплата за неиспользованный срок не возвращается.`,
+      'Подписка отменена',
+    );
+    return this.stateOf(cancelled.shopId);
   }
 
   async stateForOwner(ownerId: number): Promise<SellerSubscriptionDto> {

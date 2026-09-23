@@ -639,6 +639,21 @@ export class SubscriptionsRepository {
       .where(eq(shops.id, shopId));
   }
 
+  async subscriptionForOwner(ownerId: number): Promise<
+    | {
+        plan: SubscriptionPlanId;
+        until: Date | null;
+      }
+    | undefined
+  > {
+    const rows = await this.db
+      .select({ plan: shops.subscriptionPlan, until: shops.subscriptionUntil })
+      .from(shops)
+      .where(and(eq(shops.owner, ownerId), eq(shops.status, 'active')))
+      .limit(1);
+    return rows[0];
+  }
+
   async paymentsOf(shopId: number, query: PaginationQueryDto) {
     const { page, limit, offset } = resolvePage(query);
 
