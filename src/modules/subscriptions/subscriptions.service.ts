@@ -1122,12 +1122,15 @@ export class SubscriptionsService implements OnModuleInit {
         );
       }
 
+      const hasActiveSubscription =
+        shop.subscriptionUntil !== null && shop.subscriptionUntil > now;
       if (
-        await this.repository.hasRecentManual(
+        !hasActiveSubscription &&
+        (await this.repository.hasRecentManual(
           tx,
           shopId,
           MANUAL_ACTIVATION_COOLDOWN_SEC,
-        )
+        ))
       ) {
         throw new ConflictException(
           'Подписка этому магазину уже выдана только что — повторите через минуту',

@@ -96,7 +96,8 @@ export class AdminShopSubscriptionController {
   @ApiResponse({ status: 200, type: SellerSubscriptionDto })
   @ApiResponse({
     status: 409,
-    description: 'Магазин упразднён либо подписка уже выдана только что',
+    description:
+      'Магазин упразднён либо тариф недавно выдан, а подписка ещё не активна',
   })
   activate(
     @CurrentUser() user: AuthenticatedUser,
