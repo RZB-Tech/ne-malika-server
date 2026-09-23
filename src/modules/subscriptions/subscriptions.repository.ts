@@ -432,6 +432,25 @@ export class SubscriptionsRepository {
     return rows[0];
   }
 
+  async lockPaymentForReview(
+    tx: Tx,
+    shopId: number,
+    paymentId: number,
+  ): Promise<SubscriptionPayment | undefined> {
+    const rows = await tx
+      .select()
+      .from(subscriptionPayments)
+      .where(
+        and(
+          eq(subscriptionPayments.id, paymentId),
+          eq(subscriptionPayments.shopId, shopId),
+        ),
+      )
+      .limit(1)
+      .for('update');
+    return rows[0];
+  }
+
   async insertCancelled(
     tx: Tx,
     data: {

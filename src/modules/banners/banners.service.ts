@@ -219,7 +219,7 @@ export class BannersService {
 
     await this.assertPhotosExist(dto);
 
-    return this.repository.create({
+    const banner = await this.repository.create({
       shopId: shop.id,
       title: dto.title,
       photoRu: dto.photoRu,
@@ -235,6 +235,9 @@ export class BannersService {
       isActive: true,
       sortOrder: 0,
     });
+
+    this.notifyAdminsPendingReview(shop.id, shop.name, banner.id, banner.title);
+    return banner;
   }
 
   async updateOwn(ownerId: number, id: number, dto: UpdateShopBannerDto) {
@@ -253,7 +256,7 @@ export class BannersService {
 
     const { linkUrl, ...rest } = dto;
 
-    return this.repository.update(id, {
+    const updated = await this.repository.update(id, {
       ...rest,
       ...(linkUrl === undefined ? {} : { linkUrl: linkUrl || null }),
       status: 'pending',
@@ -261,6 +264,14 @@ export class BannersService {
       moderatedBy: null,
       moderatedAt: null,
     });
+
+    this.notifyAdminsPendingReview(
+      shop.id,
+      shop.name,
+      updated.id,
+      updated.title,
+    );
+    return updated;
   }
 
   async removeOwn(ownerId: number, id: number) {
@@ -353,6 +364,26 @@ export class BannersService {
         tag: `banner-${bannerId}`,
       })
       .catch((err: unknown) => this.logNotifyFailure('push', ownerId, err));
+  }
+
+  private notifyAdminsPendingReview(
+    shopId: number,
+    shopName: string,
+    bannerId: number,
+    title: string,
+  ): void {
+    const message =
+      `🖼 <b>Баннер ожидает одобрения</b>\n\n` +
+      `Магазин: <b>${escapeHtml(shopName)}</b> (#${shopId})\n` +
+      `Баннер: ${escapeHtml(excerpt(title, 180))}\n` +
+      `Заявка: #${bannerId}\n\n` +
+      '<a href="https://nemalika.uz/admin/shop-banners">Открыть очередь баннеров → На проверке</a>';
+
+    this.notifications.notifyAdmins(message).catch((err: unknown) => {
+      this.logger.error(
+        `Не удалось уведомить администраторов о баннере ${bannerId}: ${errorMessage(err)}`,
+      );
+    });
   }
 
   private notifyIssued(

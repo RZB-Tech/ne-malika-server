@@ -23,6 +23,7 @@ import { PaginationQueryDto } from '../../common/dto/pagination-query.dto';
 import { ReasonDto } from '../../common/dto/reason.dto';
 import { SubscriptionsService } from './subscriptions.service';
 import { ActivateSubscriptionDto } from './dto/activate-subscription.dto';
+import { ResolvePaymentReviewDto } from './dto/resolve-payment-review.dto';
 import { CreateTestPaymentDto } from './dto/create-test-payment.dto';
 import { FindAdminSubscriptionsQueryDto } from './dto/find-admin-subscriptions-query.dto';
 import {
@@ -87,6 +88,29 @@ export class AdminShopSubscriptionController {
     @Query() query: PaginationQueryDto,
   ): Promise<PaginatedSubscriptionPaymentsDto> {
     return this.subscriptions.payments(shopId, query);
+  }
+
+  @Post('payments/:paymentId/review')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Разобрать проблемную оплату подписки' })
+  @ApiResponse({ status: 200, type: SellerSubscriptionDto })
+  @ApiResponse({
+    status: 409,
+    description: 'Действие недоступно для этого платежа',
+  })
+  resolvePaymentReview(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('shopId', ParseIntPipe) shopId: number,
+    @Param('paymentId', ParseIntPipe) paymentId: number,
+    @Body() dto: ResolvePaymentReviewDto,
+  ): Promise<SellerSubscriptionDto> {
+    return this.subscriptions.resolveAdminPaymentReview(
+      shopId,
+      paymentId,
+      user.id,
+      dto,
+    );
   }
 
   @Post('activate')

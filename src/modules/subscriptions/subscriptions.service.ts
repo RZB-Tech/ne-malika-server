@@ -59,6 +59,7 @@ import type {
   SubscriptionStatusSliceDto,
 } from './dto/subscription-report.dto';
 import type { ActivateSubscriptionDto } from './dto/activate-subscription.dto';
+import type { ResolvePaymentReviewDto } from './dto/resolve-payment-review.dto';
 import { errorMessage } from '../../common/errors';
 import type { FindAdminSubscriptionsQueryDto } from './dto/find-admin-subscriptions-query.dto';
 import type {
@@ -596,6 +597,17 @@ export class SubscriptionsService implements OnModuleInit {
     signTime?: string;
   }): Promise<CompleteResult> {
     const now = new Date();
+    let reviewAlert:
+      | {
+          paymentId: number;
+          shopId: number;
+          plan: SubscriptionPlanId;
+          amount: number;
+          providerTransactionId: string;
+          reason?: string;
+          refunded?: boolean;
+        }
+      | undefined;
 
     const result = await this.repository.transaction<CompleteResult>(
       async (tx) => {
@@ -643,6 +655,17 @@ export class SubscriptionsService implements OnModuleInit {
               refundedByProvider: true,
               needsManualReview: true,
             });
+            if (payment.meta?.needsManualReview !== true) {
+              reviewAlert = {
+                paymentId: payment.id,
+                shopId: payment.shopId,
+                plan: payment.plan,
+                amount: payment.amount,
+                providerTransactionId: input.providerTransactionId,
+                reason: input.errorNote,
+                refunded: true,
+              };
+            }
             this.logger.error(
               `Click вернул уже оплаченную подписку: click_trans_id=${input.providerTransactionId}, ` +
                 `click_paydoc_id=${input.providerPaymentId}, платёж ${payment.id}, магазин ${payment.shopId}. ` +
@@ -670,6 +693,13 @@ export class SubscriptionsService implements OnModuleInit {
         return this.settlePaidOrder(tx, payment, shop, now);
       },
     );
+
+    if (reviewAlert) {
+      this.fireAndForget(
+        this.notifyAdminsAboutPaymentReview(reviewAlert),
+        `уведомление администраторов о проблемном платеже ${reviewAlert.paymentId}`,
+      );
+    }
 
     if (result.kind === 'paid') {
       if (result.test) {
@@ -778,6 +808,18 @@ export class SubscriptionsService implements OnModuleInit {
       needsManualReview: !input.reversed,
     };
 
+    let reviewAlert:
+      | {
+          paymentId?: number;
+          shopId: number | null;
+          plan: SubscriptionPlanId | null;
+          amount: number;
+          providerTransactionId: string;
+          reason: string;
+          refunded: boolean;
+        }
+      | undefined;
+
     try {
       await this.repository.transaction(async (tx) => {
         const existing = await this.repository.lockByProviderTransaction(
@@ -792,6 +834,17 @@ export class SubscriptionsService implements OnModuleInit {
               ...meta,
               needsManualReview: true,
             });
+            if (existing.meta?.needsManualReview !== true) {
+              reviewAlert = {
+                paymentId: existing.id,
+                shopId: existing.shopId,
+                plan: existing.plan,
+                amount: existing.amount,
+                providerTransactionId: input.providerTransactionId,
+                reason: input.errorNote,
+                refunded: input.reversed,
+              };
+            }
             this.logger.error(
               `Отказ Complete по уже оплаченному платежу ${existing.id}: ` +
                 `click_trans_id=${input.providerTransactionId}, click_paydoc_id=${input.providerPaymentId}`,
@@ -800,10 +853,34 @@ export class SubscriptionsService implements OnModuleInit {
           }
 
           await this.repository.markCancelled(tx, existing.id, meta);
+          if (
+            meta.needsManualReview === true &&
+            existing.meta?.needsManualReview !== true
+          ) {
+            reviewAlert = {
+              paymentId: existing.id,
+              shopId: existing.shopId,
+              plan: existing.plan,
+              amount: existing.amount,
+              providerTransactionId: input.providerTransactionId,
+              reason: input.errorNote,
+              refunded: input.reversed,
+            };
+          }
           return;
         }
 
         if (input.shopId === null) {
+          if (!input.reversed) {
+            reviewAlert = {
+              shopId: null,
+              plan: null,
+              amount: input.amount,
+              providerTransactionId: input.providerTransactionId,
+              reason: input.errorNote,
+              refunded: false,
+            };
+          }
           this.logger.error(
             `Отказ Complete без разрешённого магазина: click_trans_id=${input.providerTransactionId}, ` +
               `click_paydoc_id=${input.providerPaymentId}, сумма ${input.amount}, возврат ${input.reversed ? 'выполнен' : 'НЕ выполнен'}`,
@@ -812,6 +889,16 @@ export class SubscriptionsService implements OnModuleInit {
         }
 
         if (!(input.amount > 0)) {
+          if (!input.reversed) {
+            reviewAlert = {
+              shopId: input.shopId,
+              plan: null,
+              amount: input.amount,
+              providerTransactionId: input.providerTransactionId,
+              reason: input.errorNote,
+              refunded: false,
+            };
+          }
           this.logger.error(
             `Отказ Complete с неразобранной суммой: click_trans_id=${input.providerTransactionId}, ` +
               `click_paydoc_id=${input.providerPaymentId}, магазин ${input.shopId}, ` +
@@ -830,6 +917,16 @@ export class SubscriptionsService implements OnModuleInit {
         });
 
         if (!inserted) {
+          if (!input.reversed) {
+            reviewAlert = {
+              shopId: input.shopId,
+              plan: null,
+              amount: input.amount,
+              providerTransactionId: input.providerTransactionId,
+              reason: input.errorNote,
+              refunded: false,
+            };
+          }
           this.logger.error(
             `Строку об отказе Complete записать не удалось — номер занят: ` +
               `click_trans_id=${input.providerTransactionId}, click_paydoc_id=${input.providerPaymentId}`,
@@ -840,6 +937,14 @@ export class SubscriptionsService implements OnModuleInit {
       this.logger.error(
         `Не удалось записать отказ Complete (click_trans_id=${input.providerTransactionId}): ` +
           `${errorMessage(error)}`,
+      );
+      return;
+    }
+
+    if (reviewAlert) {
+      this.fireAndForget(
+        this.notifyAdminsAboutPaymentReview(reviewAlert),
+        `уведомление администраторов о проблемном платеже Click ${input.providerTransactionId}`,
       );
     }
   }
@@ -1104,6 +1209,129 @@ export class SubscriptionsService implements OnModuleInit {
     return buildPaginatedResult(rows, total, page, limit);
   }
 
+  async resolveAdminPaymentReview(
+    shopId: number,
+    paymentId: number,
+    adminId: number,
+    dto: ResolvePaymentReviewDto,
+  ): Promise<SellerSubscriptionDto> {
+    const now = new Date();
+    const outcome = await this.repository.transaction(async (tx) => {
+      const payment = await this.repository.lockPaymentForReview(
+        tx,
+        shopId,
+        paymentId,
+      );
+      if (!payment) throw new NotFoundException('Платёж не найден');
+
+      const meta = payment.meta ?? {};
+      if (meta.needsManualReview !== true) {
+        throw new ConflictException('Платёж уже разобран');
+      }
+
+      if (dto.action === 'grant_paid_subscription') {
+        if (
+          payment.status !== 'cancelled' ||
+          !isPaidPlan(payment.plan) ||
+          meta.reversed === true ||
+          meta.refundedByProvider === true ||
+          meta.test === true
+        ) {
+          throw new ConflictException(
+            'Выдать тариф можно только по отменённому платежу с известным тарифом, если возврат не выполнялся',
+          );
+        }
+
+        const shop = await this.repository.lockShop(tx, shopId);
+        if (!shop || shop.status !== 'active') {
+          throw new ConflictException(
+            'Магазин не найден или отключён — подписку выдать нельзя',
+          );
+        }
+
+        const spec = this.specOf(payment.plan);
+        const resolutionReason = excerpt(dto.reason, 500);
+        const grantPayment = await this.repository.insertManual(tx, {
+          shopId,
+          plan: spec.id,
+          amount: payment.amount,
+          initiatorId: adminId,
+          paidAt: now,
+          meta: {
+            adminId,
+            note: `Выдача тарифа по платежу #${payment.id}: ${resolutionReason}`,
+          },
+        });
+        const grant = await this.credits.grantSubscriptionCredits(
+          {
+            shopId,
+            plan: spec.id,
+            months: 1,
+            credits: spec.credits,
+            paymentId: grantPayment.id,
+            now,
+          },
+          tx,
+        );
+
+        const resolutionNote =
+          `Разбор закрыт: выдан тариф ${spec.id.toUpperCase()} на 1 месяц ` +
+          `по платежу #${payment.id}. Причина: ${resolutionReason}`;
+        await this.repository.patchMeta(tx, payment.id, {
+          needsManualReview: false,
+          reviewResolution: 'paid_subscription_granted',
+          reviewResolvedAt: now.toISOString(),
+          reviewResolvedBy: adminId,
+          manualGrantPaymentId: grantPayment.id,
+          note: [meta.note, resolutionNote].filter(Boolean).join('\n'),
+        });
+
+        return {
+          action: 'granted' as const,
+          ownerId: shop.owner,
+          plan: spec.id,
+          until: grant.until,
+          credits: grant.granted,
+          manualPaymentId: grantPayment.id,
+        };
+      }
+
+      const resolutionNote =
+        `Разбор отмечен решённым администратором #${adminId}. ` +
+        `Подписка и платёж не изменялись. Причина: ${excerpt(dto.reason, 500)}`;
+      await this.repository.patchMeta(tx, payment.id, {
+        needsManualReview: false,
+        reviewResolution: 'marked_resolved',
+        reviewResolvedAt: now.toISOString(),
+        reviewResolvedBy: adminId,
+        note: [meta.note, resolutionNote].filter(Boolean).join('\n'),
+      });
+
+      return { action: 'marked_resolved' as const };
+    });
+
+    if (outcome.action === 'granted') {
+      this.logger.warn(
+        `Администратор ${adminId} выдал тариф ${outcome.plan.toUpperCase()} ` +
+          `по разбору платежа ${paymentId} магазина ${shopId}; ` +
+          `новый срок до ${outcome.until.toISOString()}, начислено ${outcome.credits} кредитов`,
+      );
+      this.announceManual(
+        shopId,
+        outcome.ownerId,
+        `Администратор выдал оплаченный тариф <b>${outcome.plan.toUpperCase()}</b> ` +
+          `до ${formatDate(outcome.until)} после ручной проверки платежа.`,
+        'Оплаченная подписка активирована',
+      );
+    } else {
+      this.logger.log(
+        `Администратор ${adminId} отметил разбор платежа ${paymentId} магазина ${shopId} решённым без изменения подписки`,
+      );
+    }
+
+    return this.stateOf(shopId);
+  }
+
   async adminActivate(
     shopId: number,
     adminId: number,
@@ -1258,6 +1486,49 @@ export class SubscriptionsService implements OnModuleInit {
     );
   }
 
+  private async notifyAdminsAboutPaymentReview(input: {
+    paymentId?: number;
+    shopId: number | null;
+    plan: SubscriptionPlanId | null;
+    amount: number;
+    providerTransactionId: string;
+    reason?: string;
+    refunded?: boolean;
+  }): Promise<void> {
+    const shop = input.shopId
+      ? await this.repository.findShopById(input.shopId).catch(() => undefined)
+      : undefined;
+    const shopLabel = shop
+      ? `<b>${escapeHtml(shop.name)}</b> (#${shop.id})`
+      : input.shopId === null
+        ? 'не определён'
+        : `#${input.shopId}`;
+    const planLabel =
+      input.plan && input.plan !== 'free'
+        ? input.plan.toUpperCase()
+        : 'не определён';
+    const amount = new Intl.NumberFormat('ru-RU').format(input.amount);
+    const reason = input.reason
+      ? `\nПричина: ${escapeHtml(excerpt(input.reason, 240))}`
+      : '';
+    const paymentLabel = input.paymentId
+      ? `Платёж: #${input.paymentId}`
+      : 'Платёж не удалось надёжно связать с записью';
+    const refundLabel =
+      input.refunded === undefined
+        ? ''
+        : `\nВозврат провайдера: ${input.refunded ? 'подтверждён' : 'не подтверждён'}`;
+
+    await this.notifications.notifyAdmins(
+      `⚠️ <b>Требуется разбор оплаты подписки</b>\n\n` +
+        `Магазин: ${shopLabel}\n${paymentLabel}\n` +
+        `Тариф: ${planLabel}\nСумма: ${amount} UZS\n` +
+        `Платёж провайдера: ${escapeHtml(input.providerTransactionId)}` +
+        `${refundLabel}${reason}\n\n` +
+        '<a href="https://nemalika.uz/admin/subscriptions">Открыть раздел подписок → Требуют разбора</a>',
+    );
+  }
+
   private announceManual(
     shopId: number,
     ownerId: number,
@@ -1330,5 +1601,6 @@ function toPaymentDto(payment: SubscriptionPayment): SubscriptionPaymentDto {
     reversed: meta.reversed === true,
     refundedByProvider: meta.refundedByProvider === true,
     needsManualReview: meta.needsManualReview === true,
+    isTest: meta.test === true,
   };
 }

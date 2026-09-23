@@ -311,6 +311,12 @@ export class SubscriptionPaymentDto {
     description: 'Платёж ждёт разбора человеком: автоматика не справилась',
   })
   needsManualReview: boolean;
+
+  @ApiProperty({
+    description:
+      'Тестовый платёж, который не является основанием для выдачи тарифа',
+  })
+  isTest: boolean;
 }
 
 export class PaginatedSubscriptionPaymentsDto {
