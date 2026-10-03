@@ -10,10 +10,7 @@ import { ShopsService } from '../shops/shops.service';
 import { FilesService } from '../files/files.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RedisService } from '../redis/redis.service';
-import {
-  effectiveLimits,
-  formatDate,
-} from '../subscriptions/subscriptions.constants';
+import { effectiveLimits } from '../subscriptions/subscriptions.constants';
 import { escapeHtml, excerpt } from '../bot/telegram-html';
 import { buildPaginatedResult } from '../../common/dto/paginated-response.dto';
 import { errorMessage } from '../../common/errors';
@@ -115,7 +112,7 @@ export class BannersService {
   /**
    * Баннер, выданный магазину площадкой: модерацию проходить не нужно —
    * его собрал администратор, — но показывается он по правилам баннеров
-   * магазинов: пока действует тариф MAX и пока не вышел срок.
+   * магазинов: пока действует тариф MAX, без отдельного срока баннера.
    */
   private async issueToShop(
     shopId: number,
@@ -142,22 +139,24 @@ export class BannersService {
       photoUzLatn: dto.photoUzLatn,
       linkUrl: dto.linkUrl || shopBannerLink(shop.id),
       isActive: dto.isActive ?? true,
-      expiresAt: expiryDate(dto.expiresAt),
+      expiresAt: null,
       status: 'approved',
       moderatedBy: adminId,
       moderatedAt: new Date(),
       sortOrder: 0,
     });
 
-    this.notifyIssued(shop.owner, banner.id, banner.expiresAt);
+    await this.invalidateCache();
+    this.notifyIssued(shop.owner, banner.id);
 
     return banner;
   }
 
   async update(id: number, dto: UpdateBannerDto) {
-    await this.getOrFail(id);
+    const banner = await this.getOrFail(id);
 
     const { linkUrl, expiresAt, shopId, ...rest } = dto;
+    const nextShopId = shopId === undefined ? banner.shopId : shopId;
 
     if (shopId) {
       await this.shopsService.getOrThrow(shopId);
@@ -167,7 +166,11 @@ export class BannersService {
     return this.repository.update(id, {
       ...rest,
       ...(linkUrl === undefined ? {} : { linkUrl: linkUrl || null }),
-      ...(expiresAt === undefined ? {} : { expiresAt: expiryDate(expiresAt) }),
+      ...(nextShopId !== null
+        ? { expiresAt: null }
+        : expiresAt === undefined
+          ? {}
+          : { expiresAt: expiryDate(expiresAt) }),
       ...(shopId === undefined ? {} : { shopId: shopId ?? null }),
     });
   }
@@ -386,20 +389,12 @@ export class BannersService {
     });
   }
 
-  private notifyIssued(
-    ownerId: number,
-    bannerId: number,
-    expiresAt: Date | null,
-  ): void {
-    const until = expiresAt
-      ? `Он показывается до ${formatDate(expiresAt)}.`
-      : 'Он показывается без ограничения по сроку.';
-
+  private notifyIssued(ownerId: number, bannerId: number): void {
     this.notifications
       .notifyUser(
         ownerId,
         '🎁 <b>Площадка выдала вам баннер</b>\n\n' +
-          `${until}\n\n` +
+          'Он показывается, пока действует ваша подписка MAX.\n\n' +
           'Баннер уже в карусели на главной — посмотреть его можно в ' +
           'разделе «Баннер».',
       )
@@ -408,9 +403,7 @@ export class BannersService {
     this.notifications
       .pushToUser(ownerId, {
         title: 'Площадка выдала вам баннер',
-        body: expiresAt
-          ? `Показывается до ${formatDate(expiresAt)}`
-          : 'Показывается в карусели на главной',
+        body: 'Показывается на главной, пока действует подписка MAX',
         url: SELLER_BANNER_PATH,
         tag: `banner-${bannerId}`,
       })

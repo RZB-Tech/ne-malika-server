@@ -17,7 +17,9 @@ export class BannerDto extends PublicBannerDto {
     type: String,
     format: 'date-time',
     nullable: true,
-    description: 'Срок показа: после этой метки баннер скрыт. null — бессрочно',
+    description:
+      'Срок показа баннера площадки; null — бессрочно. Для магазина срок ' +
+      'определяет активная подписка MAX, сохранённое expiresAt не учитывается',
   })
   expiresAt: Date | null;
 

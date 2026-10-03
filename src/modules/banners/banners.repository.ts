@@ -59,7 +59,6 @@ export class BannersRepository {
         and(
           eq(banners.isActive, true),
           eq(banners.status, 'approved'),
-          NOT_EXPIRED,
           eq(shops.status, 'active'),
           eq(shops.subscriptionPlan, 'max'),
           SUBSCRIPTION_ACTIVE,
