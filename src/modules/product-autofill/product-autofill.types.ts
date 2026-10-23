@@ -77,18 +77,56 @@ function optionalText(value: unknown, max: number): string | null {
   return result;
 }
 
-function parseCharacteristics(value: unknown): ProductCharacteristic[] {
-  if (!Array.isArray(value)) return [];
+function characteristicEntries(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === 'object') {
+    return Object.entries(value as Record<string, unknown>).map(
+      ([key, entry]) => ({ key, value: entry }),
+    );
+  }
+  return [];
+}
 
+function characteristicValue(value: unknown): string {
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (Array.isArray(value)) {
+    return value
+      .filter((item) => typeof item === 'string' || typeof item === 'number')
+      .map((item) => String(item).trim())
+      .filter(Boolean)
+      .join(', ')
+      .slice(0, VALUE_MAX);
+  }
+  return text(value, VALUE_MAX);
+}
+
+// Only labelled list items, not prose or specifications guessed from a model name.
+function descriptionCharacteristics(
+  description: string,
+): ProductCharacteristic[] {
+  return description.split('\n').flatMap((line) => {
+    if (!/^\s*(?:[-*•]\s+|\*\*)/.test(line)) return [];
+    const plain = line
+      .trim()
+      .replace(/^[-*•]\s+/, '')
+      .replace(/\*\*/g, '');
+    const match = /^([^:]{2,100}):\s*(.+)$/.exec(plain);
+    return match ? [{ key: match[1], value: match[2] }] : [];
+  });
+}
+
+function parseCharacteristics(value: unknown): ProductCharacteristic[] {
   const seen = new Set<string>();
   const result: ProductCharacteristic[] = [];
 
-  for (const item of value) {
+  for (const item of characteristicEntries(value)) {
     if (result.length >= AUTOFILL_MAX_CHARACTERISTICS) break;
-    const raw = item as { key?: unknown; value?: unknown };
-    const key = text(raw?.key, KEY_MAX).replace(/:$/, '').trim();
-    const characteristicValue = text(raw?.value, VALUE_MAX);
-    if (!key || !characteristicValue) continue;
+    const raw = item as { key?: unknown; name?: unknown; value?: unknown };
+    const key = text(raw?.key ?? raw?.name, KEY_MAX)
+      .replace(/:$/, '')
+      .trim();
+    const entryValue = optionalText(characteristicValue(raw?.value), VALUE_MAX);
+    if (!key || !entryValue) continue;
 
     const normalized = normalizeKey(key);
     if (seen.has(normalized)) continue;
@@ -96,7 +134,7 @@ function parseCharacteristics(value: unknown): ProductCharacteristic[] {
     if (REJECTED_KEYS.has(normalized)) continue;
 
     seen.add(normalized);
-    result.push({ key, value: characteristicValue });
+    result.push({ key, value: entryValue });
   }
 
   return result;
@@ -105,6 +143,10 @@ function parseCharacteristics(value: unknown): ProductCharacteristic[] {
 export function parseAutofillResult(
   raw: string | null | undefined,
   allowedCategoryIds: ReadonlySet<number>,
+  context: {
+    description?: string;
+    characteristics?: ProductCharacteristic[];
+  } = {},
 ): AutofillResult {
   let parsed: Record<string, unknown>;
   try {
@@ -112,18 +154,32 @@ export function parseAutofillResult(
   } catch {
     throw new Error('не удалось разобрать JSON-ответ модели');
   }
-  if (!parsed || typeof parsed !== 'object') {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new Error('модель вернула не объект');
   }
 
   const description = text(parsed.description, AUTOFILL_DESCRIPTION_MAX);
-  const characteristics = parseCharacteristics(parsed.characteristics);
+  const generatedCharacteristics = parseCharacteristics([
+    ...characteristicEntries(parsed.characteristics),
+    ...descriptionCharacteristics(description),
+  ]);
   const brand = optionalText(parsed.brand, BRAND_MAX);
   const model = optionalText(parsed.model, BRAND_MAX);
 
-  if (!description && characteristics.length === 0 && !brand && !model) {
+  if (
+    !description &&
+    generatedCharacteristics.length === 0 &&
+    !brand &&
+    !model
+  ) {
     throw new Error('модель не заполнила ни одного поля');
   }
+
+  const characteristics = parseCharacteristics([
+    ...(context.characteristics ?? []),
+    ...descriptionCharacteristics(context.description ?? ''),
+    ...generatedCharacteristics,
+  ]);
 
   const rawCategoryId = Number(parsed.categoryId);
   const categoryId =
